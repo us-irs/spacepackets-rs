@@ -1,0 +1,34 @@
+[package]
+name = "spacepackets"
+version = "0.1.0"
+edition = "2021"
+authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
+description = "Generic implementations for various CCSDS and ECSS packet standards"
+homepage = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
+repository = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
+license = "Apache-2.0"
+keywords = ["no-std", "space", "packets", "ccsds", "ecss"]
+categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-support", "embedded"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+num = "0.4"
+serde = "1.0.137"
+zerocopy = "0.6.1"
+crc = "3.0.0"
+delegate = "0.7.0"
+
+[dependencies.heapless]
+version = "0.7.14"
+optional = true
+
+[dev-dependencies]
+
+[dev-dependencies.postcard]
+version = "0.7.3"
+features = ["use-std"]
+
+[features]
+
+default = ["heapless", "alloc"]
+alloc = ["serde/alloc"]
