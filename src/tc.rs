@@ -1,6 +1,6 @@
 use crate::ecss::{PusError, PusPacket, PusVersion, CRC_CCITT_FALSE};
 use crate::ser::SpHeader;
-use crate::{CcsdsPacket, PacketError, PacketType, CCSDS_HEADER_LEN};
+use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
 use alloc::vec::Vec;
 use core::mem::size_of;
 use delegate::delegate;
@@ -93,7 +93,7 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTcDataFieldHeader {
     pub service: u8,
     pub subservice: u8,
@@ -155,12 +155,15 @@ impl PusTcDataFieldHeader {
     }
 }
 
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
+/// This struct models a PUS telecommand and which can also be used. It is the primary data
+/// structure to generate the raw byte representation of a PUS telecommand or to
+/// deserialize from one from raw bytes.
+#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTc<'slice> {
     pub sph: SpHeader,
     pub data_field_header: PusTcDataFieldHeader,
-    /// If this is set to false, a manual call to [update_own_crc16] is necessary for the serialized
-    /// or cached CRC16 to be valid.
+    /// If this is set to false, a manual call to [PusTc::calc_own_crc16] is necessary for the
+    /// serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
     #[serde(skip)]
     raw_data: Option<&'slice [u8]>,
@@ -169,8 +172,7 @@ pub struct PusTc<'slice> {
 }
 
 impl<'slice> PusTc<'slice> {
-    /// Returns a new PusTc structure which models a PUS telecommand and which can also be used
-    /// to generate the raw byte representation of a PUS telecommand.
+    /// Generates a new struct instance.
     ///
     /// # Arguments
     ///
@@ -179,7 +181,8 @@ impl<'slice> PusTc<'slice> {
     /// * `pus_params` - Information contained in the data field header, including the service
     ///     and subservice type
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-    ///     field
+    ///     field. If this is not set to true, [PusTc::update_ccsds_data_len] can be called to set
+    ///     the correct value to this field manually
     /// * `app_data` - Custom application data
     pub fn new(
         sph: &mut SpHeader,
@@ -197,13 +200,13 @@ impl<'slice> PusTc<'slice> {
             crc16: None,
         };
         if set_ccsds_len {
-            pus_tc.set_ccsds_data_len();
+            pus_tc.update_ccsds_data_len();
         }
         pus_tc
     }
 
-    /// Simplified version of the [new] function which allows to only specify service and subservice
-    /// instead of the full PUS TC secondary header
+    /// Simplified version of the [PusTc::new] function which allows to only specify service and
+    /// subservice instead of the full PUS TC secondary header
     pub fn new_simple(
         sph: &mut SpHeader,
         service: u8,
@@ -227,6 +230,10 @@ impl<'slice> PusTc<'slice> {
         length
     }
 
+    pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags) {
+        self.sph.psc.seq_flags = seq_flag;
+    }
+
     pub fn set_ack_field(&mut self, ack: u8) -> bool {
         if ack > 0b1111 {
             return false;
@@ -239,16 +246,18 @@ impl<'slice> PusTc<'slice> {
         self.data_field_header.source_id = source_id;
     }
 
+    /// Forwards the call to [crate::PacketId::set_apid]
     pub fn set_apid(&mut self, apid: u16) -> bool {
         self.sph.packet_id.set_apid(apid)
     }
 
+    /// Forwards the call to [crate::PacketSequenceCtrl::set_seq_count]
     pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
         self.sph.psc.set_seq_count(seq_count)
     }
 
     /// Calculate the CCSDS space packet data length field and sets it
-    pub fn set_ccsds_data_len(&mut self) {
+    pub fn update_ccsds_data_len(&mut self) {
         self.sph.data_len = self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
     }
 
@@ -288,7 +297,7 @@ impl<'slice> PusTc<'slice> {
     /// space packet header and the CRC16 field. This function should be called before
     /// the TC packet is serialized
     pub fn update_packet_fields(&mut self) {
-        self.set_ccsds_data_len();
+        self.update_ccsds_data_len();
         self.calc_own_crc16();
     }
 
@@ -339,22 +348,32 @@ impl<'slice> PusTc<'slice> {
     }
 
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
-        if self.crc16.is_none() {
-            return Err(PusError::CrcCalculationMissing);
-        }
         let sph_zc = crate::zc::SpHeader::from(self.sph);
         let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
         if let Some(app_data) = self.app_data {
             appended_len += app_data.len();
         };
+        let start_idx = vec.len();
+        let mut curr_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
+        curr_idx += sph_zc.as_bytes().len();
         // The PUS version is hardcoded to PUS C
         let pus_tc_header = zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
         vec.extend_from_slice(pus_tc_header.as_bytes());
+        curr_idx += pus_tc_header.as_bytes().len();
         if let Some(app_data) = self.app_data {
             vec.extend_from_slice(app_data);
+            curr_idx += app_data.len();
         }
-        vec.extend_from_slice(self.crc16.unwrap().to_be_bytes().as_slice());
+        let crc16;
+        if self.calc_crc_on_serialization {
+            crc16 = Self::calc_crc16(&vec[start_idx..curr_idx])
+        } else if self.crc16.is_none() {
+            return Err(PusError::CrcCalculationMissing);
+        } else {
+            crc16 = self.crc16.unwrap();
+        }
+        vec.extend_from_slice(crc16.to_be_bytes().as_slice());
         Ok(appended_len)
     }
 
@@ -455,11 +474,11 @@ impl PusTcSecondaryHeader for PusTc<'_> {
 }
 #[cfg(test)]
 mod tests {
-    use crate::ecss::PusPacket;
+    use crate::ecss::{PusError, PusPacket};
     use crate::ser::SpHeader;
     use crate::tc::ACK_ALL;
     use crate::tc::{PusTc, PusTcDataFieldHeader, PusTcSecondaryHeader};
-    use crate::{CcsdsPacket, PacketType};
+    use crate::{CcsdsPacket, SequenceFlags};
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {
@@ -467,18 +486,27 @@ mod tests {
         let tc_header = PusTcDataFieldHeader::new_simple(17, 1);
         PusTc::new(&mut sph, tc_header, None, true)
     }
+
+    fn base_ping_tc_simple_ctor() -> PusTc<'static> {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        PusTc::new_simple(&mut sph, 17, 1, None, true)
+    }
+
+    fn base_ping_tc_simple_ctor_with_app_data(app_data: &'static [u8]) -> PusTc<'static> {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        PusTc::new_simple(&mut sph, 17, 1, Some(app_data), true)
+    }
+
     #[test]
     fn test_tc_fields() {
-        let mut pus_tc = base_ping_tc_full_ctor();
+        let pus_tc = base_ping_tc_full_ctor();
         assert_eq!(pus_tc.crc16(), None);
-        pus_tc.update_packet_fields();
-        verify_test_tc(&pus_tc);
+        verify_test_tc(&pus_tc, false, 13);
     }
 
     #[test]
     fn test_serialization() {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
-        let pus_tc = PusTc::new_simple(&mut sph, 17, 1, None, true);
+        let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
             .copy_to_buf(test_buf.as_mut_slice())
@@ -487,51 +515,149 @@ mod tests {
     }
     #[test]
     fn test_deserialization() {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
-        let mut pus_tc = PusTc::new_simple(&mut sph, 17, 1, None, true);
+        let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        pus_tc.update_packet_fields();
         let size = pus_tc
             .copy_to_buf(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
-        let (tc_from_raw, mut size) = PusTc::new_from_raw_slice(&test_buf)
+        let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
             .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 13);
-        verify_test_tc(&tc_from_raw);
-        verify_test_tc_raw(PacketType::Tm, &test_buf);
+        verify_test_tc(&tc_from_raw, false, 13);
+        verify_test_tc_raw(&test_buf);
+        verify_crc_no_app_data(&test_buf);
+    }
 
+    #[test]
+    fn test_vec_ser_deser() {
+        let pus_tc = base_ping_tc_simple_ctor();
         let mut test_vec = Vec::new();
-        size = pus_tc
+        let size = pus_tc
             .append_to_vec(&mut test_vec)
             .expect("Error writing TC to vector");
         assert_eq!(size, 13);
-        assert_eq!(&test_buf[0..pus_tc.len_packed()], test_vec.as_slice());
-        verify_test_tc_raw(PacketType::Tm, &test_vec.as_slice());
+        verify_test_tc_raw(&test_vec.as_slice());
+        verify_crc_no_app_data(&test_vec.as_slice());
     }
 
-    fn verify_test_tc(tc: &PusTc) {
+    #[test]
+    fn test_incorrect_crc() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf: [u8; 32] = [0; 32];
+        pus_tc
+            .copy_to_buf(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        test_buf[12] = 0;
+        let res = PusTc::new_from_raw_slice(&test_buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(matches!(err, PusError::IncorrectCrc { .. }));
+    }
+
+    #[test]
+    fn test_manual_crc_calculation() {
+        let mut pus_tc = base_ping_tc_simple_ctor();
+        pus_tc.calc_crc_on_serialization = false;
+        let mut test_buf: [u8; 32] = [0; 32];
+        pus_tc.calc_own_crc16();
+        pus_tc
+            .copy_to_buf(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        verify_test_tc_raw(&test_buf);
+        verify_crc_no_app_data(&test_buf);
+    }
+
+    #[test]
+    fn test_manual_crc_calculation_no_calc_call() {
+        let mut pus_tc = base_ping_tc_simple_ctor();
+        pus_tc.calc_crc_on_serialization = false;
+        let mut test_buf: [u8; 32] = [0; 32];
+        let res = pus_tc.copy_to_buf(test_buf.as_mut_slice());
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        assert!(matches!(err, PusError::CrcCalculationMissing { .. }));
+    }
+
+    #[test]
+    fn test_with_application_data_vec() {
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
+        verify_test_tc(&pus_tc, true, 16);
+        let mut test_vec = Vec::new();
+        let size = pus_tc
+            .append_to_vec(&mut test_vec)
+            .expect("Error writing TC to vector");
+        assert_eq!(test_vec[11], 1);
+        assert_eq!(test_vec[12], 2);
+        assert_eq!(test_vec[13], 3);
+        assert_eq!(size, 16);
+    }
+
+    #[test]
+    fn test_with_application_data_buf() {
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
+        verify_test_tc(&pus_tc, true, 16);
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = pus_tc
+            .copy_to_buf(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(test_buf[11], 1);
+        assert_eq!(test_buf[12], 2);
+        assert_eq!(test_buf[13], 3);
+        assert_eq!(size, 16);
+    }
+
+    #[test]
+    fn test_custom_setters() {
+        let mut pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf: [u8; 32] = [0; 32];
+        pus_tc.set_apid(0x7ff);
+        pus_tc.set_seq_count(0x3fff);
+        pus_tc.set_ack_field(0b11);
+        pus_tc.set_source_id(0xffff);
+        pus_tc.set_seq_flags(SequenceFlags::Unsegmented);
+        assert_eq!(pus_tc.source_id(), 0xffff);
+        assert_eq!(pus_tc.seq_count(), 0x3fff);
+        assert_eq!(pus_tc.ack_flags(), 0b11);
+        assert_eq!(pus_tc.apid(), 0x7ff);
+        assert_eq!(pus_tc.sequence_flags(), SequenceFlags::Unsegmented);
+        pus_tc.calc_own_crc16();
+        pus_tc
+            .copy_to_buf(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(test_buf[0], 0x1f);
+        assert_eq!(test_buf[1], 0xff);
+        assert_eq!(test_buf[2], 0xff);
+        assert_eq!(test_buf[3], 0xff);
+        assert_eq!(test_buf[6], 0x23);
+        // Source ID 0
+        assert_eq!(test_buf[9], 0xff);
+        assert_eq!(test_buf[10], 0xff);
+    }
+
+    fn verify_test_tc(tc: &PusTc, has_user_data: bool, exp_full_len: usize) {
         assert_eq!(PusPacket::service(tc), 17);
         assert_eq!(PusPacket::subservice(tc), 1);
-        assert_eq!(tc.user_data(), None);
+        if !has_user_data {
+            assert_eq!(tc.user_data(), None);
+        }
         assert_eq!(tc.seq_count(), 0x34);
         assert_eq!(tc.source_id(), 0);
         assert_eq!(tc.apid(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
-        assert_eq!(tc.sph, SpHeader::tc(0x02, 0x34, 6).unwrap());
-        assert_eq!(tc.len_packed(), 13);
+        assert_eq!(tc.len_packed(), exp_full_len);
+        assert_eq!(
+            tc.sph,
+            SpHeader::tc(0x02, 0x34, exp_full_len as u16 - 7).unwrap()
+        );
     }
 
-    fn verify_test_tc_raw(ptype: PacketType, slice: &impl AsRef<[u8]>) {
+    fn verify_test_tc_raw(slice: &impl AsRef<[u8]>) {
         // Reference comparison implementation:
-        // https://github.com/robamu-org/py-spacepackets/blob/main/examples/example_pus.py
+        // https://github.com/us-irs/py-spacepackets/blob/v0.13.0/tests/ecss/test_pus_tc.py
         let slice = slice.as_ref();
         // 0x1801 is the generic
-        if ptype == PacketType::Tm {
-            assert_eq!(slice[0], 0x18);
-        } else {
-            assert_eq!(slice[0], 0x08);
-        }
+        assert_eq!(slice[0], 0x18);
         // APID is 0x01
         assert_eq!(slice[1], 0x02);
         // Unsegmented packets
@@ -550,7 +676,12 @@ mod tests {
         // Source ID 0
         assert_eq!(slice[9], 0x00);
         assert_eq!(slice[10], 0x00);
-        // CRC first byte assuming big endian format is 0x16 and 0x1d
+    }
+
+    fn verify_crc_no_app_data(slice: &impl AsRef<[u8]>) {
+        // Reference comparison implementation:
+        // https://github.com/us-irs/py-spacepackets/blob/v0.13.0/tests/ecss/test_pus_tc.py
+        let slice = slice.as_ref();
         assert_eq!(slice[11], 0xee);
         assert_eq!(slice[12], 0x63);
     }

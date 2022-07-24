@@ -81,6 +81,9 @@ impl PacketId {
         pid.set_apid(apid).then(|| pid)
     }
 
+    /// Set a new Application Process ID (APID). If the passed number is invalid, the APID will
+    /// not be set and false will be returned. The maximum allowed value for the 11-bit field is
+    /// 2047
     pub fn set_apid(&mut self, apid: u16) -> bool {
         if apid > num::pow(2, 11) - 1 {
             return false;
@@ -126,6 +129,8 @@ impl PacketSequenceCtrl {
         ((self.seq_flags as u16) << 14) | self.seq_count
     }
 
+    /// Set a new sequence count. If the passed number is invalid, the sequence count will not be
+    /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383
     pub fn set_seq_count(&mut self, ssc: u16) -> bool {
         if ssc > num::pow(2, 14) - 1 {
             return false;
@@ -432,7 +437,7 @@ mod tests {
     use postcard::{from_bytes, to_stdvec};
 
     #[test]
-    fn test_helpers() {
+    fn test_seq_flag_helpers() {
         assert_eq!(
             SequenceFlags::try_from(0b00).expect("SEQ flag creation failed"),
             SequenceFlags::ContinuationSegment
@@ -450,7 +455,17 @@ mod tests {
             SequenceFlags::Unsegmented
         );
         assert!(SequenceFlags::try_from(0b100).is_err());
+    }
+
+    #[test]
+    fn test_packet_type_helper() {
+        assert_eq!(PacketType::try_from(0b00).unwrap(), PacketType::Tm);
+        assert_eq!(PacketType::try_from(0b01).unwrap(), PacketType::Tc);
         assert!(PacketType::try_from(0b10).is_err());
+    }
+
+    #[test]
+    fn test_packet_id() {
         let packet_id =
             PacketId::new(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
         assert_eq!(packet_id.raw(), 0x0042);
@@ -460,11 +475,32 @@ mod tests {
             PacketType::Tm
         );
         assert_eq!(packet_id_from_raw, packet_id);
-
-        let packet_id_invalid = PacketId::new(PacketType::Tc, true, 0xFFFF);
-        assert!(packet_id_invalid.is_none());
         let packet_id_from_new = PacketId::new(PacketType::Tm, false, 0x42).unwrap();
         assert_eq!(packet_id_from_new, packet_id);
+    }
+
+    #[test]
+    fn test_invalid_packet_id() {
+        let packet_id_invalid = PacketId::new(PacketType::Tc, true, 0xFFFF);
+        assert!(packet_id_invalid.is_none());
+    }
+
+    #[test]
+    fn test_invalid_apid_setter() {
+        let mut packet_id =
+            PacketId::new(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
+        assert!(!packet_id.set_apid(0xffff));
+    }
+
+    #[test]
+    fn test_invalid_seq_count() {
+        let mut psc = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77)
+            .expect("PSC creation failed");
+        assert!(!psc.set_seq_count(0xffff));
+    }
+
+    #[test]
+    fn test_packet_seq_ctrl() {
         let mut psc = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77)
             .expect("PSC creation failed");
         assert_eq!(psc.raw(), 77);
