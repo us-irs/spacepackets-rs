@@ -6,6 +6,7 @@ use crate::ecss::CCSDS_HEADER_LEN;
 use serde::{Deserialize, Serialize};
 
 pub mod ecss;
+pub mod time;
 pub mod tc;
 pub mod tm;
 

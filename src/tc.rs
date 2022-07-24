@@ -158,6 +158,8 @@ impl PusTcDataFieldHeader {
 /// This struct models a PUS telecommand and which can also be used. It is the primary data
 /// structure to generate the raw byte representation of a PUS telecommand or to
 /// deserialize from one from raw bytes.
+///
+/// There is no spare bytes support.
 #[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTc<'slice> {
     pub sph: SpHeader,
