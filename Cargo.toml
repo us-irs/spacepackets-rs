@@ -29,6 +29,6 @@ version = "0.7.3"
 features = ["use-std"]
 
 [features]
-
+std = ["postcard/use-std"]
 default = ["heapless", "alloc"]
 alloc = ["serde/alloc"]

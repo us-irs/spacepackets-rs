@@ -2,17 +2,20 @@
 #![no_std]
 extern crate alloc;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 use crate::ecss::CCSDS_HEADER_LEN;
 use serde::{Deserialize, Serialize};
 
 pub mod ecss;
-pub mod time;
 pub mod tc;
+pub mod time;
 pub mod tm;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PacketError {
-    /// The passed slice is too small. Returns the required size of the failed size chgeck
+    /// The passed slice is too small. Returns the required size of the failed size check
     ToBytesSliceTooSmall(usize),
     /// The [zerocopy] library failed to write to bytes
     ToBytesZeroCopyError,
