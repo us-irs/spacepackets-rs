@@ -1,6 +1,11 @@
-use crate::ecss::PusVersion;
-use crate::CCSDS_HEADER_LEN;
+use crate::ecss::{PusError, PusPacket, PusVersion, CRC_CCITT_FALSE};
+use crate::ser::SpHeader;
+use crate::{CcsdsPacket, PacketError, PacketType, CCSDS_HEADER_LEN};
+use alloc::vec::Vec;
 use core::mem::size_of;
+use delegate::delegate;
+use serde::{Deserialize, Serialize};
+use zerocopy::AsBytes;
 
 type CrcType = u16;
 
@@ -32,7 +37,7 @@ pub trait PusTcSecondaryHeader {
 
 pub mod zc {
     use crate::ecss::{PusError, PusVersion};
-    use crate::tc::{ser, PusTcSecondaryHeader};
+    use crate::tc::PusTcSecondaryHeader;
     use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
 
     #[derive(FromBytes, AsBytes, Unaligned)]
@@ -44,9 +49,9 @@ pub mod zc {
         source_id: U16<NetworkEndian>,
     }
 
-    impl TryFrom<ser::PusTcDataFieldHeader> for PusTcDataFieldHeader {
+    impl TryFrom<crate::tc::PusTcDataFieldHeader> for PusTcDataFieldHeader {
         type Error = PusError;
-        fn try_from(value: ser::PusTcDataFieldHeader) -> Result<Self, Self::Error> {
+        fn try_from(value: crate::tc::PusTcDataFieldHeader) -> Result<Self, Self::Error> {
             if value.version != PusVersion::PusC {
                 return Err(PusError::VersionNotSupported(value.version));
             }
@@ -88,330 +93,404 @@ pub mod zc {
     }
 }
 
-pub mod ser {
-    use crate::ecss::{PusError, PusPacket, PusVersion, CRC_CCITT_FALSE};
-    use crate::ser::SpHeader;
-    use crate::tc::{
-        PusTcSecondaryHeader, ACK_ALL, PUC_TC_SECONDARY_HEADER_LEN,
-        PUS_TC_MIN_LEN_WITHOUT_APP_DATA, PUS_VERSION,
-    };
-    use crate::{zc, CcsdsPacket, PacketError, PacketId, PacketSequenceCtrl, PacketType};
-    use alloc::vec::Vec;
-    use core::mem::size_of;
-    use delegate::delegate;
-    use serde::{Deserialize, Serialize};
-    use zerocopy::AsBytes;
+#[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
+pub struct PusTcDataFieldHeader {
+    pub service: u8,
+    pub subservice: u8,
+    pub source_id: u16,
+    pub ack: u8,
+    pub version: PusVersion,
+}
 
-    #[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
-    pub struct PusTcDataFieldHeader {
-        pub service: u8,
-        pub subservice: u8,
-        pub source_id: u16,
-        pub ack: u8,
-        pub version: PusVersion,
+impl PusTcSecondaryHeader for PusTcDataFieldHeader {
+    fn ack_flags(&self) -> u8 {
+        self.ack
     }
 
-    impl PusTcSecondaryHeader for PusTcDataFieldHeader {
-        fn ack_flags(&self) -> u8 {
-            self.ack
-        }
-
-        fn service(&self) -> u8 {
-            self.service
-        }
-
-        fn subservice(&self) -> u8 {
-            self.subservice
-        }
-
-        fn source_id(&self) -> u16 {
-            self.source_id
-        }
-    }
-    impl TryFrom<super::zc::PusTcDataFieldHeader> for PusTcDataFieldHeader {
-        type Error = ();
-
-        fn try_from(value: super::zc::PusTcDataFieldHeader) -> Result<Self, Self::Error> {
-            Ok(PusTcDataFieldHeader {
-                service: value.service(),
-                subservice: value.subservice(),
-                source_id: value.source_id(),
-                ack: value.ack_flags(),
-                version: PUS_VERSION,
-            })
-        }
+    fn service(&self) -> u8 {
+        self.service
     }
 
-    impl PusTcDataFieldHeader {
-        pub fn new(service: u8, subservice: u8, ack: u8) -> Self {
-            PusTcDataFieldHeader {
-                service,
-                subservice,
-                ack: ack & 0b1111,
-                source_id: 0,
-                version: PusVersion::PusC,
-            }
-        }
+    fn subservice(&self) -> u8 {
+        self.subservice
     }
 
-    #[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
-    pub struct PusTc<'slice> {
-        pub sph: SpHeader,
-        pub data_field_header: PusTcDataFieldHeader,
-        #[serde(skip)]
-        raw_data: Option<&'slice [u8]>,
-        app_data: Option<&'slice [u8]>,
-        crc16: Option<u16>,
+    fn source_id(&self) -> u16 {
+        self.source_id
     }
+}
+impl TryFrom<zc::PusTcDataFieldHeader> for PusTcDataFieldHeader {
+    type Error = ();
 
-    impl<'slice> PusTc<'slice> {
-        pub fn new(
-            sph: &mut SpHeader,
-            service: u8,
-            subservice: u8,
-            app_data: Option<&'slice [u8]>,
-        ) -> Self {
-            sph.packet_id.ptype = PacketType::Tc;
-            PusTc {
-                sph: *sph,
-                raw_data: None,
-                app_data,
-                data_field_header: PusTcDataFieldHeader::new(service, subservice, ACK_ALL),
-                crc16: None,
-            }
-        }
-
-        pub fn len_packed(&self) -> usize {
-            let mut length = super::PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-            if let Some(app_data) = self.app_data {
-                length += app_data.len();
-            }
-            length
-        }
-
-        /// Calculate the CCSDS space packet data length field and sets it
-        pub fn set_ccsds_data_len(&mut self) {
-            self.sph.data_len =
-                self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
-        }
-
-        fn crc_from_raw_data(&self) -> Result<u16, PusError> {
-            if let Some(raw_data) = self.raw_data {
-                if raw_data.len() < 2 {
-                    return Err(PusError::RawDataTooShort(raw_data.len()));
-                }
-                return Ok(u16::from_be_bytes(
-                    raw_data[raw_data.len() - 2..raw_data.len()]
-                        .try_into()
-                        .unwrap(),
-                ));
-            }
-            Err(PusError::NoRawData)
-        }
-
-        pub fn calc_crc16(&mut self) {
-            let mut digest = CRC_CCITT_FALSE.digest();
-            let sph_zc = crate::zc::SpHeader::from(self.sph);
-            digest.update(sph_zc.as_bytes());
-            let pus_tc_header =
-                super::zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
-            digest.update(pus_tc_header.as_bytes());
-            if let Some(app_data) = self.app_data {
-                digest.update(app_data);
-            }
-            self.crc16 = Some(digest.finalize())
-        }
-
-        /// This function updates two important internal fields: The CCSDS packet length in the
-        /// space packet header and the CRC16 field. This function should be called before
-        /// the TC packet is serialized
-        pub fn update_packet_fields(&mut self) {
-            self.set_ccsds_data_len();
-            self.calc_crc16();
-        }
-
-        pub fn copy_to_buf(
-            &self,
-            slice: &mut (impl AsMut<[u8]> + ?Sized),
-        ) -> Result<usize, PusError> {
-            if self.crc16.is_none() {
-                return Err(PusError::CrcCalculationMissing);
-            }
-            let mut_slice = slice.as_mut();
-            let mut curr_idx = 0;
-            let sph_zc = crate::zc::SpHeader::from(self.sph);
-            let tc_header_len = size_of::<super::zc::PusTcDataFieldHeader>();
-            let mut total_size = super::PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-            if let Some(app_data) = self.app_data {
-                total_size += app_data.len();
-            };
-            if total_size > mut_slice.len() {
-                return Err(PusError::OtherPacketError(
-                    PacketError::ToBytesSliceTooSmall(total_size),
-                ));
-            }
-            sph_zc
-                .to_bytes(&mut mut_slice[curr_idx..curr_idx + 6])
-                .ok_or(PusError::OtherPacketError(
-                    PacketError::ToBytesZeroCopyError,
-                ))?;
-            curr_idx += 6;
-            // The PUS version is hardcoded to PUS C
-            let pus_tc_header =
-                super::zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
-
-            pus_tc_header
-                .to_bytes(&mut mut_slice[curr_idx..curr_idx + tc_header_len])
-                .ok_or(PusError::OtherPacketError(
-                    PacketError::ToBytesZeroCopyError,
-                ))?;
-            curr_idx += tc_header_len;
-            if let Some(app_data) = self.app_data {
-                mut_slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
-                curr_idx += app_data.len();
-            }
-            mut_slice[curr_idx..curr_idx + 2]
-                .copy_from_slice(self.crc16.unwrap().to_be_bytes().as_slice());
-            curr_idx += 2;
-            Ok(curr_idx)
-        }
-
-        pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
-            if self.crc16.is_none() {
-                return Err(PusError::CrcCalculationMissing);
-            }
-            let sph_zc = crate::zc::SpHeader::from(self.sph);
-            let mut appended_len = super::PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-            if let Some(app_data) = self.app_data {
-                appended_len += app_data.len();
-            };
-            vec.extend_from_slice(sph_zc.as_bytes());
-            // The PUS version is hardcoded to PUS C
-            let pus_tc_header =
-                super::zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
-            vec.extend_from_slice(pus_tc_header.as_bytes());
-            if let Some(app_data) = self.app_data {
-                vec.extend_from_slice(app_data);
-            }
-            vec.extend_from_slice(self.crc16.unwrap().to_be_bytes().as_slice());
-            Ok(appended_len)
-        }
-
-        pub fn new_from_raw_slice(
-            slice: &'slice (impl AsRef<[u8]> + ?Sized),
-        ) -> Result<(Self, usize), PusError> {
-            let slice_ref = slice.as_ref();
-            let raw_data_len = slice_ref.len();
-            if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
-                return Err(PusError::RawDataTooShort(raw_data_len));
-            }
-            let mut current_idx = 0;
-            let sph = zc::SpHeader::from_bytes(&slice_ref[current_idx..current_idx + 6]).ok_or(
-                PusError::OtherPacketError(PacketError::FromBytesZeroCopyError),
-            )?;
-            current_idx += 6;
-            let total_len = sph.total_len();
-            if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
-                return Err(PusError::RawDataTooShort(raw_data_len));
-            }
-            let sec_header = crate::tc::zc::PusTcDataFieldHeader::from_bytes(
-                &slice_ref[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
-            )
-            .ok_or(PusError::OtherPacketError(
-                PacketError::FromBytesZeroCopyError,
-            ))?;
-            current_idx += PUC_TC_SECONDARY_HEADER_LEN;
-            let mut pus_tc = PusTc {
-                sph: SpHeader::from(sph),
-                data_field_header: PusTcDataFieldHeader::try_from(sec_header).unwrap(),
-                raw_data: Some(slice_ref),
-                app_data: match current_idx {
-                    _ if current_idx == total_len - 2 => None,
-                    _ if current_idx > total_len - 2 => {
-                        return Err(PusError::RawDataTooShort(raw_data_len))
-                    }
-                    _ => Some(&slice_ref[current_idx..total_len - 2]),
-                },
-                crc16: None,
-            };
-            pus_tc.crc_from_raw_data()?;
-            pus_tc.verify()?;
-            Ok((pus_tc, total_len))
-        }
-
-        fn verify(&mut self) -> Result<(), PusError> {
-            let mut digest = CRC_CCITT_FALSE.digest();
-            if self.raw_data.is_none() {
-                return Err(PusError::NoRawData);
-            }
-            let raw_data = self.raw_data.unwrap();
-            digest.update(raw_data.as_ref());
-            if digest.finalize() == 0 {
-                return Ok(());
-            }
-            let crc16 = self.crc_from_raw_data()?;
-            Err(PusError::IncorrectCrc(crc16))
-        }
-    }
-
-    //noinspection RsTraitImplementation
-    impl CcsdsPacket for PusTc<'_> {
-        delegate!(to self.sph {
-            fn ccsds_version(&self) -> u8;
-            fn packet_id(&self) -> PacketId;
-            fn psc(&self) -> PacketSequenceCtrl;
-            fn data_len(&self) -> u16;
-        });
-    }
-
-    //noinspection RsTraitImplementation
-    impl PusPacket for PusTc<'_> {
-        delegate!(to self.data_field_header {
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-        });
-
-        fn user_data(&self) -> Option<&[u8]> {
-            self.app_data
-        }
-
-        fn crc16(&self) -> Option<u16> {
-            self.crc16
-        }
-    }
-
-    //noinspection RsTraitImplementation
-    impl PusTcSecondaryHeader for PusTc<'_> {
-        delegate!(to self.data_field_header {
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-            fn source_id(&self) -> u16;
-            fn ack_flags(&self) -> u8;
-        });
+    fn try_from(value: zc::PusTcDataFieldHeader) -> Result<Self, Self::Error> {
+        Ok(PusTcDataFieldHeader {
+            service: value.service(),
+            subservice: value.subservice(),
+            source_id: value.source_id(),
+            ack: value.ack_flags(),
+            version: PUS_VERSION,
+        })
     }
 }
 
+impl PusTcDataFieldHeader {
+    pub fn new_simple(service: u8, subservice: u8) -> Self {
+        PusTcDataFieldHeader {
+            service,
+            subservice,
+            ack: ACK_ALL,
+            source_id: 0,
+            version: PusVersion::PusC,
+        }
+    }
+
+    pub fn new(service: u8, subservice: u8, ack: u8, source_id: u16) -> Self {
+        PusTcDataFieldHeader {
+            service,
+            subservice,
+            ack: ack & 0b1111,
+            source_id,
+            version: PusVersion::PusC,
+        }
+    }
+}
+
+#[derive(PartialEq, Copy, Clone, Serialize, Deserialize)]
+pub struct PusTc<'slice> {
+    pub sph: SpHeader,
+    pub data_field_header: PusTcDataFieldHeader,
+    /// If this is set to false, a manual call to [update_own_crc16] is necessary for the serialized
+    /// or cached CRC16 to be valid.
+    pub calc_crc_on_serialization: bool,
+    #[serde(skip)]
+    raw_data: Option<&'slice [u8]>,
+    app_data: Option<&'slice [u8]>,
+    crc16: Option<u16>,
+}
+
+impl<'slice> PusTc<'slice> {
+    /// Returns a new PusTc structure which models a PUS telecommand and which can also be used
+    /// to generate the raw byte representation of a PUS telecommand.
+    ///
+    /// # Arguments
+    ///
+    /// * `sph` - Space packet header information. The correct packet type will be set
+    ///     automatically
+    /// * `pus_params` - Information contained in the data field header, including the service
+    ///     and subservice type
+    /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
+    ///     field
+    /// * `app_data` - Custom application data
+    pub fn new(
+        sph: &mut SpHeader,
+        pus_params: PusTcDataFieldHeader,
+        app_data: Option<&'slice [u8]>,
+        set_ccsds_len: bool,
+    ) -> Self {
+        sph.packet_id.ptype = PacketType::Tc;
+        let mut pus_tc = PusTc {
+            sph: *sph,
+            raw_data: None,
+            app_data,
+            data_field_header: pus_params,
+            calc_crc_on_serialization: true,
+            crc16: None,
+        };
+        if set_ccsds_len {
+            pus_tc.set_ccsds_data_len();
+        }
+        pus_tc
+    }
+
+    /// Simplified version of the [new] function which allows to only specify service and subservice
+    /// instead of the full PUS TC secondary header
+    pub fn new_simple(
+        sph: &mut SpHeader,
+        service: u8,
+        subservice: u8,
+        app_data: Option<&'slice [u8]>,
+        set_ccsds_len: bool,
+    ) -> Self {
+        Self::new(
+            sph,
+            PusTcDataFieldHeader::new(service, subservice, ACK_ALL, 0),
+            app_data,
+            set_ccsds_len,
+        )
+    }
+
+    pub fn len_packed(&self) -> usize {
+        let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
+        if let Some(app_data) = self.app_data {
+            length += app_data.len();
+        }
+        length
+    }
+
+    pub fn set_ack_field(&mut self, ack: u8) -> bool {
+        if ack > 0b1111 {
+            return false;
+        }
+        self.data_field_header.ack = ack & 0b1111;
+        true
+    }
+
+    pub fn set_source_id(&mut self, source_id: u16) {
+        self.data_field_header.source_id = source_id;
+    }
+
+    pub fn set_apid(&mut self, apid: u16) -> bool {
+        self.sph.packet_id.set_apid(apid)
+    }
+
+    pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
+        self.sph.psc.set_seq_count(seq_count)
+    }
+
+    /// Calculate the CCSDS space packet data length field and sets it
+    pub fn set_ccsds_data_len(&mut self) {
+        self.sph.data_len = self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+    }
+
+    fn crc_from_raw_data(&self) -> Result<u16, PusError> {
+        if let Some(raw_data) = self.raw_data {
+            if raw_data.len() < 2 {
+                return Err(PusError::RawDataTooShort(raw_data.len()));
+            }
+            return Ok(u16::from_be_bytes(
+                raw_data[raw_data.len() - 2..raw_data.len()]
+                    .try_into()
+                    .unwrap(),
+            ));
+        }
+        Err(PusError::NoRawData)
+    }
+
+    pub fn calc_crc16(bytes: &[u8]) -> u16 {
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(bytes);
+        digest.finalize()
+    }
+
+    pub fn calc_own_crc16(&mut self) {
+        let mut digest = CRC_CCITT_FALSE.digest();
+        let sph_zc = crate::zc::SpHeader::from(self.sph);
+        digest.update(sph_zc.as_bytes());
+        let pus_tc_header = zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
+        digest.update(pus_tc_header.as_bytes());
+        if let Some(app_data) = self.app_data {
+            digest.update(app_data);
+        }
+        self.crc16 = Some(digest.finalize())
+    }
+
+    /// This function updates two important internal fields: The CCSDS packet length in the
+    /// space packet header and the CRC16 field. This function should be called before
+    /// the TC packet is serialized
+    pub fn update_packet_fields(&mut self) {
+        self.set_ccsds_data_len();
+        self.calc_own_crc16();
+    }
+
+    pub fn copy_to_buf(&self, slice: &mut (impl AsMut<[u8]> + ?Sized)) -> Result<usize, PusError> {
+        let mut_slice = slice.as_mut();
+        let mut curr_idx = 0;
+        let sph_zc = crate::zc::SpHeader::from(self.sph);
+        let tc_header_len = size_of::<zc::PusTcDataFieldHeader>();
+        let mut total_size = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
+        if let Some(app_data) = self.app_data {
+            total_size += app_data.len();
+        };
+        if total_size > mut_slice.len() {
+            return Err(PusError::OtherPacketError(
+                PacketError::ToBytesSliceTooSmall(total_size),
+            ));
+        }
+        sph_zc
+            .to_bytes(&mut mut_slice[curr_idx..curr_idx + 6])
+            .ok_or(PusError::OtherPacketError(
+                PacketError::ToBytesZeroCopyError,
+            ))?;
+        curr_idx += 6;
+        // The PUS version is hardcoded to PUS C
+        let pus_tc_header = zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
+
+        pus_tc_header
+            .to_bytes(&mut mut_slice[curr_idx..curr_idx + tc_header_len])
+            .ok_or(PusError::OtherPacketError(
+                PacketError::ToBytesZeroCopyError,
+            ))?;
+        curr_idx += tc_header_len;
+        if let Some(app_data) = self.app_data {
+            mut_slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
+            curr_idx += app_data.len();
+        }
+        let crc16;
+        if self.calc_crc_on_serialization {
+            crc16 = Self::calc_crc16(&mut_slice[0..curr_idx])
+        } else if self.crc16.is_none() {
+            return Err(PusError::CrcCalculationMissing);
+        } else {
+            crc16 = self.crc16.unwrap();
+        }
+        mut_slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
+        curr_idx += 2;
+        Ok(curr_idx)
+    }
+
+    pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
+        if self.crc16.is_none() {
+            return Err(PusError::CrcCalculationMissing);
+        }
+        let sph_zc = crate::zc::SpHeader::from(self.sph);
+        let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
+        if let Some(app_data) = self.app_data {
+            appended_len += app_data.len();
+        };
+        vec.extend_from_slice(sph_zc.as_bytes());
+        // The PUS version is hardcoded to PUS C
+        let pus_tc_header = zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
+        vec.extend_from_slice(pus_tc_header.as_bytes());
+        if let Some(app_data) = self.app_data {
+            vec.extend_from_slice(app_data);
+        }
+        vec.extend_from_slice(self.crc16.unwrap().to_be_bytes().as_slice());
+        Ok(appended_len)
+    }
+
+    /// Create a PusTc instance from a raw slice. On success, it returns a tuple containing
+    /// the instance and the found byte length of the packet
+    pub fn new_from_raw_slice(
+        slice: &'slice (impl AsRef<[u8]> + ?Sized),
+    ) -> Result<(Self, usize), PusError> {
+        let slice_ref = slice.as_ref();
+        let raw_data_len = slice_ref.len();
+        if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
+            return Err(PusError::RawDataTooShort(raw_data_len));
+        }
+        let mut current_idx = 0;
+        let sph = crate::zc::SpHeader::from_bytes(&slice_ref[current_idx..current_idx + 6]).ok_or(
+            PusError::OtherPacketError(PacketError::FromBytesZeroCopyError),
+        )?;
+        current_idx += 6;
+        let total_len = sph.total_len();
+        if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
+            return Err(PusError::RawDataTooShort(raw_data_len));
+        }
+        let sec_header = crate::tc::zc::PusTcDataFieldHeader::from_bytes(
+            &slice_ref[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
+        )
+        .ok_or(PusError::OtherPacketError(
+            PacketError::FromBytesZeroCopyError,
+        ))?;
+        current_idx += PUC_TC_SECONDARY_HEADER_LEN;
+        let mut pus_tc = PusTc {
+            sph: SpHeader::from(sph),
+            data_field_header: PusTcDataFieldHeader::try_from(sec_header).unwrap(),
+            raw_data: Some(slice_ref),
+            app_data: match current_idx {
+                _ if current_idx == total_len - 2 => None,
+                _ if current_idx > total_len - 2 => {
+                    return Err(PusError::RawDataTooShort(raw_data_len))
+                }
+                _ => Some(&slice_ref[current_idx..total_len - 2]),
+            },
+            calc_crc_on_serialization: false,
+            crc16: None,
+        };
+        pus_tc.crc_from_raw_data()?;
+        pus_tc.verify()?;
+        Ok((pus_tc, total_len))
+    }
+
+    fn verify(&mut self) -> Result<(), PusError> {
+        let mut digest = CRC_CCITT_FALSE.digest();
+        if self.raw_data.is_none() {
+            return Err(PusError::NoRawData);
+        }
+        let raw_data = self.raw_data.unwrap();
+        digest.update(raw_data.as_ref());
+        if digest.finalize() == 0 {
+            return Ok(());
+        }
+        let crc16 = self.crc_from_raw_data()?;
+        Err(PusError::IncorrectCrc(crc16))
+    }
+}
+
+//noinspection RsTraitImplementation
+impl CcsdsPacket for PusTc<'_> {
+    delegate!(to self.sph {
+        fn ccsds_version(&self) -> u8;
+        fn packet_id(&self) -> crate::PacketId;
+        fn psc(&self) -> crate::PacketSequenceCtrl;
+        fn data_len(&self) -> u16;
+    });
+}
+
+//noinspection RsTraitImplementation
+impl PusPacket for PusTc<'_> {
+    delegate!(to self.data_field_header {
+        fn service(&self) -> u8;
+        fn subservice(&self) -> u8;
+    });
+
+    fn user_data(&self) -> Option<&[u8]> {
+        self.app_data
+    }
+
+    fn crc16(&self) -> Option<u16> {
+        self.crc16
+    }
+}
+
+//noinspection RsTraitImplementation
+impl PusTcSecondaryHeader for PusTc<'_> {
+    delegate!(to self.data_field_header {
+        fn service(&self) -> u8;
+        fn subservice(&self) -> u8;
+        fn source_id(&self) -> u16;
+        fn ack_flags(&self) -> u8;
+    });
+}
 #[cfg(test)]
 mod tests {
     use crate::ecss::PusPacket;
     use crate::ser::SpHeader;
-    use crate::tc::ser::PusTc;
-    use crate::tc::PusTcSecondaryHeader;
     use crate::tc::ACK_ALL;
+    use crate::tc::{PusTc, PusTcDataFieldHeader, PusTcSecondaryHeader};
     use crate::{CcsdsPacket, PacketType};
     use alloc::vec::Vec;
-    use postcard::to_stdvec;
 
+    fn base_ping_tc_full_ctor() -> PusTc<'static> {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let tc_header = PusTcDataFieldHeader::new_simple(17, 1);
+        PusTc::new(&mut sph, tc_header, None, true)
+    }
     #[test]
-    fn test_tc() {
-        let mut sph = SpHeader::tc(0x01, 0, 0).unwrap();
-        let mut pus_tc = PusTc::new(&mut sph, 17, 1, None);
-        let _out = to_stdvec(&pus_tc).unwrap();
+    fn test_tc_fields() {
+        let mut pus_tc = base_ping_tc_full_ctor();
         assert_eq!(pus_tc.crc16(), None);
-        let mut test_buf: [u8; 32] = [0; 32];
         pus_tc.update_packet_fields();
         verify_test_tc(&pus_tc);
-        assert_eq!(pus_tc.len_packed(), 13);
+    }
+
+    #[test]
+    fn test_serialization() {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let pus_tc = PusTc::new_simple(&mut sph, 17, 1, None, true);
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = pus_tc
+            .copy_to_buf(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 13);
+    }
+    #[test]
+    fn test_deserialization() {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut pus_tc = PusTc::new_simple(&mut sph, 17, 1, None, true);
+        let mut test_buf: [u8; 32] = [0; 32];
+        pus_tc.update_packet_fields();
         let size = pus_tc
             .copy_to_buf(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
@@ -435,10 +514,12 @@ mod tests {
         assert_eq!(PusPacket::service(tc), 17);
         assert_eq!(PusPacket::subservice(tc), 1);
         assert_eq!(tc.user_data(), None);
+        assert_eq!(tc.seq_count(), 0x34);
         assert_eq!(tc.source_id(), 0);
-        assert_eq!(tc.apid(), 0x01);
+        assert_eq!(tc.apid(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
-        assert_eq!(tc.sph, SpHeader::tc(0x01, 0, 6).unwrap());
+        assert_eq!(tc.sph, SpHeader::tc(0x02, 0x34, 6).unwrap());
+        assert_eq!(tc.len_packed(), 13);
     }
 
     fn verify_test_tc_raw(ptype: PacketType, slice: &impl AsRef<[u8]>) {
@@ -452,11 +533,11 @@ mod tests {
             assert_eq!(slice[0], 0x08);
         }
         // APID is 0x01
-        assert_eq!(slice[1], 0x01);
+        assert_eq!(slice[1], 0x02);
         // Unsegmented packets
         assert_eq!(slice[2], 0xc0);
-        // Sequence count 0
-        assert_eq!(slice[3], 0x00);
+        // Sequence count 0x34
+        assert_eq!(slice[3], 0x34);
         assert_eq!(slice[4], 0x00);
         // Space data length of 6 equals total packet length of 13
         assert_eq!(slice[5], 0x06);
@@ -470,7 +551,7 @@ mod tests {
         assert_eq!(slice[9], 0x00);
         assert_eq!(slice[10], 0x00);
         // CRC first byte assuming big endian format is 0x16 and 0x1d
-        assert_eq!(slice[11], 0x16);
-        assert_eq!(slice[12], 0x1d);
+        assert_eq!(slice[11], 0xee);
+        assert_eq!(slice[12], 0x63);
     }
 }

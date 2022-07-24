@@ -111,28 +111,31 @@ impl From<u16> for PacketId {
 #[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
 pub struct PacketSequenceCtrl {
     pub seq_flags: SequenceFlags,
-    ssc: u16,
+    seq_count: u16,
 }
 
 impl PacketSequenceCtrl {
     pub fn new(seq_flags: SequenceFlags, ssc: u16) -> Option<PacketSequenceCtrl> {
-        let mut psc = PacketSequenceCtrl { seq_flags, ssc: 0 };
-        psc.set_ssc(ssc).then(|| psc)
+        let mut psc = PacketSequenceCtrl {
+            seq_flags,
+            seq_count: 0,
+        };
+        psc.set_seq_count(ssc).then(|| psc)
     }
     pub fn raw(&self) -> u16 {
-        ((self.seq_flags as u16) << 14) | self.ssc
+        ((self.seq_flags as u16) << 14) | self.seq_count
     }
 
-    pub fn set_ssc(&mut self, ssc: u16) -> bool {
+    pub fn set_seq_count(&mut self, ssc: u16) -> bool {
         if ssc > num::pow(2, 14) - 1 {
             return false;
         }
-        self.ssc = ssc;
+        self.seq_count = ssc;
         true
     }
 
     pub fn ssc(&self) -> u16 {
-        self.ssc
+        self.seq_count
     }
 }
 
@@ -140,7 +143,7 @@ impl From<u16> for PacketSequenceCtrl {
     fn from(raw_id: u16) -> Self {
         PacketSequenceCtrl {
             seq_flags: SequenceFlags::try_from(((raw_id >> 14) & 0b11) as u8).unwrap(),
-            ssc: raw_id & SSC_MASK,
+            seq_count: raw_id & SSC_MASK,
         }
     }
 }
@@ -219,8 +222,8 @@ pub trait CcsdsPacket {
     }
 
     #[inline]
-    fn ssc(&self) -> u16 {
-        self.psc().ssc
+    fn seq_count(&self) -> u16 {
+        self.psc().seq_count
     }
 
     #[inline]
@@ -264,7 +267,7 @@ pub mod ser {
                 },
                 psc: PacketSequenceCtrl {
                     seq_flags: SequenceFlags::Unsegmented,
-                    ssc: 0,
+                    seq_count: 0,
                 },
                 data_len: 0,
             }
@@ -278,17 +281,17 @@ pub mod ser {
             let mut header = SpHeader::default();
             header.packet_id.apid = apid;
             header.packet_id.ptype = ptype;
-            header.psc.ssc = ssc;
+            header.psc.seq_count = ssc;
             header.data_len = data_len;
             Some(header)
         }
 
-        pub fn tm(apid: u16, ssc: u16, data_len: u16) -> Option<Self> {
-            Self::new(apid, PacketType::Tm, ssc, data_len)
+        pub fn tm(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+            Self::new(apid, PacketType::Tm, seq_count, data_len)
         }
 
-        pub fn tc(apid: u16, ssc: u16, data_len: u16) -> Option<Self> {
-            Self::new(apid, PacketType::Tc, ssc, data_len)
+        pub fn tc(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+            Self::new(apid, PacketType::Tc, seq_count, data_len)
         }
     }
 
@@ -468,7 +471,7 @@ mod tests {
         let psc_from_raw = PacketSequenceCtrl::from(psc.raw());
         assert_eq!(psc_from_raw, psc);
         // Fails because SSC is limited to 14 bits
-        assert!(!psc.set_ssc(num::pow(2, 15)));
+        assert!(!psc.set_seq_count(num::pow(2, 15)));
         assert_eq!(psc.raw(), 77);
 
         let psc_invalid = PacketSequenceCtrl::new(SequenceFlags::FirstSegment, 0xFFFF);
@@ -484,7 +487,7 @@ mod tests {
         assert!(sp_header.is_tc());
         assert!(sp_header.sec_header_flag());
         assert_eq!(sp_header.ptype(), PacketType::Tc);
-        assert_eq!(sp_header.ssc(), 12);
+        assert_eq!(sp_header.seq_count(), 12);
         assert_eq!(sp_header.apid(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(sp_header.data_len(), 0);
@@ -493,7 +496,7 @@ mod tests {
         assert_eq!(sp_header.version, 0b000);
         assert!(sp_header.packet_id.sec_header_flag);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
-        assert_eq!(sp_header.ssc(), 12);
+        assert_eq!(sp_header.seq_count(), 12);
         assert_eq!(sp_header.apid(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(sp_header.packet_id_raw(), 0x1842);
@@ -506,7 +509,7 @@ mod tests {
         assert!(sp_header.is_tm());
         assert!(sp_header.sec_header_flag());
         assert_eq!(sp_header.ptype(), PacketType::Tm);
-        assert_eq!(sp_header.ssc(), 22);
+        assert_eq!(sp_header.seq_count(), 22);
         assert_eq!(sp_header.apid(), 0x07);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(sp_header.packet_id_raw(), 0x0807);
@@ -527,7 +530,7 @@ mod tests {
             from_comp_fields.sequence_flags(),
             SequenceFlags::Unsegmented
         );
-        assert_eq!(from_comp_fields.ssc(), 0x7);
+        assert_eq!(from_comp_fields.seq_count(), 0x7);
         assert_eq!(from_comp_fields.data_len(), 0);
     }
 
