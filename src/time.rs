@@ -60,10 +60,20 @@ pub const fn ccsds_to_unix_days(ccsds_days: i32) -> i32 {
     ccsds_days + DAYS_CCSDS_TO_UNIX
 }
 
+trait TimeWriter {
+    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), PacketError>;
+}
+
+trait TimeReader {
+    fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError>
+    where
+        Self: Sized;
+}
+
 /// Trait for generic CCSDS time providers
 trait CcsdsTimeProvider {
     fn len(&self) -> usize;
-    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), PacketError>;
+
     /// Returns the pfield of the time provider. The pfield can have one or two bytes depending
     /// on the extension bit (first bit). The time provider should returns a tuple where the first
     /// entry denotes the length of the pfield and the second entry is the value of the pfield
@@ -115,38 +125,6 @@ impl CdsShortTimeProvider {
         Ok(provider.setup(unix_days_seconds as i64, ms_of_day.into()))
     }
 
-    pub fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
-        if buf.len() < CDS_SHORT_LEN {
-            return Err(TimestampError::PacketError(
-                PacketError::FromBytesSliceTooSmall(SizeMissmatch {
-                    expected: CDS_SHORT_LEN,
-                    found: buf.len(),
-                }),
-            ));
-        }
-        let pfield = buf[0];
-        match CcsdsTimeCodes::try_from(pfield >> 4 & 0b111) {
-            Ok(cds_type) => match cds_type {
-                Cds => (),
-                _ => {
-                    return Err(TimestampError::InvalidTimeCode(
-                        CcsdsTimeCodes::Cds,
-                        cds_type as u8,
-                    ))
-                }
-            },
-            _ => {
-                return Err(TimestampError::InvalidTimeCode(
-                    CcsdsTimeCodes::Cds,
-                    pfield >> 4 & 0b111,
-                ))
-            }
-        };
-        let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
-        let ms_of_day: u32 = u32::from_be_bytes(buf[4..].try_into().unwrap());
-        Ok(Self::new(ccsds_days, ms_of_day))
-    }
-
     fn setup(mut self, unix_days_seconds: i64, ms_of_day: u64) -> Self {
         self.calc_unix_seconds(unix_days_seconds, ms_of_day);
         self.calc_date_time((ms_of_day % 1000) as u32);
@@ -188,19 +166,6 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
         CDS_SHORT_LEN
     }
 
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), PacketError> {
-        if buf.len() < self.len() {
-            return Err(PacketError::ToBytesSliceTooSmall(SizeMissmatch {
-                expected: self.len(),
-                found: buf.len(),
-            }));
-        }
-        buf[0] = self.pfield;
-        buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
-        buf[4..].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
-        Ok(())
-    }
-
     fn p_field(&self) -> (usize, [u8; 2]) {
         (1, [self.pfield, 0])
     }
@@ -215,6 +180,55 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
 
     fn date_time(&self) -> DateTime<Utc> {
         self.date_time.expect("Invalid date time")
+    }
+}
+
+impl TimeWriter for CdsShortTimeProvider {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), PacketError> {
+        if buf.len() < self.len() {
+            return Err(PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+                expected: self.len(),
+                found: buf.len(),
+            }));
+        }
+        buf[0] = self.pfield;
+        buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
+        buf[4..].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
+        Ok(())
+    }
+}
+
+impl TimeReader for CdsShortTimeProvider {
+    fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
+        if buf.len() < CDS_SHORT_LEN {
+            return Err(TimestampError::PacketError(
+                PacketError::FromBytesSliceTooSmall(SizeMissmatch {
+                    expected: CDS_SHORT_LEN,
+                    found: buf.len(),
+                }),
+            ));
+        }
+        let pfield = buf[0];
+        match CcsdsTimeCodes::try_from(pfield >> 4 & 0b111) {
+            Ok(cds_type) => match cds_type {
+                Cds => (),
+                _ => {
+                    return Err(TimestampError::InvalidTimeCode(
+                        CcsdsTimeCodes::Cds,
+                        cds_type as u8,
+                    ))
+                }
+            },
+            _ => {
+                return Err(TimestampError::InvalidTimeCode(
+                    CcsdsTimeCodes::Cds,
+                    pfield >> 4 & 0b111,
+                ))
+            }
+        };
+        let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
+        let ms_of_day: u32 = u32::from_be_bytes(buf[4..].try_into().unwrap());
+        Ok(Self::new(ccsds_days, ms_of_day))
     }
 }
 
