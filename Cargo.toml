@@ -17,6 +17,7 @@ serde = "1.0.137"
 zerocopy = "0.6.1"
 crc = "3.0.0"
 delegate = "0.7.0"
+chrono = "0.4.19"
 
 [dependencies.heapless]
 version = "0.7.14"

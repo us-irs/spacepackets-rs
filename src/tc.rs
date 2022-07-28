@@ -474,6 +474,7 @@ impl PusTcSecondaryHeader for PusTc<'_> {
         fn ack_flags(&self) -> u8;
     });
 }
+
 #[cfg(test)]
 mod tests {
     use crate::ecss::{PusError, PusPacket};
