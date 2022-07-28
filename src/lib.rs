@@ -14,9 +14,16 @@ pub mod time;
 pub mod tm;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+pub struct SizeMissmatch {
+    found: usize,
+    expected: usize,
+}
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PacketError {
-    /// The passed slice is too small. Returns the required size of the failed size check
-    ToBytesSliceTooSmall(usize),
+    /// The passed slice is too small. Returns the found and expected minimum size
+    ToBytesSliceTooSmall(SizeMissmatch),
+    /// The provider buffer it soo small. Returns the found and expected minimum size
+    FromBytesSliceTooSmall(SizeMissmatch),
     /// The [zerocopy] library failed to write to bytes
     ToBytesZeroCopyError,
     FromBytesZeroCopyError,

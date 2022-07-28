@@ -1,6 +1,6 @@
 use crate::ecss::{PusError, PusPacket, PusVersion, CRC_CCITT_FALSE};
 use crate::ser::SpHeader;
-use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
+use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN};
 use alloc::vec::Vec;
 use core::mem::size_of;
 use delegate::delegate;
@@ -303,8 +303,7 @@ impl<'slice> PusTc<'slice> {
         self.calc_own_crc16();
     }
 
-    pub fn copy_to_buf(&self, slice: &mut (impl AsMut<[u8]> + ?Sized)) -> Result<usize, PusError> {
-        let mut_slice = slice.as_mut();
+    pub fn copy_to_buf(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
         let sph_zc = crate::zc::SpHeader::from(self.sph);
         let tc_header_len = size_of::<zc::PusTcDataFieldHeader>();
@@ -312,13 +311,16 @@ impl<'slice> PusTc<'slice> {
         if let Some(app_data) = self.app_data {
             total_size += app_data.len();
         };
-        if total_size > mut_slice.len() {
+        if total_size > slice.len() {
             return Err(PusError::OtherPacketError(
-                PacketError::ToBytesSliceTooSmall(total_size),
+                PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+                    found: slice.len(),
+                    expected: total_size,
+                }),
             ));
         }
         sph_zc
-            .to_bytes(&mut mut_slice[curr_idx..curr_idx + 6])
+            .to_bytes(&mut slice[curr_idx..curr_idx + 6])
             .ok_or(PusError::OtherPacketError(
                 PacketError::ToBytesZeroCopyError,
             ))?;
@@ -327,24 +329,24 @@ impl<'slice> PusTc<'slice> {
         let pus_tc_header = zc::PusTcDataFieldHeader::try_from(self.data_field_header).unwrap();
 
         pus_tc_header
-            .to_bytes(&mut mut_slice[curr_idx..curr_idx + tc_header_len])
+            .to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
             .ok_or(PusError::OtherPacketError(
                 PacketError::ToBytesZeroCopyError,
             ))?;
         curr_idx += tc_header_len;
         if let Some(app_data) = self.app_data {
-            mut_slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
+            slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
             curr_idx += app_data.len();
         }
         let crc16;
         if self.calc_crc_on_serialization {
-            crc16 = Self::calc_crc16(&mut_slice[0..curr_idx])
+            crc16 = Self::calc_crc16(&slice[0..curr_idx])
         } else if self.crc16.is_none() {
             return Err(PusError::CrcCalculationMissing);
         } else {
             crc16 = self.crc16.unwrap();
         }
-        mut_slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
+        slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
         curr_idx += 2;
         Ok(curr_idx)
     }

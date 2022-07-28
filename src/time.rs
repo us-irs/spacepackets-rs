@@ -1,8 +1,9 @@
-use crate::PacketError;
+use crate::{PacketError, SizeMissmatch};
 use chrono::{DateTime, TimeZone, Utc};
 
+use crate::time::CcsdsTimeCodes::Cds;
 #[cfg(feature = "std")]
-use std::time::SystemTime;
+use std::time::{SystemTime, SystemTimeError};
 
 pub const CDS_SHORT_LEN: usize = 7;
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
@@ -14,6 +15,25 @@ pub enum CcsdsTimeCodes {
     CucAgencyEpoch = 0b010,
     Cds = 0b100,
     Ccs = 0b101,
+}
+
+impl TryFrom<u8> for CcsdsTimeCodes {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            x if x == CcsdsTimeCodes::None as u8 => Ok(CcsdsTimeCodes::None),
+            x if x == CcsdsTimeCodes::CucCcsdsEpoch as u8 => Ok(CcsdsTimeCodes::CucCcsdsEpoch),
+            x if x == CcsdsTimeCodes::CucAgencyEpoch as u8 => Ok(CcsdsTimeCodes::CucAgencyEpoch),
+            x if x == CcsdsTimeCodes::Cds as u8 => Ok(CcsdsTimeCodes::Cds),
+            x if x == CcsdsTimeCodes::Ccs as u8 => Ok(CcsdsTimeCodes::Ccs),
+            _ => Err(()),
+        }
+    }
+}
+pub enum TimestampError {
+    InvalidTimeCode(CcsdsTimeCodes, u8),
+    PacketError(PacketError),
 }
 
 #[cfg(feature = "std")]
@@ -43,7 +63,7 @@ pub const fn ccsds_to_unix_days(ccsds_days: i32) -> i32 {
 /// Trait for generic CCSDS time providers
 trait CcsdsTimeProvider {
     fn len(&self) -> usize;
-    fn write_to_bytes(&self, bytes: &mut (impl AsMut<[u8]> + ?Sized)) -> Result<(), PacketError>;
+    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), PacketError>;
     /// Returns the pfield of the time provider. The pfield can have one or two bytes depending
     /// on the extension bit (first bit). The time provider should returns a tuple where the first
     /// entry denotes the length of the pfield and the second entry is the value of the pfield
@@ -72,32 +92,64 @@ impl CdsShortTimeProvider {
             unix_seconds: 0,
             date_time: None,
         };
-        let unix_days_seconds = ccsds_to_unix_days(ccsds_days as i32) as i64 * (24 * 60 * 60);
+        let unix_days_seconds =
+            ccsds_to_unix_days(ccsds_days as i32) as i64 * SECONDS_PER_DAY as i64;
         provider.setup(unix_days_seconds as i64, ms_of_day.into())
     }
 
     #[cfg(feature = "std")]
-    pub fn from_now() -> Self {
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Error retrieving UNIX epoch");
+    pub fn from_now() -> Result<Self, SystemTimeError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
         let secs_of_day = epoch % SECONDS_PER_DAY as u64;
         let unix_days_seconds = epoch - secs_of_day;
         let ms_of_day = secs_of_day * 1000 + now.subsec_millis() as u64;
         let provider = Self {
             pfield: (CcsdsTimeCodes::Cds as u8) << 4,
-            ccsds_days: unix_to_ccsds_days((unix_days_seconds / SECONDS_PER_DAY as u64) as i32) as u16,
+            ccsds_days: unix_to_ccsds_days((unix_days_seconds / SECONDS_PER_DAY as u64) as i32)
+                as u16,
             ms_of_day: ms_of_day as u32,
             unix_seconds: 0,
             date_time: None,
         };
-        provider.setup(unix_days_seconds as i64, ms_of_day.into())
+        Ok(provider.setup(unix_days_seconds as i64, ms_of_day.into()))
+    }
+
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
+        if buf.len() < CDS_SHORT_LEN {
+            return Err(TimestampError::PacketError(
+                PacketError::FromBytesSliceTooSmall(SizeMissmatch {
+                    expected: CDS_SHORT_LEN,
+                    found: buf.len(),
+                }),
+            ));
+        }
+        let pfield = buf[0];
+        match CcsdsTimeCodes::try_from(pfield >> 4 & 0b111) {
+            Ok(cds_type) => match cds_type {
+                Cds => (),
+                _ => {
+                    return Err(TimestampError::InvalidTimeCode(
+                        CcsdsTimeCodes::Cds,
+                        cds_type as u8,
+                    ))
+                }
+            },
+            _ => {
+                return Err(TimestampError::InvalidTimeCode(
+                    CcsdsTimeCodes::Cds,
+                    pfield >> 4 & 0b111,
+                ))
+            }
+        };
+        let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
+        let ms_of_day: u32 = u32::from_be_bytes(buf[4..].try_into().unwrap());
+        Ok(Self::new(ccsds_days, ms_of_day))
     }
 
     fn setup(mut self, unix_days_seconds: i64, ms_of_day: u64) -> Self {
         self.calc_unix_seconds(unix_days_seconds, ms_of_day);
-        self.calc_date_time(unix_days_seconds, (ms_of_day % 1000) as u32);
+        self.calc_date_time((ms_of_day % 1000) as u32);
         self
     }
 
@@ -124,10 +176,10 @@ impl CdsShortTimeProvider {
         }
     }
 
-    fn calc_date_time(&mut self, unix_days_seconds: i64, ms_since_last_second: u32) {
+    fn calc_date_time(&mut self, ms_since_last_second: u32) {
         assert!(ms_since_last_second < 1000, "Invalid MS since last second");
         let ns_since_last_sec = ms_since_last_second * 1e6 as u32;
-        self.date_time = Some(Utc.timestamp(unix_days_seconds, ns_since_last_sec));
+        self.date_time = Some(Utc.timestamp(self.unix_seconds, ns_since_last_sec));
     }
 }
 
@@ -136,14 +188,16 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
         CDS_SHORT_LEN
     }
 
-    fn write_to_bytes(&self, bytes: &mut (impl AsMut<[u8]> + ?Sized)) -> Result<(), PacketError> {
-        let slice = bytes.as_mut();
-        if slice.len() < self.len() {
-            return Err(PacketError::ToBytesSliceTooSmall(slice.len()));
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), PacketError> {
+        if buf.len() < self.len() {
+            return Err(PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+                expected: self.len(),
+                found: buf.len(),
+            }));
         }
-        slice[0] = self.pfield;
-        slice[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
-        slice[4..].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
+        buf[0] = self.pfield;
+        buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
+        buf[4..].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
         Ok(())
     }
 
@@ -168,8 +222,6 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
 mod tests {
     use super::*;
     use chrono::{Datelike, Timelike};
-    #[cfg(feature = "std")]
-    use std::println;
 
     #[test]
     fn test_creation() {
@@ -189,7 +241,7 @@ mod tests {
         let time_stamper = CdsShortTimeProvider::new(0, 0);
         assert_eq!(
             time_stamper.unix_seconds(),
-            (DAYS_CCSDS_TO_UNIX * 24 * 60 * 60) as i64
+            (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
         );
         let date_time = time_stamper.date_time();
         assert_eq!(date_time.year(), 1958);
@@ -213,10 +265,43 @@ mod tests {
         assert_eq!(date_time.second(), 0);
     }
 
+    #[test]
+    fn test_packing() {}
+
     #[cfg(feature = "std")]
     #[test]
     fn test_time_now() {
-        let timestamp_now = CdsShortTimeProvider::from_now();
-        println!("{}", timestamp_now.date_time());
+        let timestamp_now = CdsShortTimeProvider::from_now().unwrap();
+        let compare_stamp = Utc::now();
+        let dt = timestamp_now.date_time();
+        if compare_stamp.year() > dt.year() {
+            assert_eq!(compare_stamp.year() - dt.year(), 1);
+        } else {
+            assert_eq!(dt.year(), compare_stamp.year());
+        }
+        generic_dt_property_equality_check(dt.month(), compare_stamp.month(), 1, 12);
+
+        assert_eq!(dt.day(), compare_stamp.day());
+        if compare_stamp.day() < dt.day() {
+            assert!(dt.day() >= 28);
+            assert_eq!(compare_stamp.day(), 1);
+        } else if compare_stamp.day() > dt.day() {
+            assert_eq!(compare_stamp.day() - dt.day(), 1);
+        } else {
+            assert_eq!(compare_stamp.day(), dt.day());
+        }
+        generic_dt_property_equality_check(dt.hour(), compare_stamp.hour(), 0, 23);
+        generic_dt_property_equality_check(dt.minute(), compare_stamp.minute(), 0, 59);
+    }
+
+    fn generic_dt_property_equality_check(first: u32, second: u32, start: u32, end: u32) {
+        if second < first {
+            assert_eq!(second, start);
+            assert_eq!(first, end);
+        } else if second > first {
+            assert_eq!(second - first, 1);
+        } else {
+            assert_eq!(first, second);
+        }
     }
 }
