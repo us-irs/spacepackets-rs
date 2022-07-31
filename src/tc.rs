@@ -1,5 +1,39 @@
+//! This module contains all components required to create a ECSS PUS C telecommand packets according
+//! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
+//!
+//! # Examples
+//!
+//! ```rust
+//! use spacepackets::{CcsdsPacket, SpHeader};
+//! use spacepackets::tc::{PusTc, PusTcSecondaryHeader};
+//! use spacepackets::ecss::PusPacket;
+//!
+//! // Create a ping telecommand
+//! let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+//! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+//! let pus_tc = PusTc::new(&mut sph, tc_header, None, true);
+//! println!("{:?}", pus_tc);
+//! assert_eq!(pus_tc.service(), 17);
+//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.apid(), 0x02);
+//!
+//! // Serialize TC into a raw buffer
+//! let mut test_buf: [u8; 32] = [0; 32];
+//! let size = pus_tc
+//!     .write_to(test_buf.as_mut_slice())
+//!     .expect("Error writing TC to buffer");
+//! assert_eq!(size, 13);
+//! println!("{:?}", &test_buf[0..size]);
+//!
+//! // Deserialize from the raw byte representation
+//! let pus_tc_deserialized = PusTc::new_from_raw_slice(&test_buf).expect("Deserialization failed");
+//! assert_eq!(pus_tc.service(), 17);
+//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.apid(), 0x02);
+//! ```
 use crate::ecss::{
-    crc_from_raw_data, crc_procedure, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
+    ccsds_impl, crc_from_raw_data, crc_procedure, user_data_from_raw, verify_crc16_from_raw,
+    CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
 };
 use crate::SpHeader;
 use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN};
@@ -167,10 +201,14 @@ impl PusTcSecondaryHeader {
     }
 }
 
-/// This struct models a PUS telecommand. It is the primary data structure to generate the raw byte
+/// This class models a PUS telecommand. It is the primary data structure to generate the raw byte
 /// representation of a PUS telecommand or to deserialize from one from raw bytes.
 ///
-/// There is no spare bytes support yet
+/// This class also derives the [serde::Serialize] and [serde::Deserialize] trait which allows
+/// to send around TC packets in a raw byte format using a serde provider like
+/// [postcard](https://docs.rs/postcard/latest/postcard/).
+///
+/// There is no spare bytes support yet.
 #[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTc<'slice> {
     sp_header: SpHeader,
@@ -263,7 +301,8 @@ impl<'slice> PusTc<'slice> {
     });
 
     /// Calculate the CCSDS space packet data length field and sets it
-    /// This is called automatically if the [set_ccsds_len] argument in the [new] call was used.
+    /// This is called automatically if the `set_ccsds_len` argument in the [PusTc::new] call was
+    /// used.
     /// If this was not done or the application data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
     /// is set correctly
@@ -273,7 +312,7 @@ impl<'slice> PusTc<'slice> {
     }
 
     /// This function should be called before the TC packet is serialized if
-    /// [calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
+    /// [PusTc::calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
     pub fn calc_own_crc16(&mut self) {
         let mut digest = CRC_CCITT_FALSE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -286,12 +325,13 @@ impl<'slice> PusTc<'slice> {
         self.crc16 = Some(digest.finalize())
     }
 
-    /// This helper function calls both [update_ccsds_data_len] and [calc_own_crc16]
+    /// This helper function calls both [PusTc.update_ccsds_data_len] and [PusTc.calc_own_crc16]
     pub fn update_packet_fields(&mut self) {
         self.update_ccsds_data_len();
         self.calc_own_crc16();
     }
 
+    /// Write the raw PUS byte representation to a provided buffer.
     pub fn write_to(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -359,11 +399,9 @@ impl<'slice> PusTc<'slice> {
         Ok(appended_len)
     }
 
-    /// Create a PusTc instance from a raw slice. On success, it returns a tuple containing
+    /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet
-    pub fn new_from_raw_slice(
-        slice: &'slice [u8],
-    ) -> Result<(Self, usize), PusError> {
+    pub fn new_from_raw_slice(slice: &'slice [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
@@ -384,48 +422,23 @@ impl<'slice> PusTc<'slice> {
             PacketError::FromBytesZeroCopyError,
         ))?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
-        let mut pus_tc = PusTc {
+        let raw_data = &slice[0..total_len];
+        let pus_tc = PusTc {
             sp_header: SpHeader::from(sph),
             sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
-            raw_data: Some(slice),
-            app_data: match current_idx {
-                _ if current_idx == total_len - 2 => None,
-                _ if current_idx > total_len - 2 => {
-                    return Err(PusError::RawDataTooShort(raw_data_len))
-                }
-                _ => Some(&slice[current_idx..total_len - 2]),
-            },
+            raw_data: Some(raw_data),
+            app_data: user_data_from_raw(current_idx, total_len, raw_data_len, slice)?,
             calc_crc_on_serialization: false,
-            crc16: None,
+            crc16: Some(crc_from_raw_data(raw_data)?),
         };
-        crc_from_raw_data(pus_tc.raw_data)?;
-        pus_tc.verify()?;
+        verify_crc16_from_raw(raw_data, pus_tc.crc16.expect("CRC16 invalid"))?;
         Ok((pus_tc, total_len))
-    }
-
-    fn verify(&mut self) -> Result<(), PusError> {
-        let mut digest = CRC_CCITT_FALSE.digest();
-        if self.raw_data.is_none() {
-            return Err(PusError::NoRawData);
-        }
-        let raw_data = self.raw_data.unwrap();
-        digest.update(raw_data.as_ref());
-        if digest.finalize() == 0 {
-            return Ok(());
-        }
-        let crc16 = crc_from_raw_data(self.raw_data)?;
-        Err(PusError::IncorrectCrc(crc16))
     }
 }
 
 //noinspection RsTraitImplementation
 impl CcsdsPacket for PusTc<'_> {
-    delegate!(to self.sp_header {
-        fn ccsds_version(&self) -> u8;
-        fn packet_id(&self) -> crate::PacketId;
-        fn psc(&self) -> crate::PacketSequenceCtrl;
-        fn data_len(&self) -> u16;
-    });
+    ccsds_impl!();
 }
 
 //noinspection RsTraitImplementation
@@ -460,9 +473,9 @@ impl PusTcSecondaryHeaderT for PusTc<'_> {
 mod tests {
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket};
-    use crate::SpHeader;
     use crate::tc::ACK_ALL;
     use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
+    use crate::SpHeader;
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::vec::Vec;
 
@@ -498,6 +511,7 @@ mod tests {
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
     }
+
     #[test]
     fn test_deserialization() {
         let pus_tc = base_ping_tc_simple_ctor();
@@ -510,8 +524,27 @@ mod tests {
             .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 13);
         verify_test_tc(&tc_from_raw, false, 13);
+        assert!(tc_from_raw.user_data().is_none());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
+    }
+
+    #[test]
+    fn test_deserialization_with_app_data() {
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = pus_tc
+            .write_to(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 16);
+        let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(size, 16);
+        verify_test_tc(&tc_from_raw, true, 16);
+        let user_data = tc_from_raw.user_data().unwrap();
+        assert_eq!(user_data[0], 1);
+        assert_eq!(user_data[1], 2);
+        assert_eq!(user_data[2], 3);
     }
 
     #[test]
@@ -635,10 +668,7 @@ mod tests {
         assert_eq!(tc.len_packed(), exp_full_len);
         let mut comp_header = SpHeader::tc(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
         comp_header.set_sec_header_flag();
-        assert_eq!(
-            tc.sp_header,
-            comp_header
-        );
+        assert_eq!(tc.sp_header, comp_header);
     }
 
     fn verify_test_tc_raw(slice: &impl AsRef<[u8]>) {

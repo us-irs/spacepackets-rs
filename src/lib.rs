@@ -1,12 +1,36 @@
-//! # Space related components including CCSDS and ECSS packet standards
+//! # CCSDS and ECSS packet standards implementations
+//!
+//! This crate contains generic implementations for various
+//! CCSDS (Consultative Committee for Space Data Systems) and
+//! ECSS (European Cooperation for Space Standardization) packet standards.
+//! Currently, this includes the following components:
+//!
+//! - [Space Packet][crate::SpHeader] implementation according to
+//!   [CCSDS Blue Book 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf)
+//! - [PUS Telecommand][crate::tc] and [PUS Telemetry][crate::tm] implementation according to the
+//!   [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
+//!
+//! # Module
+//!
+//! This module contains helpers and data structures to generate Space Packets according to the
+//! [CCSDS 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf). This includes the
+//! [SpHeader] class to generate the Space Packet Header component common to all space packets
+//!
+//! # Example
+//!
+//! ```rust
+//! use spacepackets::SpHeader;
+//! let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
+//! println!("{:?}", sp_header);
+//! ```
 #![no_std]
 extern crate alloc;
 
 #[cfg(feature = "std")]
 extern crate std;
 
-use delegate::delegate;
 use crate::ecss::CCSDS_HEADER_LEN;
+use delegate::delegate;
 use serde::{Deserialize, Serialize};
 
 pub mod ecss;
@@ -261,6 +285,14 @@ pub trait CcsdsPrimaryHeader {
 }
 
 /// Space Packet Primary Header according to CCSDS 133.0-B-2
+///
+/// # Arguments
+///
+/// * `version` - CCSDS version field, occupies the first 3 bits of the raw header
+/// * `packet_id` - Packet Identifier, which can also be used as a start marker. Occupies the last
+///    13 bits of the first two bytes of the raw header
+/// * `psc` - Packet Sequence Control, occupies the third and fourth byte of the raw header
+/// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
 #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Copy, Clone)]
 pub struct SpHeader {
     pub version: u8,
@@ -286,7 +318,13 @@ impl Default for SpHeader {
     }
 }
 impl SpHeader {
-    pub fn new(ptype: PacketType, sec_header: bool, apid: u16, ssc: u16, data_len: u16) -> Option<Self> {
+    pub fn new(
+        ptype: PacketType,
+        sec_header: bool,
+        apid: u16,
+        ssc: u16,
+        data_len: u16,
+    ) -> Option<Self> {
         if ssc > num::pow(2, 14) - 1 || apid > num::pow(2, 11) - 1 {
             return None;
         }
@@ -300,7 +338,7 @@ impl SpHeader {
     }
 
     pub fn tm(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
-        Self::new(PacketType::Tm, false, apid,  seq_count, data_len)
+        Self::new(PacketType::Tm, false, apid, seq_count, data_len)
     }
 
     pub fn tc(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {

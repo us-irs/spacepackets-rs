@@ -1,3 +1,5 @@
+//! Common definitions and helpers required to create PUS TMTC packets according to
+//! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
 use crate::{CcsdsPacket, PacketError};
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
@@ -53,18 +55,15 @@ pub trait PusPacket: CcsdsPacket {
     fn crc16(&self) -> Option<u16>;
 }
 
-pub(crate) fn crc_from_raw_data(raw_data: Option<&[u8]>) -> Result<u16, PusError> {
-    if let Some(raw_data) = raw_data {
-        if raw_data.len() < 2 {
-            return Err(PusError::RawDataTooShort(raw_data.len()));
-        }
-        return Ok(u16::from_be_bytes(
-            raw_data[raw_data.len() - 2..raw_data.len()]
-                .try_into()
-                .unwrap(),
-        ));
+pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, PusError> {
+    if raw_data.len() < 2 {
+        return Err(PusError::RawDataTooShort(raw_data.len()));
     }
-    Err(PusError::NoRawData)
+    Ok(u16::from_be_bytes(
+        raw_data[raw_data.len() - 2..raw_data.len()]
+            .try_into()
+            .unwrap(),
+    ))
 }
 
 pub(crate) fn calc_pus_crc16(bytes: &[u8]) -> u16 {
@@ -89,3 +88,38 @@ pub(crate) fn crc_procedure(
     }
     Ok(crc16)
 }
+
+pub(crate) fn user_data_from_raw(
+    current_idx: usize,
+    total_len: usize,
+    raw_data_len: usize,
+    slice: &[u8],
+) -> Result<Option<&[u8]>, PusError> {
+    match current_idx {
+        _ if current_idx == total_len - 2 => Ok(None),
+        _ if current_idx > total_len - 2 => Err(PusError::RawDataTooShort(raw_data_len)),
+        _ => Ok(Some(&slice[current_idx..total_len - 2])),
+    }
+}
+
+pub(crate) fn verify_crc16_from_raw(raw_data: &[u8], crc16: u16) -> Result<(), PusError> {
+    let mut digest = CRC_CCITT_FALSE.digest();
+    digest.update(raw_data);
+    if digest.finalize() == 0 {
+        return Ok(());
+    }
+    Err(PusError::IncorrectCrc(crc16))
+}
+
+macro_rules! ccsds_impl {
+    () => {
+        delegate!(to self.sp_header {
+            fn ccsds_version(&self) -> u8;
+            fn packet_id(&self) -> crate::PacketId;
+            fn psc(&self) -> crate::PacketSequenceCtrl;
+            fn data_len(&self) -> u16;
+        });
+    }
+}
+
+pub(crate) use ccsds_impl;
