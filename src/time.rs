@@ -60,19 +60,19 @@ pub const fn ccsds_to_unix_days(ccsds_days: i32) -> i32 {
     ccsds_days + DAYS_CCSDS_TO_UNIX
 }
 
-trait TimeWriter {
+pub trait TimeWriter {
     fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), PacketError>;
 }
 
-trait TimeReader {
+pub trait TimeReader {
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError>
     where
         Self: Sized;
 }
 
 /// Trait for generic CCSDS time providers
-trait CcsdsTimeProvider {
-    fn len(&self) -> usize;
+pub trait CcsdsTimeProvider {
+    fn len_as_bytes(&self) -> usize;
 
     /// Returns the pfield of the time provider. The pfield can have one or two bytes depending
     /// on the extension bit (first bit). The time provider should returns a tuple where the first
@@ -162,7 +162,7 @@ impl CdsShortTimeProvider {
 }
 
 impl CcsdsTimeProvider for CdsShortTimeProvider {
-    fn len(&self) -> usize {
+    fn len_as_bytes(&self) -> usize {
         CDS_SHORT_LEN
     }
 
@@ -185,9 +185,9 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
 
 impl TimeWriter for CdsShortTimeProvider {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), PacketError> {
-        if buf.len() < self.len() {
+        if buf.len() < self.len_as_bytes() {
             return Err(PacketError::ToBytesSliceTooSmall(SizeMissmatch {
-                expected: self.len(),
+                expected: self.len_as_bytes(),
                 found: buf.len(),
             }));
         }
