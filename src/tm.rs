@@ -309,27 +309,23 @@ impl<'slice> PusTm<'slice> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(PusError::OtherPacketError(
-                PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+            return Err(PusError::PacketError(PacketError::ToBytesSliceTooSmall(
+                SizeMissmatch {
                     found: slice.len(),
                     expected: total_size,
-                }),
-            ));
+                },
+            )));
         }
         sph_zc
             .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(PusError::OtherPacketError(
-                PacketError::ToBytesZeroCopyError,
-            ))?;
+            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
 
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         sec_header
             .to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-            .ok_or(PusError::OtherPacketError(
-                PacketError::ToBytesZeroCopyError,
-            ))?;
+            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
         curr_idx += sec_header_len;
         let timestamp_len = self.sec_header.time_stamp.len();
         slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(self.sec_header.time_stamp);
@@ -338,7 +334,13 @@ impl<'slice> PusTm<'slice> {
             slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
             curr_idx += src_data.len();
         }
-        let crc16 = crc_procedure(self.calc_crc_on_serialization, &self.crc16, curr_idx, slice)?;
+        let crc16 = crc_procedure(
+            self.calc_crc_on_serialization,
+            &self.crc16,
+            0,
+            curr_idx,
+            slice,
+        )?;
         slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
         curr_idx += 2;
         Ok(curr_idx)
@@ -354,24 +356,25 @@ impl<'slice> PusTm<'slice> {
             appended_len += src_data.len();
         };
         let start_idx = vec.len();
-        let mut curr_idx = vec.len();
+        let mut ser_len = 0;
         vec.extend_from_slice(sph_zc.as_bytes());
-        curr_idx += sph_zc.as_bytes().len();
+        ser_len += sph_zc.as_bytes().len();
         // The PUS version is hardcoded to PUS C
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(sec_header.as_bytes());
-        curr_idx += sec_header.as_bytes().len();
+        ser_len += sec_header.as_bytes().len();
         vec.extend_from_slice(self.sec_header.time_stamp);
-        curr_idx += self.sec_header.time_stamp.len();
+        ser_len += self.sec_header.time_stamp.len();
         if let Some(src_data) = self.source_data {
             vec.extend_from_slice(src_data);
-            curr_idx += src_data.len();
+            ser_len += src_data.len();
         }
         let crc16 = crc_procedure(
             self.calc_crc_on_serialization,
             &self.crc16,
-            curr_idx,
-            &vec[start_idx..curr_idx],
+            start_idx,
+            ser_len,
+            &vec[start_idx..start_idx + ser_len],
         )?;
         vec.extend_from_slice(crc16.to_be_bytes().as_slice());
         Ok(appended_len)
@@ -391,9 +394,7 @@ impl<'slice> PusTm<'slice> {
         let mut current_idx = 0;
         let sph =
             crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(PusError::OtherPacketError(
-                    PacketError::FromBytesZeroCopyError,
-                ))?;
+                .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
         current_idx += 6;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
@@ -402,9 +403,7 @@ impl<'slice> PusTm<'slice> {
         let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
             &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
         )
-        .ok_or(PusError::OtherPacketError(
-            PacketError::FromBytesZeroCopyError,
-        ))?;
+        .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
         current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
@@ -465,10 +464,16 @@ mod tests {
     use crate::ecss::PusVersion::PusC;
     use crate::SpHeader;
 
-    fn base_ping_reply_full_ctor(time_stamp: &'static [u8]) -> PusTm<'static> {
-        let mut sph = SpHeader::tc(0x123, 0x234, 0).unwrap();
+    fn base_ping_reply_full_ctor(time_stamp: &[u8]) -> PusTm {
+        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
         PusTm::new(&mut sph, tc_header, None, true)
+    }
+
+    fn base_hk_reply<'a>(time_stamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
+        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &time_stamp);
+        PusTm::new(&mut sph, tc_header, Some(src_data), true)
     }
 
     fn dummy_time_stamp() -> &'static [u8] {
@@ -479,7 +484,7 @@ mod tests {
     fn test_basic() {
         let time_stamp = dummy_time_stamp();
         let pus_tm = base_ping_reply_full_ctor(&time_stamp);
-        verify_test_tm_0(&pus_tm, false, 22, dummy_time_stamp());
+        verify_ping_reply(&pus_tm, false, 22, dummy_time_stamp());
     }
 
     #[test]
@@ -489,6 +494,116 @@ mod tests {
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
         assert_eq!(ser_len, 22);
+        verify_raw_ping_reply(&buf);
+    }
+
+    #[test]
+    fn test_serialization_with_source_data() {
+        let src_data = [1, 2, 3];
+        let hk_reply = base_hk_reply(dummy_time_stamp(), &src_data);
+        let mut buf: [u8; 32] = [0; 32];
+        let ser_len = hk_reply.write_to(&mut buf).expect("Serialization failed");
+        assert_eq!(ser_len, 25);
+        assert_eq!(buf[20], 1);
+        assert_eq!(buf[21], 2);
+        assert_eq!(buf[22], 3);
+    }
+
+    #[test]
+    fn test_setters() {
+        let time_stamp = dummy_time_stamp();
+        let mut pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        pus_tm.set_sc_time_ref_status(0b1010);
+        pus_tm.set_dest_id(0x7fff);
+        pus_tm.set_msg_counter(0x1f1f);
+        assert_eq!(pus_tm.sc_time_ref_status(), 0b1010);
+        assert_eq!(pus_tm.dest_id(), 0x7fff);
+        assert_eq!(pus_tm.msg_counter(), 0x1f1f);
+    }
+
+    #[test]
+    fn test_deserialization_no_source_data() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let mut buf: [u8; 32] = [0; 32];
+        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
+        assert_eq!(ser_len, 22);
+        let (tm_deserialized, size) =
+            PusTm::new_from_raw_slice(&buf, 7).expect("Deserialization failed");
+        assert_eq!(ser_len, size);
+        verify_ping_reply(&tm_deserialized, false, 22, dummy_time_stamp());
+    }
+
+    #[test]
+    fn test_manual_field_update() {
+        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_time_stamp());
+        let mut tm = PusTm::new(&mut sph, tc_header, None, false);
+        tm.calc_crc_on_serialization = false;
+        assert_eq!(tm.data_len(), 0x00);
+        let mut buf: [u8; 32] = [0; 32];
+        let res = tm.write_to(&mut buf);
+        assert!(res.is_err());
+        assert!(matches!(res.unwrap_err(), PusError::CrcCalculationMissing));
+        tm.update_ccsds_data_len();
+        assert_eq!(tm.data_len(), 15);
+        tm.calc_own_crc16();
+        let res = tm.write_to(&mut buf);
+        assert!(res.is_ok());
+        tm.sp_header.data_len = 0;
+        tm.update_packet_fields();
+        assert_eq!(tm.data_len(), 15);
+    }
+
+    #[test]
+    fn test_target_buf_too_small() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let mut buf: [u8; 16] = [0; 16];
+        let res = pus_tm.write_to(&mut buf);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        assert!(matches!(error, PusError::PacketError { .. }));
+        match error {
+            PusError::PacketError(err) => match err {
+                PacketError::ToBytesSliceTooSmall(size_missmatch) => {
+                    assert_eq!(size_missmatch.expected, 22);
+                    assert_eq!(size_missmatch.found, 16);
+                }
+                _ => panic!("Invalid PUS error {:?}", err),
+            },
+            _ => {
+                panic!("Invalid error {:?}", error);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn test_append_to_vec() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let mut vec = Vec::new();
+        let res = pus_tm.append_to_vec(&mut vec);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 22);
+        verify_raw_ping_reply(vec.as_slice());
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn test_append_to_vec_with_src_data() {
+        let src_data = [1, 2, 3];
+        let hk_reply = base_hk_reply(dummy_time_stamp(), &src_data);
+        let mut vec = Vec::new();
+        vec.push(4);
+        let res = hk_reply.append_to_vec(&mut vec);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), 25);
+        assert_eq!(vec.len(), 26);
+    }
+
+    fn verify_raw_ping_reply(buf: &[u8]) {
         // Secondary header is set -> 0b0000_1001 , APID occupies last bit of first byte
         assert_eq!(buf[0], 0x09);
         // Rest of APID 0x123
@@ -516,32 +631,7 @@ mod tests {
         assert_eq!((crc16 & 0xff) as u8, buf[21]);
     }
 
-    #[test]
-    fn test_setters() {
-        let time_stamp = dummy_time_stamp();
-        let mut pus_tm = base_ping_reply_full_ctor(&time_stamp);
-        pus_tm.set_sc_time_ref_status(0b1010);
-        pus_tm.set_dest_id(0x7fff);
-        pus_tm.set_msg_counter(0x1f1f);
-        assert_eq!(pus_tm.sc_time_ref_status(), 0b1010);
-        assert_eq!(pus_tm.dest_id(), 0x7fff);
-        assert_eq!(pus_tm.msg_counter(), 0x1f1f);
-    }
-
-    #[test]
-    fn test_deserialization() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
-        let mut buf: [u8; 32] = [0; 32];
-        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
-        assert_eq!(ser_len, 22);
-        let (tm_deserialized, size) =
-            PusTm::new_from_raw_slice(&buf, 7).expect("Deserialization failed");
-        assert_eq!(ser_len, size);
-        verify_test_tm_0(&tm_deserialized, false, 22, dummy_time_stamp());
-    }
-
-    fn verify_test_tm_0(
+    fn verify_ping_reply(
         tm: &PusTm,
         has_user_data: bool,
         exp_full_len: usize,

@@ -334,33 +334,35 @@ impl<'slice> PusTc<'slice> {
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(PusError::OtherPacketError(
-                PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+            return Err(PusError::PacketError(PacketError::ToBytesSliceTooSmall(
+                SizeMissmatch {
                     found: slice.len(),
                     expected: total_size,
-                }),
-            ));
+                },
+            )));
         }
         sph_zc
             .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(PusError::OtherPacketError(
-                PacketError::ToBytesZeroCopyError,
-            ))?;
+            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
 
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
             .to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .ok_or(PusError::OtherPacketError(
-                PacketError::ToBytesZeroCopyError,
-            ))?;
+            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
 
         curr_idx += tc_header_len;
         if let Some(app_data) = self.app_data {
             slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
             curr_idx += app_data.len();
         }
-        let crc16 = crc_procedure(self.calc_crc_on_serialization, &self.crc16, curr_idx, slice)?;
+        let crc16 = crc_procedure(
+            self.calc_crc_on_serialization,
+            &self.crc16,
+            0,
+            curr_idx,
+            slice,
+        )?;
         slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
         curr_idx += 2;
         Ok(curr_idx)
@@ -374,22 +376,23 @@ impl<'slice> PusTc<'slice> {
             appended_len += app_data.len();
         };
         let start_idx = vec.len();
-        let mut curr_idx = vec.len();
+        let mut ser_len = 0;
         vec.extend_from_slice(sph_zc.as_bytes());
-        curr_idx += sph_zc.as_bytes().len();
+        ser_len += sph_zc.as_bytes().len();
         // The PUS version is hardcoded to PUS C
         let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(pus_tc_header.as_bytes());
-        curr_idx += pus_tc_header.as_bytes().len();
+        ser_len += pus_tc_header.as_bytes().len();
         if let Some(app_data) = self.app_data {
             vec.extend_from_slice(app_data);
-            curr_idx += app_data.len();
+            ser_len += app_data.len();
         }
         let crc16 = crc_procedure(
             self.calc_crc_on_serialization,
             &self.crc16,
-            curr_idx,
-            &vec[start_idx..curr_idx],
+            start_idx,
+            ser_len,
+            &vec[start_idx..ser_len],
         )?;
         vec.extend_from_slice(crc16.to_be_bytes().as_slice());
         Ok(appended_len)
@@ -405,9 +408,7 @@ impl<'slice> PusTc<'slice> {
         let mut current_idx = 0;
         let sph =
             crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(PusError::OtherPacketError(
-                    PacketError::FromBytesZeroCopyError,
-                ))?;
+                .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
         current_idx += CCSDS_HEADER_LEN;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
@@ -416,9 +417,7 @@ impl<'slice> PusTc<'slice> {
         let sec_header = crate::tc::zc::PusTcSecondaryHeader::from_bytes(
             &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
-        .ok_or(PusError::OtherPacketError(
-            PacketError::FromBytesZeroCopyError,
-        ))?;
+        .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let pus_tc = PusTc {
@@ -546,6 +545,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "alloc")]
     fn test_vec_ser_deser() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_vec = Vec::new();

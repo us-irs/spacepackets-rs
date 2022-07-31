@@ -41,7 +41,7 @@ pub enum PusError {
     NoRawData,
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
-    OtherPacketError(PacketError),
+    PacketError(PacketError),
 }
 
 pub trait PusPacket: CcsdsPacket {
@@ -75,12 +75,13 @@ pub(crate) fn calc_pus_crc16(bytes: &[u8]) -> u16 {
 pub(crate) fn crc_procedure(
     calc_on_serialization: bool,
     cached_crc16: &Option<u16>,
+    start_idx: usize,
     curr_idx: usize,
     slice: &[u8],
 ) -> Result<u16, PusError> {
     let crc16;
     if calc_on_serialization {
-        crc16 = calc_pus_crc16(&slice[0..curr_idx])
+        crc16 = calc_pus_crc16(&slice[start_idx..curr_idx])
     } else if cached_crc16.is_none() {
         return Err(PusError::CrcCalculationMissing);
     } else {
