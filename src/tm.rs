@@ -252,6 +252,10 @@ impl<'slice> PusTm<'slice> {
         length
     }
 
+    pub fn time_stamp(&self) -> &'slice [u8] {
+        self.sec_header.time_stamp
+    }
+
     /// This is called automatically if the `set_ccsds_len` argument in the [PusTm::new] call was
     /// used.
     /// If this was not done or the time stamp or source data is set or changed after construction,
@@ -426,4 +430,35 @@ impl PusPacket for PusTm<'_> {
 }
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use crate::SpHeader;
+
+    fn base_ping_reply_full_ctor(time_stamp: &'static [u8]) -> PusTm<'static> {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
+        PusTm::new(&mut sph, tc_header, None, true)
+    }
+
+    fn dummy_time_stamp() -> &'static [u8] {
+        return &[1, 2, 3, 4, 5, 6, 7];
+    }
+    #[test]
+    fn test_basic() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        verify_test_tm(&pus_tm, false, 22, dummy_time_stamp());
+    }
+
+    fn verify_test_tm(tm: &PusTm, has_user_data: bool, exp_full_len: usize, exp_time_stamp: &[u8]) {
+        assert!(tm.is_tm());
+        assert_eq!(tm.service(), 17);
+        assert_eq!(tm.subservice(), 2);
+        assert!(tm.sec_header_flag());
+        assert_eq!(tm.len_packed(), exp_full_len);
+        assert_eq!(tm.time_stamp(), exp_time_stamp);
+        if has_user_data {
+            assert!(!tm.user_data().is_none());
+        }
+    }
+}
