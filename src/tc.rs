@@ -173,7 +173,7 @@ impl PusTcSecondaryHeader {
 /// There is no spare bytes support yet
 #[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTc<'slice> {
-    pub sp_header: SpHeader,
+    sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
     /// If this is set to false, a manual call to [PusTc::calc_own_crc16] or
     /// [PusTc::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
@@ -244,10 +244,6 @@ impl<'slice> PusTc<'slice> {
         length
     }
 
-    pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags) {
-        self.sp_header.psc.seq_flags = seq_flag;
-    }
-
     pub fn set_ack_field(&mut self, ack: u8) -> bool {
         if ack > 0b1111 {
             return false;
@@ -260,15 +256,11 @@ impl<'slice> PusTc<'slice> {
         self.sec_header.source_id = source_id;
     }
 
-    /// Forwards the call to [crate::PacketId::set_apid]
-    pub fn set_apid(&mut self, apid: u16) -> bool {
-        self.sp_header.packet_id.set_apid(apid)
-    }
-
-    /// Forwards the call to [crate::PacketSequenceCtrl::set_seq_count]
-    pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
-        self.sp_header.psc.set_seq_count(seq_count)
-    }
+    delegate!(to self.sp_header {
+        pub fn set_apid(&mut self, apid: u16) -> bool;
+        pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+        pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
+    });
 
     /// Calculate the CCSDS space packet data length field and sets it
     /// This is called automatically if the [set_ccsds_len] argument in the [new] call was used.
@@ -372,13 +364,12 @@ impl<'slice> PusTc<'slice> {
     pub fn new_from_raw_slice(
         slice: &'slice [u8],
     ) -> Result<(Self, usize), PusError> {
-        let slice_ref = slice.as_ref();
-        let raw_data_len = slice_ref.len();
+        let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
         let mut current_idx = 0;
-        let sph = crate::zc::SpHeader::from_bytes(&slice_ref[current_idx..current_idx + 6]).ok_or(
+        let sph = crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + 6]).ok_or(
             PusError::OtherPacketError(PacketError::FromBytesZeroCopyError),
         )?;
         current_idx += 6;
@@ -387,7 +378,7 @@ impl<'slice> PusTc<'slice> {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
         let sec_header = crate::tc::zc::PusTcSecondaryHeader::from_bytes(
-            &slice_ref[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
+            &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
         .ok_or(PusError::OtherPacketError(
             PacketError::FromBytesZeroCopyError,
@@ -396,13 +387,13 @@ impl<'slice> PusTc<'slice> {
         let mut pus_tc = PusTc {
             sp_header: SpHeader::from(sph),
             sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
-            raw_data: Some(slice_ref),
+            raw_data: Some(slice),
             app_data: match current_idx {
                 _ if current_idx == total_len - 2 => None,
                 _ if current_idx > total_len - 2 => {
                     return Err(PusError::RawDataTooShort(raw_data_len))
                 }
-                _ => Some(&slice_ref[current_idx..total_len - 2]),
+                _ => Some(&slice[current_idx..total_len - 2]),
             },
             calc_crc_on_serialization: false,
             crc16: None,

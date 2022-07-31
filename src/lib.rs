@@ -634,7 +634,7 @@ mod tests {
         let sp_header_zc = zc::SpHeader::from(sp_header);
         let slice = sp_header_zc.as_bytes();
         assert_eq!(slice.len(), 6);
-        assert_eq!(slice[0], 0x1F);
+        assert_eq!(slice[0], 0x17);
         assert_eq!(slice[1], 0xFF);
         assert_eq!(slice[2], 0xFF);
         assert_eq!(slice[3], 0xFF);
@@ -644,7 +644,7 @@ mod tests {
         let mut slice = [0; 6];
         sp_header_zc.write_to(slice.as_mut_slice());
         assert_eq!(slice.len(), 6);
-        assert_eq!(slice[0], 0x1F);
+        assert_eq!(slice[0], 0x17);
         assert_eq!(slice[1], 0xFF);
         assert_eq!(slice[2], 0xFF);
         assert_eq!(slice[3], 0xFF);
@@ -656,7 +656,7 @@ mod tests {
         sp_header_zc.write_to(slice);
         let slice = test_vec.as_slice();
         assert_eq!(slice.len(), 6);
-        assert_eq!(slice[0], 0x1F);
+        assert_eq!(slice[0], 0x17);
         assert_eq!(slice[1], 0xFF);
         assert_eq!(slice[2], 0xFF);
         assert_eq!(slice[3], 0xFF);
@@ -667,7 +667,7 @@ mod tests {
         assert!(sp_header.is_some());
         let sp_header = sp_header.unwrap();
         assert_eq!(sp_header.ccsds_version(), 0b000);
-        assert_eq!(sp_header.packet_id_raw(), 0x1FFF);
+        assert_eq!(sp_header.packet_id_raw(), 0x17FF);
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.data_len(), 0);
