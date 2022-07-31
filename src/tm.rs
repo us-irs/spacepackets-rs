@@ -1,10 +1,12 @@
 //! This module contains all components required to create a ECSS PUS C telemetry packets according
 //! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 use crate::ecss::{
-    ccsds_impl, crc_from_raw_data, crc_procedure, user_data_from_raw, verify_crc16_from_raw,
-    CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
+    ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
+    verify_crc16_from_raw, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
 };
-use crate::{CcsdsPacket, PacketError, PacketType, SizeMissmatch, SpHeader, CCSDS_HEADER_LEN};
+use crate::{
+    CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, SpHeader, CCSDS_HEADER_LEN,
+};
 use core::mem::size_of;
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
@@ -256,6 +258,20 @@ impl<'slice> PusTm<'slice> {
         self.sec_header.time_stamp
     }
 
+    pub fn set_dest_id(&mut self, dest_id: u16) {
+        self.sec_header.dest_id = dest_id;
+    }
+
+    pub fn set_msg_counter(&mut self, msg_counter: u16) {
+        self.sec_header.msg_counter = msg_counter
+    }
+
+    pub fn set_sc_time_ref_status(&mut self, sc_time_ref_status: u8) {
+        self.sec_header.sc_time_ref_status = sc_time_ref_status & 0b1111;
+    }
+
+    sp_header_impls!();
+
     /// This is called automatically if the `set_ccsds_len` argument in the [PusTm::new] call was
     /// used.
     /// If this was not done or the time stamp or source data is set or changed after construction,
@@ -301,7 +317,7 @@ impl<'slice> PusTm<'slice> {
             ));
         }
         sph_zc
-            .to_bytes(&mut slice[curr_idx..curr_idx + 6])
+            .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
             .ok_or(PusError::OtherPacketError(
                 PacketError::ToBytesZeroCopyError,
             ))?;
@@ -315,9 +331,9 @@ impl<'slice> PusTm<'slice> {
                 PacketError::ToBytesZeroCopyError,
             ))?;
         curr_idx += sec_header_len;
-
-        slice[curr_idx..].copy_from_slice(self.sec_header.time_stamp);
-        curr_idx += self.sec_header.time_stamp.len();
+        let timestamp_len = self.sec_header.time_stamp.len();
+        slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(self.sec_header.time_stamp);
+        curr_idx += timestamp_len;
         if let Some(src_data) = self.source_data {
             slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
             curr_idx += src_data.len();
@@ -373,9 +389,11 @@ impl<'slice> PusTm<'slice> {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
         let mut current_idx = 0;
-        let sph = crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + 6]).ok_or(
-            PusError::OtherPacketError(PacketError::FromBytesZeroCopyError),
-        )?;
+        let sph =
+            crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
+                .ok_or(PusError::OtherPacketError(
+                    PacketError::FromBytesZeroCopyError,
+                ))?;
         current_idx += 6;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
@@ -429,9 +447,22 @@ impl PusPacket for PusTm<'_> {
     }
 }
 
+//noinspection RsTraitImplementation
+impl PusTmSecondaryHeaderT for PusTm<'_> {
+    delegate!(to self.sec_header {
+        fn pus_version(&self) -> PusVersion;
+        fn service(&self) -> u8;
+        fn subservice(&self) -> u8;
+        fn dest_id(&self) -> u16;
+        fn msg_counter(&self) -> u16;
+        fn sc_time_ref_status(&self) -> u8;
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ecss::PusVersion::PusC;
     use crate::SpHeader;
 
     fn base_ping_reply_full_ctor(time_stamp: &'static [u8]) -> PusTm<'static> {
@@ -443,22 +474,56 @@ mod tests {
     fn dummy_time_stamp() -> &'static [u8] {
         return &[1, 2, 3, 4, 5, 6, 7];
     }
+
     #[test]
     fn test_basic() {
         let time_stamp = dummy_time_stamp();
         let pus_tm = base_ping_reply_full_ctor(&time_stamp);
-        verify_test_tm(&pus_tm, false, 22, dummy_time_stamp());
+        verify_test_tm_0(&pus_tm, false, 22, dummy_time_stamp());
     }
 
-    fn verify_test_tm(tm: &PusTm, has_user_data: bool, exp_full_len: usize, exp_time_stamp: &[u8]) {
+    #[test]
+    fn test_serialization_no_source_data() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let mut buf: [u8; 32] = [0; 32];
+        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
+        assert_eq!(ser_len, 22);
+    }
+
+    #[test]
+    fn test_setters() {
+        let time_stamp = dummy_time_stamp();
+        let mut pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        pus_tm.set_sc_time_ref_status(0b1010);
+        pus_tm.set_dest_id(0x7fff);
+        pus_tm.set_msg_counter(0x1f1f);
+        assert_eq!(pus_tm.sc_time_ref_status(), 0b1010);
+        assert_eq!(pus_tm.dest_id(), 0x7fff);
+        assert_eq!(pus_tm.msg_counter(), 0x1f1f);
+    }
+
+    fn verify_test_tm_0(
+        tm: &PusTm,
+        has_user_data: bool,
+        exp_full_len: usize,
+        exp_time_stamp: &[u8],
+    ) {
         assert!(tm.is_tm());
-        assert_eq!(tm.service(), 17);
-        assert_eq!(tm.subservice(), 2);
+        assert_eq!(PusPacket::service(tm), 17);
+        assert_eq!(PusPacket::subservice(tm), 2);
         assert!(tm.sec_header_flag());
         assert_eq!(tm.len_packed(), exp_full_len);
         assert_eq!(tm.time_stamp(), exp_time_stamp);
         if has_user_data {
             assert!(!tm.user_data().is_none());
         }
+        assert_eq!(PusPacket::pus_version(tm), PusC);
+        assert_eq!(tm.apid(), 0x02);
+        assert_eq!(tm.seq_count(), 0x34);
+        assert_eq!(tm.data_len(), exp_full_len as u16 - 7);
+        assert_eq!(tm.dest_id(), 0x0000);
+        assert_eq!(tm.msg_counter(), 0x0000);
+        assert_eq!(tm.sc_time_ref_status(), 0b0000);
     }
 }

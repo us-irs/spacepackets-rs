@@ -122,4 +122,15 @@ macro_rules! ccsds_impl {
     }
 }
 
+macro_rules! sp_header_impls {
+    () => {
+        delegate!(to self.sp_header {
+            pub fn set_apid(&mut self, apid: u16) -> bool;
+            pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+            pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
+        });
+    }
+}
+
 pub(crate) use ccsds_impl;
+pub(crate) use sp_header_impls;

@@ -8,7 +8,7 @@
 //! use spacepackets::tc::{PusTc, PusTcSecondaryHeader};
 //! use spacepackets::ecss::PusPacket;
 //!
-//! // Create a ping telecommand
+//! // Create a ping telecommand with no user application data
 //! let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
 //! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
 //! let pus_tc = PusTc::new(&mut sph, tc_header, None, true);
@@ -32,8 +32,8 @@
 //! assert_eq!(pus_tc.apid(), 0x02);
 //! ```
 use crate::ecss::{
-    ccsds_impl, crc_from_raw_data, crc_procedure, user_data_from_raw, verify_crc16_from_raw,
-    CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
+    ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
+    verify_crc16_from_raw, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
 };
 use crate::SpHeader;
 use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN};
@@ -294,11 +294,7 @@ impl<'slice> PusTc<'slice> {
         self.sec_header.source_id = source_id;
     }
 
-    delegate!(to self.sp_header {
-        pub fn set_apid(&mut self, apid: u16) -> bool;
-        pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
-        pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
-    });
+    sp_header_impls!();
 
     /// Calculate the CCSDS space packet data length field and sets it
     /// This is called automatically if the `set_ccsds_len` argument in the [PusTc::new] call was
@@ -346,7 +342,7 @@ impl<'slice> PusTc<'slice> {
             ));
         }
         sph_zc
-            .to_bytes(&mut slice[curr_idx..curr_idx + 6])
+            .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
             .ok_or(PusError::OtherPacketError(
                 PacketError::ToBytesZeroCopyError,
             ))?;
@@ -407,10 +403,12 @@ impl<'slice> PusTc<'slice> {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
         let mut current_idx = 0;
-        let sph = crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + 6]).ok_or(
-            PusError::OtherPacketError(PacketError::FromBytesZeroCopyError),
-        )?;
-        current_idx += 6;
+        let sph =
+            crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
+                .ok_or(PusError::OtherPacketError(
+                    PacketError::FromBytesZeroCopyError,
+                ))?;
+        current_idx += CCSDS_HEADER_LEN;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
