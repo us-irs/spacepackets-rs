@@ -1,9 +1,11 @@
 use crate::ecss::{crc_procedure, CrcType, PusError, PusVersion, CRC_CCITT_FALSE};
-use crate::ser::SpHeader;
-use crate::{PacketError, PacketType, SizeMissmatch, CCSDS_HEADER_LEN};
+use crate::{PacketError, PacketType, SizeMissmatch, SpHeader, CCSDS_HEADER_LEN};
 use core::mem::size_of;
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 /// Length without timestamp
 pub const PUC_TM_MIN_SEC_HEADER_LEN: usize = 7;
@@ -132,7 +134,8 @@ impl<'slice> PusTm<'slice> {
         source_data: Option<&'slice [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
-        sp_header.packet_id.ptype = PacketType::Tm;
+        sp_header.set_packet_type(PacketType::Tm);
+        sp_header.set_sec_header_flag();
         let mut pus_tm = PusTm {
             sp_header: *sp_header,
             raw_data: None,
@@ -224,6 +227,37 @@ impl<'slice> PusTm<'slice> {
         slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
         curr_idx += 2;
         Ok(curr_idx)
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
+        let sph_zc = crate::zc::SpHeader::from(self.sp_header);
+        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.time_stamp.len();
+        if let Some(src_data) = self.source_data {
+            appended_len += src_data.len();
+        };
+        let start_idx = vec.len();
+        let mut curr_idx = vec.len();
+        vec.extend_from_slice(sph_zc.as_bytes());
+        curr_idx += sph_zc.as_bytes().len();
+        // The PUS version is hardcoded to PUS C
+        let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
+        vec.extend_from_slice(sec_header.as_bytes());
+        curr_idx += sec_header.as_bytes().len();
+        vec.extend_from_slice(self.sec_header.time_stamp);
+        curr_idx += self.sec_header.time_stamp.len();
+        if let Some(src_data) = self.source_data {
+            vec.extend_from_slice(src_data);
+            curr_idx += src_data.len();
+        }
+        let crc16 = crc_procedure(
+            self.calc_crc_on_serialization,
+            &self.crc16,
+            curr_idx,
+            &vec[start_idx..curr_idx],
+        )?;
+        vec.extend_from_slice(crc16.to_be_bytes().as_slice());
+        Ok(appended_len)
     }
 }
 

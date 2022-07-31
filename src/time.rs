@@ -308,6 +308,7 @@ mod tests {
         generic_dt_property_equality_check(dt.minute(), compare_stamp.minute(), 0, 59);
     }
 
+    #[cfg(feature = "std")]
     fn generic_dt_property_equality_check(first: u32, second: u32, start: u32, end: u32) {
         if second < first {
             assert_eq!(second, start);

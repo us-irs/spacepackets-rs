@@ -5,6 +5,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+use delegate::delegate;
 use crate::ecss::CCSDS_HEADER_LEN;
 use serde::{Deserialize, Serialize};
 
@@ -259,102 +260,122 @@ pub trait CcsdsPrimaryHeader {
     ) -> Self;
 }
 
-pub mod ser {
-    use crate::{
-        CcsdsPacket, CcsdsPrimaryHeader, PacketId, PacketSequenceCtrl, PacketType, SequenceFlags,
-    };
-
-    /// Space Packet Primary Header according to CCSDS 133.0-B-2
-    #[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Copy, Clone)]
-    pub struct SpHeader {
-        pub version: u8,
-        pub packet_id: PacketId,
-        pub psc: PacketSequenceCtrl,
-        pub data_len: u16,
-    }
-    impl Default for SpHeader {
-        fn default() -> Self {
-            SpHeader {
-                version: 0,
-                packet_id: PacketId {
-                    ptype: PacketType::Tm,
-                    apid: 0,
-                    sec_header_flag: true,
-                },
-                psc: PacketSequenceCtrl {
-                    seq_flags: SequenceFlags::Unsegmented,
-                    seq_count: 0,
-                },
-                data_len: 0,
-            }
-        }
-    }
-    impl SpHeader {
-        pub fn new(apid: u16, ptype: PacketType, ssc: u16, data_len: u16) -> Option<Self> {
-            if ssc > num::pow(2, 14) - 1 || apid > num::pow(2, 11) - 1 {
-                return None;
-            }
-            let mut header = SpHeader::default();
-            header.packet_id.apid = apid;
-            header.packet_id.ptype = ptype;
-            header.psc.seq_count = ssc;
-            header.data_len = data_len;
-            Some(header)
-        }
-
-        pub fn tm(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
-            Self::new(apid, PacketType::Tm, seq_count, data_len)
-        }
-
-        pub fn tc(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
-            Self::new(apid, PacketType::Tc, seq_count, data_len)
-        }
-    }
-
-    impl CcsdsPacket for SpHeader {
-        #[inline]
-        fn ccsds_version(&self) -> u8 {
-            self.version
-        }
-
-        #[inline]
-        fn packet_id(&self) -> PacketId {
-            self.packet_id
-        }
-
-        #[inline]
-        fn psc(&self) -> PacketSequenceCtrl {
-            self.psc
-        }
-
-        #[inline]
-        fn data_len(&self) -> u16 {
-            self.data_len
-        }
-    }
-
-    impl CcsdsPrimaryHeader for SpHeader {
-        fn from_composite_fields(
-            packet_id: PacketId,
-            psc: PacketSequenceCtrl,
-            data_len: u16,
-            version: Option<u8>,
-        ) -> Self {
-            let mut version_to_set = 0b000;
-            if let Some(version) = version {
-                version_to_set = version;
-            }
-            SpHeader {
-                version: version_to_set,
-                packet_id,
-                psc,
-                data_len,
-            }
-        }
-    }
-
-    sph_from_other!(SpHeader, crate::zc::SpHeader);
+/// Space Packet Primary Header according to CCSDS 133.0-B-2
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Copy, Clone)]
+pub struct SpHeader {
+    pub version: u8,
+    pub packet_id: PacketId,
+    pub psc: PacketSequenceCtrl,
+    pub data_len: u16,
 }
+impl Default for SpHeader {
+    fn default() -> Self {
+        SpHeader {
+            version: 0,
+            packet_id: PacketId {
+                ptype: PacketType::Tm,
+                apid: 0,
+                sec_header_flag: false,
+            },
+            psc: PacketSequenceCtrl {
+                seq_flags: SequenceFlags::Unsegmented,
+                seq_count: 0,
+            },
+            data_len: 0,
+        }
+    }
+}
+impl SpHeader {
+    pub fn new(ptype: PacketType, sec_header: bool, apid: u16, ssc: u16, data_len: u16) -> Option<Self> {
+        if ssc > num::pow(2, 14) - 1 || apid > num::pow(2, 11) - 1 {
+            return None;
+        }
+        let mut header = SpHeader::default();
+        header.packet_id.sec_header_flag = sec_header;
+        header.packet_id.apid = apid;
+        header.packet_id.ptype = ptype;
+        header.psc.seq_count = ssc;
+        header.data_len = data_len;
+        Some(header)
+    }
+
+    pub fn tm(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+        Self::new(PacketType::Tm, false, apid,  seq_count, data_len)
+    }
+
+    pub fn tc(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+        Self::new(PacketType::Tc, false, apid, seq_count, data_len)
+    }
+
+    //noinspection RsTraitImplementation
+    delegate!(to self.packet_id {
+        pub fn set_apid(&mut self, apid: u16) -> bool;
+    });
+
+    delegate!(to self.psc {
+        pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+    });
+
+    pub fn set_seq_flags(&mut self, seq_flags: SequenceFlags) {
+        self.psc.seq_flags = seq_flags;
+    }
+
+    pub fn set_sec_header_flag(&mut self) {
+        self.packet_id.sec_header_flag = true;
+    }
+
+    pub fn clear_sec_header_flag(&mut self) {
+        self.packet_id.sec_header_flag = false;
+    }
+
+    pub fn set_packet_type(&mut self, packet_type: PacketType) {
+        self.packet_id.ptype = packet_type;
+    }
+}
+
+impl CcsdsPacket for SpHeader {
+    #[inline]
+    fn ccsds_version(&self) -> u8 {
+        self.version
+    }
+
+    #[inline]
+    fn packet_id(&self) -> PacketId {
+        self.packet_id
+    }
+
+    #[inline]
+    fn psc(&self) -> PacketSequenceCtrl {
+        self.psc
+    }
+
+    #[inline]
+    fn data_len(&self) -> u16 {
+        self.data_len
+    }
+}
+
+impl CcsdsPrimaryHeader for SpHeader {
+    fn from_composite_fields(
+        packet_id: PacketId,
+        psc: PacketSequenceCtrl,
+        data_len: u16,
+        version: Option<u8>,
+    ) -> Self {
+        let mut version_to_set = 0b000;
+        if let Some(version) = version {
+            version_to_set = version;
+        }
+        SpHeader {
+            version: version_to_set,
+            packet_id,
+            psc,
+            data_len,
+        }
+    }
+}
+
+sph_from_other!(SpHeader, crate::zc::SpHeader);
 
 pub mod zc {
     use crate::{CcsdsPacket, CcsdsPrimaryHeader, PacketId, PacketSequenceCtrl, VERSION_MASK};
@@ -434,12 +455,12 @@ pub mod zc {
         }
     }
 
-    sph_from_other!(SpHeader, crate::ser::SpHeader);
+    sph_from_other!(SpHeader, crate::SpHeader);
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ser::SpHeader;
+    use crate::SpHeader;
     use crate::{
         packet_type_in_raw_packet_id, zc, CcsdsPacket, CcsdsPrimaryHeader, PacketId,
         PacketSequenceCtrl, PacketType, SequenceFlags,
@@ -532,7 +553,7 @@ mod tests {
         let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert!(sp_header.is_tc());
-        assert!(sp_header.sec_header_flag());
+        assert!(!sp_header.sec_header_flag());
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.seq_count(), 12);
         assert_eq!(sp_header.apid(), 0x42);
@@ -541,12 +562,12 @@ mod tests {
         let output = to_stdvec(&sp_header).unwrap();
         let sp_header: SpHeader = from_bytes(&output).unwrap();
         assert_eq!(sp_header.version, 0b000);
-        assert!(sp_header.packet_id.sec_header_flag);
+        assert!(!sp_header.packet_id.sec_header_flag);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.seq_count(), 12);
         assert_eq!(sp_header.apid(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
-        assert_eq!(sp_header.packet_id_raw(), 0x1842);
+        assert_eq!(sp_header.packet_id_raw(), 0x1042);
         assert_eq!(sp_header.psc_raw(), 0xC00C);
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert_eq!(sp_header.data_len, 0);
@@ -554,12 +575,12 @@ mod tests {
         let sp_header = SpHeader::tm(0x7, 22, 36).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert!(sp_header.is_tm());
-        assert!(sp_header.sec_header_flag());
+        assert!(!sp_header.sec_header_flag());
         assert_eq!(sp_header.ptype(), PacketType::Tm);
         assert_eq!(sp_header.seq_count(), 22);
         assert_eq!(sp_header.apid(), 0x07);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
-        assert_eq!(sp_header.packet_id_raw(), 0x0807);
+        assert_eq!(sp_header.packet_id_raw(), 0x0007);
         assert_eq!(sp_header.psc_raw(), 0xC016);
         assert_eq!(sp_header.data_len(), 36);
         assert_eq!(sp_header.ccsds_version(), 0b000);
@@ -579,6 +600,24 @@ mod tests {
         );
         assert_eq!(from_comp_fields.seq_count(), 0x7);
         assert_eq!(from_comp_fields.data_len(), 0);
+    }
+
+    #[test]
+    fn test_sp_header_setters() {
+        let mut sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
+        assert_eq!(sp_header.apid(), 0x42);
+        sp_header.set_apid(0x12);
+        assert_eq!(sp_header.apid(), 0x12);
+
+        sp_header.set_sec_header_flag();
+        assert!(sp_header.sec_header_flag());
+        sp_header.clear_sec_header_flag();
+        assert!(!sp_header.sec_header_flag());
+        sp_header.set_seq_count(0x45);
+        assert_eq!(sp_header.seq_count(), 0x45);
+        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        sp_header.set_packet_type(PacketType::Tm);
+        assert_eq!(sp_header.ptype(), PacketType::Tm);
     }
 
     #[test]

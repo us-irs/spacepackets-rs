@@ -1,13 +1,15 @@
 use crate::ecss::{
     crc_from_raw_data, crc_procedure, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
 };
-use crate::ser::SpHeader;
+use crate::SpHeader;
 use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN};
-use alloc::vec::Vec;
 use core::mem::size_of;
 use delegate::delegate;
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 /// PUS C secondary header length is fixed
 pub const PUC_TC_SECONDARY_HEADER_LEN: usize = size_of::<zc::PusTcSecondaryHeader>();
@@ -201,7 +203,8 @@ impl<'slice> PusTc<'slice> {
         app_data: Option<&'slice [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
-        sp_header.packet_id.ptype = PacketType::Tc;
+        sp_header.set_packet_type(PacketType::Tc);
+        sp_header.set_sec_header_flag();
         let mut pus_tc = PusTc {
             sp_header: *sp_header,
             raw_data: None,
@@ -335,6 +338,7 @@ impl<'slice> PusTc<'slice> {
         Ok(curr_idx)
     }
 
+    #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
@@ -366,7 +370,7 @@ impl<'slice> PusTc<'slice> {
     /// Create a PusTc instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet
     pub fn new_from_raw_slice(
-        slice: &'slice (impl AsRef<[u8]> + ?Sized),
+        slice: &'slice [u8],
     ) -> Result<(Self, usize), PusError> {
         let slice_ref = slice.as_ref();
         let raw_data_len = slice_ref.len();
@@ -465,7 +469,7 @@ impl PusTcSecondaryHeaderT for PusTc<'_> {
 mod tests {
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket};
-    use crate::ser::SpHeader;
+    use crate::SpHeader;
     use crate::tc::ACK_ALL;
     use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
     use crate::{CcsdsPacket, SequenceFlags};
@@ -628,6 +632,7 @@ mod tests {
     fn verify_test_tc(tc: &PusTc, has_user_data: bool, exp_full_len: usize) {
         assert_eq!(PusPacket::service(tc), 17);
         assert_eq!(PusPacket::subservice(tc), 1);
+        assert!(tc.sec_header_flag());
         assert_eq!(PusPacket::pus_version(tc), PusC);
         if !has_user_data {
             assert_eq!(tc.user_data(), None);
@@ -637,9 +642,11 @@ mod tests {
         assert_eq!(tc.apid(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
         assert_eq!(tc.len_packed(), exp_full_len);
+        let mut comp_header = SpHeader::tc(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
+        comp_header.set_sec_header_flag();
         assert_eq!(
             tc.sp_header,
-            SpHeader::tc(0x02, 0x34, exp_full_len as u16 - 7).unwrap()
+            comp_header
         );
     }
 
