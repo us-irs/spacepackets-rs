@@ -283,6 +283,9 @@ mod tests {
     #[test]
     fn test_packing() {}
 
+    #[test]
+    fn test_reading() {}
+
     #[cfg(feature = "std")]
     #[test]
     fn test_time_now() {
