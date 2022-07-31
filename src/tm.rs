@@ -466,13 +466,13 @@ mod tests {
     use crate::SpHeader;
 
     fn base_ping_reply_full_ctor(time_stamp: &'static [u8]) -> PusTm<'static> {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut sph = SpHeader::tc(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
         PusTm::new(&mut sph, tc_header, None, true)
     }
 
     fn dummy_time_stamp() -> &'static [u8] {
-        return &[1, 2, 3, 4, 5, 6, 7];
+        return &[0, 1, 2, 3, 4, 5, 6];
     }
 
     #[test]
@@ -489,6 +489,31 @@ mod tests {
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
         assert_eq!(ser_len, 22);
+        // Secondary header is set -> 0b0000_1001 , APID occupies last bit of first byte
+        assert_eq!(buf[0], 0x09);
+        // Rest of APID 0x123
+        assert_eq!(buf[1], 0x23);
+        // Unsegmented is the default, and first byte of 0x234 occupies this byte as well
+        assert_eq!(buf[2], 0xc2);
+        assert_eq!(buf[3], 0x34);
+        assert_eq!(((buf[4] as u16) << 8) | buf[5] as u16, 15);
+        // SC time ref status is 0
+        assert_eq!(buf[6], (PusC as u8) << 4);
+        assert_eq!(buf[7], 17);
+        assert_eq!(buf[8], 2);
+        // MSG counter 0
+        assert_eq!(buf[9], 0x00);
+        assert_eq!(buf[10], 0x00);
+        // Destination ID
+        assert_eq!(buf[11], 0x00);
+        assert_eq!(buf[12], 0x00);
+        // Timestamp
+        assert_eq!(&buf[13..20], dummy_time_stamp());
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(&buf[0..20]);
+        let crc16 = digest.finalize();
+        assert_eq!(((crc16 >> 8) & 0xff) as u8, buf[20]);
+        assert_eq!((crc16 & 0xff) as u8, buf[21]);
     }
 
     #[test]
@@ -502,6 +527,9 @@ mod tests {
         assert_eq!(pus_tm.dest_id(), 0x7fff);
         assert_eq!(pus_tm.msg_counter(), 0x1f1f);
     }
+
+    #[test]
+    fn test_deserialization() {}
 
     fn verify_test_tm_0(
         tm: &PusTm,
@@ -519,8 +547,8 @@ mod tests {
             assert!(!tm.user_data().is_none());
         }
         assert_eq!(PusPacket::pus_version(tm), PusC);
-        assert_eq!(tm.apid(), 0x02);
-        assert_eq!(tm.seq_count(), 0x34);
+        assert_eq!(tm.apid(), 0x123);
+        assert_eq!(tm.seq_count(), 0x234);
         assert_eq!(tm.data_len(), exp_full_len as u16 - 7);
         assert_eq!(tm.dest_id(), 0x0000);
         assert_eq!(tm.msg_counter(), 0x0000);
