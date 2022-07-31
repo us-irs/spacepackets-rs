@@ -529,7 +529,17 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialization() {}
+    fn test_deserialization() {
+        let time_stamp = dummy_time_stamp();
+        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let mut buf: [u8; 32] = [0; 32];
+        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
+        assert_eq!(ser_len, 22);
+        let (tm_deserialized, size) =
+            PusTm::new_from_raw_slice(&buf, 7).expect("Deserialization failed");
+        assert_eq!(ser_len, size);
+        verify_test_tm_0(&tm_deserialized, false, 22, dummy_time_stamp());
+    }
 
     fn verify_test_tm_0(
         tm: &PusTm,
