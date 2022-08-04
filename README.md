@@ -16,7 +16,8 @@ Currently, this includes the following components:
 
 This package is suitable for `no_std` environments.
 
-It features optional support for the `alloc` crate and also offers support
-for `serde`. The Space Paccket, PUS TM and TC implementations derive
-the `serde` `Serialize` and `Deserialize` trait. This allows serializing and
-deserializing them with an appropriate `serde` provider like `postcard`.
+It features optional support for the [`alloc`](https://doc.rust-lang.org/alloc/) crate
+and also offers support for [`serde`](https://serde.rs/). The Space Paccket, PUS TM and TC implementations
+derive the `serde` `Serialize` and `Deserialize` trait. This allows serializing and
+deserializing them with an appropriate `serde` provider like
+[`postcard`](https://github.com/jamesmunns/postcard).
