@@ -13,21 +13,17 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 
 [dependencies]
 num = "0.4"
-serde = "1.0.137"
+serde = "1.0.142"
 zerocopy = "0.6.1"
 crc = "3.0.0"
 delegate = "0.7.0"
-chrono = "0.4.19"
-
-[dependencies.heapless]
-version = "0.7.14"
-optional = true
+chrono = "0.4.20"
 
 [dev-dependencies.postcard]
 version = "0.7.3"
 features = ["use-std"]
 
 [features]
-default = ["heapless", "alloc"]
+default = ["alloc"]
 std = ["postcard/use-std"]
 alloc = ["serde/alloc"]
