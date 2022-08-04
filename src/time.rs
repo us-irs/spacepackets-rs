@@ -10,6 +10,7 @@ pub const CDS_SHORT_LEN: usize = 7;
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
 pub const SECONDS_PER_DAY: u32 = 86400;
 
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum CcsdsTimeCodes {
     None = 0,
     CucCcsdsEpoch = 0b001,
@@ -32,9 +33,13 @@ impl TryFrom<u8> for CcsdsTimeCodes {
         }
     }
 }
+
+#[derive(Debug, PartialEq)]
 pub enum TimestampError {
+    /// Contains tuple where first value is the expected time code and the second
+    /// value is the found raw value
     InvalidTimeCode(CcsdsTimeCodes, u8),
-    PacketError(PacketError),
+    OtherPacketError(PacketError),
 }
 
 #[cfg(feature = "std")]
@@ -194,7 +199,7 @@ impl TimeWriter for CdsShortTimeProvider {
         }
         buf[0] = self.pfield;
         buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
-        buf[4..].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
+        buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
         Ok(())
     }
 }
@@ -202,7 +207,7 @@ impl TimeWriter for CdsShortTimeProvider {
 impl TimeReader for CdsShortTimeProvider {
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
         if buf.len() < CDS_SHORT_LEN {
-            return Err(TimestampError::PacketError(
+            return Err(TimestampError::OtherPacketError(
                 PacketError::FromBytesSliceTooSmall(SizeMissmatch {
                     expected: CDS_SHORT_LEN,
                     found: buf.len(),
@@ -228,7 +233,7 @@ impl TimeReader for CdsShortTimeProvider {
             }
         };
         let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
-        let ms_of_day: u32 = u32::from_be_bytes(buf[4..].try_into().unwrap());
+        let ms_of_day: u32 = u32::from_be_bytes(buf[3..7].try_into().unwrap());
         Ok(Self::new(ccsds_days, ms_of_day))
     }
 }
@@ -236,6 +241,9 @@ impl TimeReader for CdsShortTimeProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::time::TimestampError::{InvalidTimeCode, OtherPacketError};
+    use crate::PacketError::{FromBytesSliceTooSmall, ToBytesSliceTooSmall};
+    use alloc::format;
     use chrono::{Datelike, Timelike};
 
     #[test]
@@ -257,6 +265,11 @@ mod tests {
         assert_eq!(
             time_stamper.unix_seconds(),
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
+        );
+        assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(
+            time_stamper.p_field(),
+            (1, [(CcsdsTimeCodes::Cds as u8) << 4, 0])
         );
         let date_time = time_stamper.date_time();
         assert_eq!(date_time.year(), 1958);
@@ -281,10 +294,114 @@ mod tests {
     }
 
     #[test]
-    fn test_packing() {}
+    fn test_write() {
+        let mut buf = [0; 16];
+        let time_stamper_0 = CdsShortTimeProvider::new(0, 0);
+        let mut res = time_stamper_0.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(
+            u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
+            0
+        );
+        assert_eq!(
+            u32::from_be_bytes(buf[3..7].try_into().expect("Byte conversion failed")),
+            0
+        );
+        let time_stamper_1 = CdsShortTimeProvider::new(u16::MAX - 1, u32::MAX - 1);
+        res = time_stamper_1.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(
+            u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
+            u16::MAX - 1
+        );
+        assert_eq!(
+            u32::from_be_bytes(buf[3..7].try_into().expect("Byte conversion failed")),
+            u32::MAX - 1
+        );
+    }
 
     #[test]
-    fn test_reading() {}
+    fn test_faulty_write_buf_too_small() {
+        let mut buf = [0; 7];
+        let time_stamper = CdsShortTimeProvider::new(u16::MAX - 1, u32::MAX - 1);
+        for i in 0..6 {
+            let res = time_stamper.write_to_bytes(&mut buf[0..i]);
+            assert!(res.is_err());
+            match res.unwrap_err() {
+                ToBytesSliceTooSmall(missmatch) => {
+                    assert_eq!(missmatch.found, i);
+                    assert_eq!(missmatch.expected, 7);
+                }
+                _ => panic!(
+                    "{}",
+                    format!("Invalid error {:?} detected", res.unwrap_err())
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_faulty_read_buf_too_small() {
+        let buf = [0; 7];
+        for i in 0..6 {
+            let res = CdsShortTimeProvider::from_bytes(&buf[0..i]);
+            assert!(res.is_err());
+            match res.unwrap_err() {
+                InvalidTimeCode(_, _) => {
+                    panic!("Unexpected error");
+                }
+                OtherPacketError(e) => match e {
+                    FromBytesSliceTooSmall(missmatch) => {
+                        assert_eq!(missmatch.found, i);
+                        assert_eq!(missmatch.expected, 7);
+                    }
+                    _ => panic!("{}", format!("Invalid error {:?} detected", e)),
+                },
+            }
+        }
+    }
+
+    #[test]
+    fn test_faulty_invalid_pfield() {
+        let mut buf = [0; 16];
+        let time_stamper_0 = CdsShortTimeProvider::new(0, 0);
+        let res = time_stamper_0.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        buf[0] = 0;
+        let res = CdsShortTimeProvider::from_bytes(&buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        match err {
+            InvalidTimeCode(code, raw) => {
+                assert_eq!(code, CcsdsTimeCodes::Cds);
+                assert_eq!(raw, 0);
+            }
+            OtherPacketError(_) => {}
+        }
+    }
+
+    #[test]
+    fn test_reading() {
+        let mut buf = [0; 16];
+        let time_stamper = CdsShortTimeProvider::new(u16::MAX - 1, u32::MAX - 1);
+        let res = time_stamper.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(
+            u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
+            u16::MAX - 1
+        );
+        assert_eq!(
+            u32::from_be_bytes(buf[3..7].try_into().expect("Byte conversion failed")),
+            u32::MAX - 1
+        );
+
+        let read_stamp = CdsShortTimeProvider::from_bytes(&buf).expect("Reading timestamp failed");
+        assert_eq!(read_stamp.ccsds_days, u16::MAX - 1);
+        assert_eq!(read_stamp.ms_of_day, u32::MAX - 1);
+    }
 
     #[cfg(feature = "std")]
     #[test]

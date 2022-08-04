@@ -23,8 +23,6 @@ chrono = "0.4.19"
 version = "0.7.14"
 optional = true
 
-[dev-dependencies]
-
 [dev-dependencies.postcard]
 version = "0.7.3"
 features = ["use-std"]

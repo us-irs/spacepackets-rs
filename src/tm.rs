@@ -519,6 +519,8 @@ mod tests {
         assert_eq!(pus_tm.sc_time_ref_status(), 0b1010);
         assert_eq!(pus_tm.dest_id(), 0x7fff);
         assert_eq!(pus_tm.msg_counter(), 0x1f1f);
+        assert!(pus_tm.set_apid(0x7ff));
+        assert_eq!(pus_tm.apid(), 0x7ff);
     }
 
     #[test]

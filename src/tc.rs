@@ -472,8 +472,8 @@ mod tests {
     use crate::ecss::{PusError, PusPacket};
     use crate::tc::ACK_ALL;
     use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
-    use crate::SpHeader;
     use crate::{CcsdsPacket, SequenceFlags};
+    use crate::{PacketError, SpHeader};
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {
@@ -526,6 +526,15 @@ mod tests {
         verify_crc_no_app_data(&test_buf);
     }
 
+    #[test]
+    fn test_update_func() {
+        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut tc = PusTc::new_simple(&mut sph, 17, 1, None, false);
+        tc.calc_crc_on_serialization = false;
+        assert_eq!(tc.data_len(), 0);
+        tc.update_packet_fields();
+        assert_eq!(tc.data_len(), 6);
+    }
     #[test]
     fn test_deserialization_with_app_data() {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
@@ -607,6 +616,25 @@ mod tests {
         assert_eq!(test_vec[12], 2);
         assert_eq!(test_vec[13], 3);
         assert_eq!(size, 16);
+    }
+
+    #[test]
+    fn test_write_buf_too_msall() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf = [0; 12];
+        let res = pus_tc.write_to(test_buf.as_mut_slice());
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        match err {
+            PusError::PacketError(err) => match err {
+                PacketError::ToBytesSliceTooSmall(missmatch) => {
+                    assert_eq!(missmatch.expected, pus_tc.len_packed());
+                    assert_eq!(missmatch.found, 12);
+                }
+                _ => panic!("Unexpected error"),
+            },
+            _ => panic!("Unexpected error"),
+        }
     }
 
     #[test]
