@@ -369,6 +369,17 @@ impl SpHeader {
     pub fn set_packet_type(&mut self, packet_type: PacketType) {
         self.packet_id.ptype = packet_type;
     }
+
+    pub fn from_raw_slice(buf: &[u8]) -> Result<Self, PacketError> {
+        if buf.len() < CCSDS_HEADER_LEN + 1 {
+            return Err(PacketError::FromBytesSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: CCSDS_HEADER_LEN + 1,
+            }));
+        }
+        let zc_header = zc::SpHeader::from_bytes(buf).ok_or(PacketError::FromBytesZeroCopyError)?;
+        Ok(Self::from(zc_header))
+    }
 }
 
 impl CcsdsPacket for SpHeader {
@@ -446,12 +457,12 @@ pub mod zc {
             }
         }
 
-        pub fn from_bytes(slice: &(impl AsRef<[u8]> + ?Sized)) -> Option<Self> {
-            SpHeader::read_from(slice.as_ref())
+        pub fn from_bytes(slice: &[u8]) -> Option<Self> {
+            SpHeader::read_from(slice)
         }
 
-        pub fn to_bytes(&self, slice: &mut (impl AsMut<[u8]> + ?Sized)) -> Option<()> {
-            self.write_to(slice.as_mut())
+        pub fn to_bytes(&self, slice: &mut [u8]) -> Option<()> {
+            self.write_to(slice)
         }
     }
 
