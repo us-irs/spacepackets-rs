@@ -40,8 +40,8 @@ pub mod tm;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SizeMissmatch {
-    found: usize,
-    expected: usize,
+    pub found: usize,
+    pub expected: usize,
 }
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum PacketError {
