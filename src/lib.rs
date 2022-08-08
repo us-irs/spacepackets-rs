@@ -377,7 +377,8 @@ impl SpHeader {
                 expected: CCSDS_HEADER_LEN + 1,
             }));
         }
-        let zc_header = zc::SpHeader::from_bytes(buf).ok_or(PacketError::FromBytesZeroCopyError)?;
+        let zc_header = zc::SpHeader::from_bytes(&buf[0..CCSDS_HEADER_LEN])
+            .ok_or(PacketError::FromBytesZeroCopyError)?;
         Ok(Self::from(zc_header))
     }
 }
