@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [unreleased]
 
-## [0.1.0]
+## [v0.1.0] 16.08.2022
 
-Initial version with CCSDS Space Packet Primary Header
-implementation and basic PUS TC and TM implementations
+Initial release with CCSDS Space Packet Primary Header implementation and basic PUS TC and TM
+implementations.
