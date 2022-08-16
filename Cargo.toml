@@ -24,7 +24,6 @@ features = ["derive"]
 [dependencies.chrono]
 version = "0.4.20"
 default-features = false
-features = ["serde"]
 
 [dependencies.num-traits]
 version = "0.2"
