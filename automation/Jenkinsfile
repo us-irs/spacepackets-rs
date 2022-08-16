@@ -28,5 +28,10 @@ pipeline {
                 sh 'cargo check'
             }
         }
+        stage('Check Cross') {
+            steps {
+                sh 'cross check --target thumbv7em-none-eabihf --no-default-features'
+            }
+        }
     }
 }
