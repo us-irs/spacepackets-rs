@@ -24,6 +24,17 @@ pipeline {
                 sh 'cargo fmt'
             }
         }
+        stage('Test') {
+            agent {
+                dockerfile {
+                    dir 'automation'
+                    reuseNode true
+                }
+            }
+            steps {
+                sh 'cargo check'
+            }
+        }
         stage('Check') {
             agent {
                 dockerfile {
