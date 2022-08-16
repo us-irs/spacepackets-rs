@@ -11,4 +11,3 @@ ARG DEBIAN_FRONTEND=noninteractive
 ENV CROSS_CONTAINER_IN_CONTAINER=true
 
 RUN rustup component add rustfmt clippy
-RUN cargo install cross
