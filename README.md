@@ -27,7 +27,7 @@ deserializing them with an appropriate `serde` provider like
 
 Default features:
 
- - `std`: Enables functionality relying on the standard library.
- - `alloc`: (https://doc.rust-lang.org/alloc/): Enables features which operate on containers
+ - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
+ - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
    like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
    Enabled by the `std` features.
