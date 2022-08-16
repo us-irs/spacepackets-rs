@@ -10,4 +10,5 @@ ARG DEBIAN_FRONTEND=noninteractive
 # set CROSS_CONTAINER_IN_CONTAINER to inform `cross` that it is executed from within a container
 ENV CROSS_CONTAINER_IN_CONTAINER=true
 
-RUN rustup component add rustfmt clippy cargo && cargo install cross
+RUN cargo install cross
+RUN rustup component add rustfmt clippy
