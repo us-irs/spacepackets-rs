@@ -1,3 +1,7 @@
+[![Crates.io](https://img.shields.io/crates/v/spacepackets)](https://crates.io/crates/spacepackets)
+[![docs.rs](https://img.shields.io/docsrs/spacepackets)](https://docs.rs/spacepackets)
+[![ci](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml)
+
 ECSS and CCSDS Spacepackets
 ======
 
@@ -30,4 +34,4 @@ Default features:
  - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
  - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
    like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
-   Enabled by the `std` features.
+   Enabled by the `std` feature.
