@@ -13,11 +13,21 @@ Currently, this includes the following components:
   [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 - CDS Short Time Code implementations according to
   [CCSDS CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+ 
+# Features
 
-This package is suitable for `no_std` environments.
+`spacepackets` supports various runtime environments and is also suitable
+for suitable for `no_std` environments. It has several features which may be enabled
+for disabled.
 
-It features optional support for the [`alloc`](https://doc.rust-lang.org/alloc/) crate
-and also offers support for [`serde`](https://serde.rs/). The Space Paccket, PUS TM and TC implementations
-derive the `serde` `Serialize` and `Deserialize` trait. This allows serializing and
+It also offers support for [`serde`](https://serde.rs/). The Space Paccket, PUS TM and TC
+implementations derive the `serde` `Serialize` and `Deserialize` trait. This allows serializing and
 deserializing them with an appropriate `serde` provider like
 [`postcard`](https://github.com/jamesmunns/postcard).
+
+Default features:
+
+ - [`std`] : Enables functionality relying on the standard library.
+ - [`alloc`] : (https://doc.rust-lang.org/alloc/): Enables features which operate on containers
+   like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
+   Enabled by the `std` features.

@@ -24,13 +24,14 @@
 //! println!("{:?}", sp_header);
 //! ```
 #![no_std]
+#[cfg(feature = "alloc")]
 extern crate alloc;
-
 #[cfg(feature = "std")]
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
 use delegate::delegate;
+
 use serde::{Deserialize, Serialize};
 
 pub mod ecss;
@@ -121,7 +122,7 @@ impl PacketId {
     /// not be set and false will be returned. The maximum allowed value for the 11-bit field is
     /// 2047
     pub fn set_apid(&mut self, apid: u16) -> bool {
-        if apid > num::pow(2, 11) - 1 {
+        if apid > 2u16.pow(11) - 1 {
             return false;
         }
         self.apid = apid;
@@ -168,7 +169,7 @@ impl PacketSequenceCtrl {
     /// Set a new sequence count. If the passed number is invalid, the sequence count will not be
     /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383
     pub fn set_seq_count(&mut self, ssc: u16) -> bool {
-        if ssc > num::pow(2, 14) - 1 {
+        if ssc > 2u16.pow(14) - 1 {
             return false;
         }
         self.seq_count = ssc;
@@ -325,7 +326,7 @@ impl SpHeader {
         ssc: u16,
         data_len: u16,
     ) -> Option<Self> {
-        if ssc > num::pow(2, 14) - 1 || apid > num::pow(2, 11) - 1 {
+        if ssc > 2u16.pow(14) - 1 || apid > 2u16.pow(11) - 1 {
             return None;
         }
         let mut header = SpHeader::default();
@@ -510,17 +511,21 @@ pub mod zc {
 
 #[cfg(test)]
 mod tests {
-    use crate::SpHeader;
-    use crate::{
-        packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId,
-        PacketSequenceCtrl, PacketType, SequenceFlags,
-    };
-    use alloc::vec;
-    use postcard::from_bytes;
-    #[cfg(feature = "std")]
-    use postcard::to_stdvec;
     #[cfg(feature = "std")]
     use crate::CcsdsPrimaryHeader;
+    use crate::SpHeader;
+    use crate::{
+        packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId, PacketSequenceCtrl, PacketType,
+        SequenceFlags,
+    };
+    use alloc::vec;
+    #[cfg(not(feature = "std"))]
+    use num::pow;
+    #[cfg(feature = "std")]
+    use num_traits::pow;
+    use postcard::from_bytes;
+    #[cfg(feature = "alloc")]
+    use postcard::to_allocvec;
 
     #[test]
     fn test_seq_flag_helpers() {
@@ -593,7 +598,7 @@ mod tests {
         let psc_from_raw = PacketSequenceCtrl::from(psc.raw());
         assert_eq!(psc_from_raw, psc);
         // Fails because SSC is limited to 14 bits
-        assert!(!psc.set_seq_count(num::pow(2, 15)));
+        assert!(!psc.set_seq_count(2u16.pow(15)));
         assert_eq!(psc.raw(), 77);
 
         let psc_invalid = PacketSequenceCtrl::new(SequenceFlags::FirstSegment, 0xFFFF);
@@ -614,7 +619,7 @@ mod tests {
         assert_eq!(sp_header.apid(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(sp_header.data_len(), 0);
-        let output = to_stdvec(&sp_header).unwrap();
+        let output = to_allocvec(&sp_header).unwrap();
         let sp_header: SpHeader = from_bytes(&output).unwrap();
         assert_eq!(sp_header.version, 0b000);
         assert!(!sp_header.packet_id.sec_header_flag);
@@ -679,8 +684,7 @@ mod tests {
     fn test_zc_sph() {
         use zerocopy::AsBytes;
 
-        let sp_header =
-            SpHeader::tc(0x7FF, num::pow(2, 14) - 1, 0).expect("Error creating SP header");
+        let sp_header = SpHeader::tc(0x7FF, pow(2, 14) - 1, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.data_len(), 0);

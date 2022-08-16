@@ -4,7 +4,7 @@ use chrono::{DateTime, TimeZone, Utc};
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
-use num::traits::float::FloatCore;
+use num_traits::float::FloatCore;
 
 use crate::time::CcsdsTimeCodes::Cds;
 #[cfg(feature = "std")]
@@ -132,7 +132,7 @@ impl CdsShortTimeProvider {
             unix_seconds: 0,
             date_time: None,
         };
-        Ok(provider.setup(unix_days_seconds as i64, ms_of_day.into()))
+        Ok(provider.setup(unix_days_seconds as i64, ms_of_day))
     }
 
     fn setup(mut self, unix_days_seconds: i64, ms_of_day: u64) -> Self {
