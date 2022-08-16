@@ -10,5 +10,5 @@ ARG DEBIAN_FRONTEND=noninteractive
 # set CROSS_CONTAINER_IN_CONTAINER to inform `cross` that it is executed from within a container
 ENV CROSS_CONTAINER_IN_CONTAINER=true
 
-RUN rustup target add thumbv7m-none-eabi && \
+RUN rustup target add thumbv7em-none-eabi && \
     rustup component add rustfmt clippy
