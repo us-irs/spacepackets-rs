@@ -28,9 +28,14 @@ pipeline {
                 sh 'cargo check'
             }
         }
-        stage('Check Cross') {
+        stage('Check Cross Embedded Bare Metal') {
             steps {
                 sh 'cargo check --target thumbv7em-none-eabihf --no-default-features'
+            }
+        }
+        stage('Check Cross Embedded Linux') {
+            steps {
+                sh 'cargo check --target armv7-unknown-linux-gnueabihf'
             }
         }
     }
