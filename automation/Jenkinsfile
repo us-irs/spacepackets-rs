@@ -1,47 +1,29 @@
 pipeline {
-    agent any
+
+    agent {
+        dockerfile {
+            dir 'automation'
+            reuseNode true
+        }
+    }
 
     stages {
         stage('Clippy') {
-            agent {
-                dockerfile {
-                    dir 'automation'
-                    reuseNode true
-                }
-            }
             steps {
                 sh 'cargo clippy'
             }
         }
         stage('Rustfmt') {
-            agent {
-                dockerfile {
-                    dir 'automation'
-                    reuseNode true
-                }
-            }
             steps {
                 sh 'cargo fmt'
             }
         }
         stage('Test') {
-            agent {
-                dockerfile {
-                    dir 'automation'
-                    reuseNode true
-                }
-            }
             steps {
-                sh 'cargo check'
+                sh 'cargo test'
             }
         }
         stage('Check') {
-            agent {
-                dockerfile {
-                    dir 'automation'
-                    reuseNode true
-                }
-            }
             steps {
                 sh 'cargo check'
             }
