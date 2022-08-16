@@ -14,7 +14,7 @@ pub const CDS_SHORT_LEN: usize = 7;
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
 pub const SECONDS_PER_DAY: u32 = 86400;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum CcsdsTimeCodes {
     None = 0,
     CucCcsdsEpoch = 0b001,
@@ -38,7 +38,7 @@ impl TryFrom<u8> for CcsdsTimeCodes {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value

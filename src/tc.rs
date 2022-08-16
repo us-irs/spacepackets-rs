@@ -134,7 +134,7 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTcSecondaryHeader {
     pub service: u8,
     pub subservice: u8,
@@ -209,7 +209,7 @@ impl PusTcSecondaryHeader {
 /// [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct PusTc<'slice> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,

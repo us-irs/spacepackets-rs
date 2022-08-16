@@ -59,12 +59,12 @@ pub mod tc;
 pub mod time;
 pub mod tm;
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SizeMissmatch {
     pub found: usize,
     pub expected: usize,
 }
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PacketError {
     /// The passed slice is too small. Returns the found and expected minimum size
     ToBytesSliceTooSmall(SizeMissmatch),
@@ -75,7 +75,7 @@ pub enum PacketError {
     FromBytesZeroCopyError,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum PacketType {
     Tm = 0,
     Tc = 1,
@@ -97,7 +97,7 @@ pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
     PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 pub enum SequenceFlags {
     ContinuationSegment = 0b00,
     FirstSegment = 0b01,
@@ -121,7 +121,7 @@ impl TryFrom<u8> for SequenceFlags {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
@@ -168,7 +168,7 @@ impl From<u16> for PacketId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 pub struct PacketSequenceCtrl {
     pub seq_flags: SequenceFlags,
     seq_count: u16,
@@ -314,7 +314,7 @@ pub trait CcsdsPrimaryHeader {
 ///    13 bits of the first two bytes of the raw header
 /// * `psc` - Packet Sequence Control, occupies the third and fourth byte of the raw header
 /// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Copy, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
 pub struct SpHeader {
     pub version: u8,
     pub packet_id: PacketId,

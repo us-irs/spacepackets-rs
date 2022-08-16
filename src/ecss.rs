@@ -12,7 +12,7 @@ pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
 /// All PUS versions. Only PUS C is supported by this library.
-#[derive(PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
 pub enum PusVersion {
     EsaPus = 0,
     PusA = 1,
@@ -33,7 +33,7 @@ impl TryFrom<u8> for PusVersion {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     IncorrectCrc(u16),

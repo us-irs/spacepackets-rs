@@ -103,7 +103,7 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Debug)]
 pub struct PusTmSecondaryHeader<'slice> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u8,
@@ -197,7 +197,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct PusTm<'slice> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'slice>,
