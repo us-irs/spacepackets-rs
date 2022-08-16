@@ -512,11 +512,15 @@ pub mod zc {
 mod tests {
     use crate::SpHeader;
     use crate::{
-        packet_type_in_raw_packet_id, zc, CcsdsPacket, CcsdsPrimaryHeader, PacketId,
+        packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId,
         PacketSequenceCtrl, PacketType, SequenceFlags,
     };
     use alloc::vec;
-    use postcard::{from_bytes, to_stdvec};
+    use postcard::from_bytes;
+    #[cfg(feature = "std")]
+    use postcard::to_stdvec;
+    #[cfg(feature = "std")]
+    use crate::CcsdsPrimaryHeader;
 
     #[test]
     fn test_seq_flag_helpers() {
@@ -599,6 +603,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "std")]
     fn test_serde_sph() {
         let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);

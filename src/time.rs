@@ -2,6 +2,10 @@
 use crate::{PacketError, SizeMissmatch};
 use chrono::{DateTime, TimeZone, Utc};
 
+#[allow(unused_imports)]
+#[cfg(not(feature = "std"))]
+use num::traits::float::FloatCore;
+
 use crate::time::CcsdsTimeCodes::Cds;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, SystemTimeError};

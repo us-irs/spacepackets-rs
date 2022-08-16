@@ -12,18 +12,17 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-num = "0.4"
-serde = { version = "1.0.142", features = ["derive"] }
+num = { version = "0.4", default-features = false }
+serde = { version = "1.0.142", default-features = false, features = ["derive"] }
 zerocopy = "0.6.1"
 crc = "3.0.0"
 delegate = "0.7.0"
-chrono = "0.4.20"
+chrono = { version = "0.4.20", default-features = false }
 
 [dev-dependencies.postcard]
 version = "1.0.1"
-features = ["use-std"]
 
 [features]
 default = ["alloc"]
-std = ["postcard/use-std"]
-alloc = ["serde/alloc"]
+std = ["chrono/std", "chrono/clock", "postcard/use-std"]
+alloc = ["serde/alloc", "chrono/alloc", "postcard/alloc"]
