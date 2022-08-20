@@ -46,7 +46,7 @@
 #![no_std]
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
