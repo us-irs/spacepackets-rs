@@ -431,6 +431,10 @@ impl<'slice> PusTc<'slice> {
         verify_crc16_from_raw(raw_data, pus_tc.crc16.expect("CRC16 invalid"))?;
         Ok((pus_tc, total_len))
     }
+
+    pub fn raw(&self) -> Option<&'slice [u8]> {
+        self.raw_data
+    }
 }
 
 //noinspection RsTraitImplementation
