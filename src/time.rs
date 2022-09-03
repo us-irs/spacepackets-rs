@@ -71,7 +71,7 @@ pub const fn ccsds_to_unix_days(ccsds_days: i32) -> i32 {
 }
 
 pub trait TimeWriter {
-    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), PacketError>;
+    fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<(), TimestampError>;
 }
 
 pub trait TimeReader {
@@ -194,12 +194,14 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
 }
 
 impl TimeWriter for CdsShortTimeProvider {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), PacketError> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), TimestampError> {
         if buf.len() < self.len_as_bytes() {
-            return Err(PacketError::ToBytesSliceTooSmall(SizeMissmatch {
-                expected: self.len_as_bytes(),
-                found: buf.len(),
-            }));
+            return Err(TimestampError::OtherPacketError(
+                PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+                    expected: self.len_as_bytes(),
+                    found: buf.len(),
+                }),
+            ));
         }
         buf[0] = self.pfield;
         buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
