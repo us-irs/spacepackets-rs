@@ -38,7 +38,7 @@ impl TryFrom<u8> for CcsdsTimeCodes {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value
@@ -336,7 +336,7 @@ mod tests {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
             match res.unwrap_err() {
-                ToBytesSliceTooSmall(missmatch) => {
+                OtherPacketError(ToBytesSliceTooSmall(missmatch)) => {
                     assert_eq!(missmatch.found, i);
                     assert_eq!(missmatch.expected, 7);
                 }
