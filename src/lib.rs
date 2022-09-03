@@ -65,14 +65,14 @@ pub struct SizeMissmatch {
     pub expected: usize,
 }
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum PacketError {
+pub enum ByteConversionError {
     /// The passed slice is too small. Returns the found and expected minimum size
-    ToBytesSliceTooSmall(SizeMissmatch),
+    ToSliceTooSmall(SizeMissmatch),
     /// The provider buffer it soo small. Returns the found and expected minimum size
-    FromBytesSliceTooSmall(SizeMissmatch),
+    FromSliceTooSmall(SizeMissmatch),
     /// The [zerocopy] library failed to write to bytes
-    ToBytesZeroCopyError,
-    FromBytesZeroCopyError,
+    ZeroCopyToError,
+    ZeroCopyFromError,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
@@ -391,15 +391,15 @@ impl SpHeader {
         self.packet_id.ptype = packet_type;
     }
 
-    pub fn from_raw_slice(buf: &[u8]) -> Result<Self, PacketError> {
+    pub fn from_raw_slice(buf: &[u8]) -> Result<Self, ByteConversionError> {
         if buf.len() < CCSDS_HEADER_LEN + 1 {
-            return Err(PacketError::FromBytesSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN + 1,
             }));
         }
         let zc_header = zc::SpHeader::from_bytes(&buf[0..CCSDS_HEADER_LEN])
-            .ok_or(PacketError::FromBytesZeroCopyError)?;
+            .ok_or(ByteConversionError::ZeroCopyFromError)?;
         Ok(Self::from(zc_header))
     }
 }

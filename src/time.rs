@@ -1,5 +1,5 @@
 //! CCSDS Time Code Formats according to [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
-use crate::{PacketError, SizeMissmatch};
+use crate::{ByteConversionError, SizeMissmatch};
 use chrono::{DateTime, TimeZone, Utc};
 
 #[allow(unused_imports)]
@@ -43,7 +43,7 @@ pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value
     InvalidTimeCode(CcsdsTimeCodes, u8),
-    OtherPacketError(PacketError),
+    OtherPacketError(ByteConversionError),
 }
 
 #[cfg(feature = "std")]
@@ -197,7 +197,7 @@ impl TimeWriter for CdsShortTimeProvider {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), TimestampError> {
         if buf.len() < self.len_as_bytes() {
             return Err(TimestampError::OtherPacketError(
-                PacketError::ToBytesSliceTooSmall(SizeMissmatch {
+                ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                     expected: self.len_as_bytes(),
                     found: buf.len(),
                 }),
@@ -214,7 +214,7 @@ impl TimeReader for CdsShortTimeProvider {
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
         if buf.len() < CDS_SHORT_LEN {
             return Err(TimestampError::OtherPacketError(
-                PacketError::FromBytesSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                     expected: CDS_SHORT_LEN,
                     found: buf.len(),
                 }),
@@ -248,7 +248,7 @@ impl TimeReader for CdsShortTimeProvider {
 mod tests {
     use super::*;
     use crate::time::TimestampError::{InvalidTimeCode, OtherPacketError};
-    use crate::PacketError::{FromBytesSliceTooSmall, ToBytesSliceTooSmall};
+    use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
     use alloc::format;
     use chrono::{Datelike, Timelike};
 
@@ -336,7 +336,7 @@ mod tests {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
             match res.unwrap_err() {
-                OtherPacketError(ToBytesSliceTooSmall(missmatch)) => {
+                OtherPacketError(ToSliceTooSmall(missmatch)) => {
                     assert_eq!(missmatch.found, i);
                     assert_eq!(missmatch.expected, 7);
                 }
@@ -359,7 +359,7 @@ mod tests {
                     panic!("Unexpected error");
                 }
                 OtherPacketError(e) => match e {
-                    FromBytesSliceTooSmall(missmatch) => {
+                    FromSliceTooSmall(missmatch) => {
                         assert_eq!(missmatch.found, i);
                         assert_eq!(missmatch.expected, 7);
                     }

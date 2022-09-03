@@ -36,7 +36,9 @@ use crate::ecss::{
     verify_crc16_from_raw, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
 };
 use crate::SpHeader;
-use crate::{CcsdsPacket, PacketError, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN};
+use crate::{
+    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN,
+};
 use core::mem::size_of;
 use delegate::delegate;
 use serde::{Deserialize, Serialize};
@@ -334,7 +336,7 @@ impl<'slice> PusTc<'slice> {
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(PusError::PacketError(PacketError::ToBytesSliceTooSmall(
+            return Err(PusError::PacketError(ByteConversionError::ToSliceTooSmall(
                 SizeMissmatch {
                     found: slice.len(),
                     expected: total_size,
@@ -343,13 +345,13 @@ impl<'slice> PusTc<'slice> {
         }
         sph_zc
             .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
+            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
 
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
             .to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .ok_or(PusError::PacketError(PacketError::ToBytesZeroCopyError))?;
+            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
 
         curr_idx += tc_header_len;
         if let Some(app_data) = self.app_data {
@@ -408,7 +410,9 @@ impl<'slice> PusTc<'slice> {
         let mut current_idx = 0;
         let sph =
             crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
+                .ok_or(PusError::PacketError(
+                    ByteConversionError::ZeroCopyFromError,
+                ))?;
         current_idx += CCSDS_HEADER_LEN;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
@@ -417,7 +421,9 @@ impl<'slice> PusTc<'slice> {
         let sec_header = crate::tc::zc::PusTcSecondaryHeader::from_bytes(
             &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
-        .ok_or(PusError::PacketError(PacketError::FromBytesZeroCopyError))?;
+        .ok_or(PusError::PacketError(
+            ByteConversionError::ZeroCopyFromError,
+        ))?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let pus_tc = PusTc {
@@ -476,8 +482,8 @@ mod tests {
     use crate::ecss::{PusError, PusPacket};
     use crate::tc::ACK_ALL;
     use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
+    use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
-    use crate::{PacketError, SpHeader};
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {
@@ -631,7 +637,7 @@ mod tests {
         let err = res.unwrap_err();
         match err {
             PusError::PacketError(err) => match err {
-                PacketError::ToBytesSliceTooSmall(missmatch) => {
+                ByteConversionError::ToSliceTooSmall(missmatch) => {
                     assert_eq!(missmatch.expected, pus_tc.len_packed());
                     assert_eq!(missmatch.found, 12);
                 }

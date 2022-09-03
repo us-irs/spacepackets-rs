@@ -1,6 +1,6 @@
 //! Common definitions and helpers required to create PUS TMTC packets according to
 //! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
-use crate::{CcsdsPacket, PacketError};
+use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ pub enum PusError {
     NoRawData,
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
-    PacketError(PacketError),
+    PacketError(ByteConversionError),
 }
 
 pub trait PusPacket: CcsdsPacket {
@@ -135,3 +135,156 @@ macro_rules! sp_header_impls {
 
 pub(crate) use ccsds_impl;
 pub(crate) use sp_header_impls;
+
+pub trait EcssEnumeration {
+    fn pfc(&self) -> u8;
+    fn byte_width(&self) -> u8 {
+        self.pfc() / 8
+    }
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
+}
+
+trait ToBeBytes {
+    type ByteArray: AsRef<[u8]>;
+    fn to_be_bytes(&self) -> Self::ByteArray;
+}
+
+impl ToBeBytes for u8 {
+    type ByteArray = [u8; 1];
+
+    fn to_be_bytes(&self) -> Self::ByteArray {
+        u8::to_be_bytes(*self)
+    }
+}
+
+impl ToBeBytes for u16 {
+    type ByteArray = [u8; 2];
+
+    fn to_be_bytes(&self) -> Self::ByteArray {
+        u16::to_be_bytes(*self)
+    }
+}
+
+impl ToBeBytes for u32 {
+    type ByteArray = [u8; 4];
+
+    fn to_be_bytes(&self) -> Self::ByteArray {
+        u32::to_be_bytes(*self)
+    }
+}
+
+impl ToBeBytes for u64 {
+    type ByteArray = [u8; 8];
+
+    fn to_be_bytes(&self) -> Self::ByteArray {
+        u64::to_be_bytes(*self)
+    }
+}
+
+pub struct GenericEcssEnumWrapper<TYPE> {
+    val: TYPE,
+}
+
+impl<TYPE> GenericEcssEnumWrapper<TYPE> {
+    pub fn new(val: TYPE) -> Self {
+        Self { val }
+    }
+}
+
+impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
+    fn pfc(&self) -> u8 {
+        size_of::<TYPE>() as u8 * 8_u8
+    }
+
+    fn to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+        if buf.len() < self.byte_width() as usize {
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: self.byte_width() as usize,
+            }));
+        }
+        buf[0..self.byte_width() as usize].copy_from_slice(self.val.to_be_bytes().as_ref());
+        Ok(())
+    }
+}
+
+pub type EcssEnumU8 = GenericEcssEnumWrapper<u8>;
+pub type EcssEnumU16 = GenericEcssEnumWrapper<u16>;
+pub type EcssEnumU32 = GenericEcssEnumWrapper<u32>;
+pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
+
+#[cfg(test)]
+mod tests {
+    use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, EcssEnumeration};
+    use crate::ByteConversionError;
+
+    #[test]
+    fn test_enum_u8() {
+        let mut buf = [0, 0, 0];
+        let my_enum = EcssEnumU8::new(1);
+        my_enum
+            .to_bytes(&mut buf[1..2])
+            .expect("To byte conversion of u8 failed");
+        assert_eq!(buf[1], 1);
+    }
+
+    #[test]
+    fn test_enum_u16() {
+        let mut buf = [0, 0, 0];
+        let my_enum = EcssEnumU16::new(0x1f2f);
+        my_enum
+            .to_bytes(&mut buf[1..3])
+            .expect("To byte conversion of u8 failed");
+        assert_eq!(buf[1], 0x1f);
+        assert_eq!(buf[2], 0x2f);
+    }
+
+    #[test]
+    fn test_slice_u16_too_small() {
+        let mut buf = [0];
+        let my_enum = EcssEnumU16::new(0x1f2f);
+        let res = my_enum.to_bytes(&mut buf[0..1]);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        match error {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                assert_eq!(missmatch.expected, 2);
+                assert_eq!(missmatch.found, 1);
+            }
+            _ => {
+                panic!("Unexpected error {:?}", error);
+            }
+        }
+    }
+
+    #[test]
+    fn test_enum_u32() {
+        let mut buf = [0, 0, 0, 0, 0];
+        let my_enum = EcssEnumU32::new(0x1f2f3f4f);
+        my_enum
+            .to_bytes(&mut buf[1..5])
+            .expect("To byte conversion of u8 failed");
+        assert_eq!(buf[1], 0x1f);
+        assert_eq!(buf[2], 0x2f);
+        assert_eq!(buf[3], 0x3f);
+        assert_eq!(buf[4], 0x4f);
+    }
+
+    #[test]
+    fn test_slice_u32_too_small() {
+        let mut buf = [0, 0, 0, 0, 0];
+        let my_enum = EcssEnumU32::new(0x1f2f3f4f);
+        let res = my_enum.to_bytes(&mut buf[0..3]);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        match error {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                assert_eq!(missmatch.expected, 4);
+                assert_eq!(missmatch.found, 3);
+            }
+            _ => {
+                panic!("Unexpected error {:?}", error);
+            }
+        }
+    }
+}
