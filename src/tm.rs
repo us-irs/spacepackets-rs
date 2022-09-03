@@ -259,6 +259,10 @@ impl<'slice> PusTm<'slice> {
         self.sec_header.time_stamp
     }
 
+    pub fn source_data(&self) -> Option<&'slice [u8]> {
+        self.source_data
+    }
+
     pub fn set_dest_id(&mut self, dest_id: u16) {
         self.sec_header.dest_id = dest_id;
     }

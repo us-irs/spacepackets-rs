@@ -94,7 +94,7 @@ pub trait CcsdsTimeProvider {
     fn date_time(&self) -> DateTime<Utc>;
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct CdsShortTimeProvider {
     pfield: u8,
     ccsds_days: u16,
@@ -125,7 +125,7 @@ impl CdsShortTimeProvider {
         let unix_days_seconds = epoch - secs_of_day;
         let ms_of_day = secs_of_day * 1000 + now.subsec_millis() as u64;
         let provider = Self {
-            pfield: (CcsdsTimeCodes::Cds as u8) << 4,
+            pfield: (Cds as u8) << 4,
             ccsds_days: unix_to_ccsds_days((unix_days_seconds / SECONDS_PER_DAY as u64) as i32)
                 as u16,
             ms_of_day: ms_of_day as u32,
@@ -133,6 +133,17 @@ impl CdsShortTimeProvider {
             date_time: None,
         };
         Ok(provider.setup(unix_days_seconds as i64, ms_of_day))
+    }
+
+    #[cfg(feature = "std")]
+    pub fn update_from_now(&mut self) -> Result<(), SystemTimeError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let epoch = now.as_secs();
+        let secs_of_day = epoch % SECONDS_PER_DAY as u64;
+        let unix_days_seconds = epoch - secs_of_day;
+        let ms_of_day = secs_of_day * 1000 + now.subsec_millis() as u64;
+        self.setup(unix_days_seconds as i64, ms_of_day);
+        Ok(())
     }
 
     fn setup(mut self, unix_days_seconds: i64, ms_of_day: u64) -> Self {

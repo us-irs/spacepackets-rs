@@ -418,7 +418,7 @@ impl<'slice> PusTc<'slice> {
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
-        let sec_header = crate::tc::zc::PusTcSecondaryHeader::from_bytes(
+        let sec_header = zc::PusTcSecondaryHeader::from_bytes(
             &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
         .ok_or(PusError::PacketError(
