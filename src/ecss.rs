@@ -138,8 +138,8 @@ pub(crate) use sp_header_impls;
 
 pub trait EcssEnumeration {
     fn pfc(&self) -> u8;
-    fn byte_width(&self) -> u8 {
-        self.pfc() / 8
+    fn byte_width(&self) -> usize {
+        (self.pfc() / 8) as usize
     }
     fn to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
 }
