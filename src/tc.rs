@@ -20,7 +20,7 @@
 //! // Serialize TC into a raw buffer
 //! let mut test_buf: [u8; 32] = [0; 32];
 //! let size = pus_tc
-//!     .write_to(test_buf.as_mut_slice())
+//!     .write_to_bytes(test_buf.as_mut_slice())
 //!     .expect("Error writing TC to buffer");
 //! assert_eq!(size, 13);
 //! println!("{:?}", &test_buf[0..size]);
@@ -126,7 +126,7 @@ pub mod zc {
     }
 
     impl PusTcSecondaryHeader {
-        pub fn to_bytes(&self, slice: &mut [u8]) -> Option<()> {
+        pub fn write_to_bytes(&self, slice: &mut [u8]) -> Option<()> {
             self.write_to(slice)
         }
 
@@ -330,7 +330,7 @@ impl<'slice> PusTc<'slice> {
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
-    pub fn write_to(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
@@ -350,7 +350,7 @@ impl<'slice> PusTc<'slice> {
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
-            .to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
+            .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
             .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
 
         curr_idx += tc_header_len;
@@ -514,7 +514,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
     }
@@ -524,7 +524,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
         let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
@@ -550,7 +550,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 16);
         let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
@@ -581,7 +581,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         test_buf[12] = 0;
         let res = PusTc::new_from_raw_slice(&test_buf);
@@ -597,7 +597,7 @@ mod tests {
         let mut test_buf: [u8; 32] = [0; 32];
         pus_tc.calc_own_crc16();
         pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
@@ -608,7 +608,7 @@ mod tests {
         let mut pus_tc = base_ping_tc_simple_ctor();
         pus_tc.calc_crc_on_serialization = false;
         let mut test_buf: [u8; 32] = [0; 32];
-        let res = pus_tc.write_to(test_buf.as_mut_slice());
+        let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(matches!(err, PusError::CrcCalculationMissing { .. }));
@@ -632,7 +632,7 @@ mod tests {
     fn test_write_buf_too_msall() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf = [0; 12];
-        let res = pus_tc.write_to(test_buf.as_mut_slice());
+        let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
@@ -653,7 +653,7 @@ mod tests {
         verify_test_tc(&pus_tc, true, 16);
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(test_buf[11], 1);
         assert_eq!(test_buf[12], 2);
@@ -677,7 +677,7 @@ mod tests {
         assert_eq!(pus_tc.sequence_flags(), SequenceFlags::Unsegmented);
         pus_tc.calc_own_crc16();
         pus_tc
-            .write_to(test_buf.as_mut_slice())
+            .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(test_buf[0], 0x1f);
         assert_eq!(test_buf[1], 0xff);

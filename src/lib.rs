@@ -59,6 +59,8 @@ pub mod tc;
 pub mod time;
 pub mod tm;
 
+pub const MAX_APID: u16 = 2u16.pow(11) - 1;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SizeMissmatch {
     pub found: usize,
@@ -142,7 +144,7 @@ impl PacketId {
     /// not be set and false will be returned. The maximum allowed value for the 11-bit field is
     /// 2047
     pub fn set_apid(&mut self, apid: u16) -> bool {
-        if apid > 2u16.pow(11) - 1 {
+        if apid > MAX_APID {
             return false;
         }
         self.apid = apid;
@@ -346,7 +348,7 @@ impl SpHeader {
         ssc: u16,
         data_len: u16,
     ) -> Option<Self> {
-        if ssc > 2u16.pow(14) - 1 || apid > 2u16.pow(11) - 1 {
+        if ssc > 2u16.pow(14) - 1 || apid > MAX_APID {
             return None;
         }
         let mut header = SpHeader::default();

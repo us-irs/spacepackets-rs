@@ -67,7 +67,7 @@ pub mod zc {
     }
 
     impl PusTmSecHeaderWithoutTimestamp {
-        pub fn to_bytes(&self, slice: &mut [u8]) -> Option<()> {
+        pub fn write_to_bytes(&self, slice: &mut [u8]) -> Option<()> {
             self.write_to(slice)
         }
 
@@ -309,7 +309,7 @@ impl<'slice> PusTm<'slice> {
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
-    pub fn write_to(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let total_size = self.len_packed();
@@ -329,7 +329,7 @@ impl<'slice> PusTm<'slice> {
         let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         sec_header
-            .to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
+            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
             .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
         curr_idx += sec_header_len;
         let timestamp_len = self.sec_header.time_stamp.len();
@@ -501,7 +501,9 @@ mod tests {
         let time_stamp = dummy_time_stamp();
         let pus_tm = base_ping_reply_full_ctor(&time_stamp);
         let mut buf: [u8; 32] = [0; 32];
-        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
+        let ser_len = pus_tm
+            .write_to_bytes(&mut buf)
+            .expect("Serialization failed");
         assert_eq!(ser_len, 22);
         verify_raw_ping_reply(&buf);
     }
@@ -511,7 +513,9 @@ mod tests {
         let src_data = [1, 2, 3];
         let hk_reply = base_hk_reply(dummy_time_stamp(), &src_data);
         let mut buf: [u8; 32] = [0; 32];
-        let ser_len = hk_reply.write_to(&mut buf).expect("Serialization failed");
+        let ser_len = hk_reply
+            .write_to_bytes(&mut buf)
+            .expect("Serialization failed");
         assert_eq!(ser_len, 25);
         assert_eq!(buf[20], 1);
         assert_eq!(buf[21], 2);
@@ -537,7 +541,9 @@ mod tests {
         let time_stamp = dummy_time_stamp();
         let pus_tm = base_ping_reply_full_ctor(&time_stamp);
         let mut buf: [u8; 32] = [0; 32];
-        let ser_len = pus_tm.write_to(&mut buf).expect("Serialization failed");
+        let ser_len = pus_tm
+            .write_to_bytes(&mut buf)
+            .expect("Serialization failed");
         assert_eq!(ser_len, 22);
         let (tm_deserialized, size) =
             PusTm::new_from_raw_slice(&buf, 7).expect("Deserialization failed");
@@ -553,13 +559,13 @@ mod tests {
         tm.calc_crc_on_serialization = false;
         assert_eq!(tm.data_len(), 0x00);
         let mut buf: [u8; 32] = [0; 32];
-        let res = tm.write_to(&mut buf);
+        let res = tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
         assert!(matches!(res.unwrap_err(), PusError::CrcCalculationMissing));
         tm.update_ccsds_data_len();
         assert_eq!(tm.data_len(), 15);
         tm.calc_own_crc16();
-        let res = tm.write_to(&mut buf);
+        let res = tm.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         tm.sp_header.data_len = 0;
         tm.update_packet_fields();
@@ -571,7 +577,7 @@ mod tests {
         let time_stamp = dummy_time_stamp();
         let pus_tm = base_ping_reply_full_ctor(&time_stamp);
         let mut buf: [u8; 16] = [0; 16];
-        let res = pus_tm.write_to(&mut buf);
+        let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
         assert!(matches!(error, PusError::PacketError { .. }));

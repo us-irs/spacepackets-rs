@@ -141,7 +141,7 @@ pub trait EcssEnumeration {
     fn byte_width(&self) -> usize {
         (self.pfc() / 8) as usize
     }
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
 }
 
 trait ToBeBytes {
@@ -196,7 +196,7 @@ impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
         size_of::<TYPE>() as u8 * 8_u8
     }
 
-    fn to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
         if buf.len() < self.byte_width() as usize {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
@@ -223,7 +223,7 @@ mod tests {
         let mut buf = [0, 0, 0];
         let my_enum = EcssEnumU8::new(1);
         my_enum
-            .to_bytes(&mut buf[1..2])
+            .write_to_bytes(&mut buf[1..2])
             .expect("To byte conversion of u8 failed");
         assert_eq!(buf[1], 1);
     }
@@ -233,7 +233,7 @@ mod tests {
         let mut buf = [0, 0, 0];
         let my_enum = EcssEnumU16::new(0x1f2f);
         my_enum
-            .to_bytes(&mut buf[1..3])
+            .write_to_bytes(&mut buf[1..3])
             .expect("To byte conversion of u8 failed");
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
@@ -243,7 +243,7 @@ mod tests {
     fn test_slice_u16_too_small() {
         let mut buf = [0];
         let my_enum = EcssEnumU16::new(0x1f2f);
-        let res = my_enum.to_bytes(&mut buf[0..1]);
+        let res = my_enum.write_to_bytes(&mut buf[0..1]);
         assert!(res.is_err());
         let error = res.unwrap_err();
         match error {
@@ -262,7 +262,7 @@ mod tests {
         let mut buf = [0, 0, 0, 0, 0];
         let my_enum = EcssEnumU32::new(0x1f2f3f4f);
         my_enum
-            .to_bytes(&mut buf[1..5])
+            .write_to_bytes(&mut buf[1..5])
             .expect("To byte conversion of u8 failed");
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
@@ -274,7 +274,7 @@ mod tests {
     fn test_slice_u32_too_small() {
         let mut buf = [0, 0, 0, 0, 0];
         let my_enum = EcssEnumU32::new(0x1f2f3f4f);
-        let res = my_enum.to_bytes(&mut buf[0..3]);
+        let res = my_enum.write_to_bytes(&mut buf[0..3]);
         assert!(res.is_err());
         let error = res.unwrap_err();
         match error {
