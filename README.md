@@ -33,3 +33,8 @@ Default features:
  - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
    like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
    Enabled by the `std` feature.
+
+# Examples
+
+You can check the [documentation](https://docs.rs/spacepackets) of individual modules for various
+usage examples.
