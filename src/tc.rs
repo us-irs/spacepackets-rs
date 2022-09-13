@@ -336,22 +336,21 @@ impl<'slice> PusTc<'slice> {
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(PusError::PacketError(ByteConversionError::ToSliceTooSmall(
-                SizeMissmatch {
-                    found: slice.len(),
-                    expected: total_size,
-                },
-            )));
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: slice.len(),
+                expected: total_size,
+            })
+            .into());
         }
         sph_zc
             .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
 
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
             .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
 
         curr_idx += tc_header_len;
         if let Some(app_data) = self.app_data {
@@ -410,9 +409,7 @@ impl<'slice> PusTc<'slice> {
         let mut current_idx = 0;
         let sph =
             crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(PusError::PacketError(
-                    ByteConversionError::ZeroCopyFromError,
-                ))?;
+                .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += CCSDS_HEADER_LEN;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
@@ -421,9 +418,7 @@ impl<'slice> PusTc<'slice> {
         let sec_header = zc::PusTcSecondaryHeader::from_bytes(
             &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
-        .ok_or(PusError::PacketError(
-            ByteConversionError::ZeroCopyFromError,
-        ))?;
+        .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let pus_tc = PusTc {
@@ -636,7 +631,7 @@ mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            PusError::PacketError(err) => match err {
+            PusError::ByteConversionError(err) => match err {
                 ByteConversionError::ToSliceTooSmall(missmatch) => {
                     assert_eq!(missmatch.expected, pus_tc.len_packed());
                     assert_eq!(missmatch.found, 12);

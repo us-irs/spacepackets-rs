@@ -314,23 +314,22 @@ impl<'slice> PusTm<'slice> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(PusError::PacketError(ByteConversionError::ToSliceTooSmall(
-                SizeMissmatch {
-                    found: slice.len(),
-                    expected: total_size,
-                },
-            )));
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: slice.len(),
+                expected: total_size,
+            })
+            .into());
         }
         sph_zc
             .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
 
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         sec_header
             .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-            .ok_or(PusError::PacketError(ByteConversionError::ZeroCopyToError))?;
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
         let timestamp_len = self.sec_header.time_stamp.len();
         slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(self.sec_header.time_stamp);
@@ -399,9 +398,7 @@ impl<'slice> PusTm<'slice> {
         let mut current_idx = 0;
         let sph =
             crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(PusError::PacketError(
-                    ByteConversionError::ZeroCopyFromError,
-                ))?;
+                .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += 6;
         let total_len = sph.total_len();
         if raw_data_len < total_len || total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
@@ -410,9 +407,7 @@ impl<'slice> PusTm<'slice> {
         let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
             &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
         )
-        .ok_or(PusError::PacketError(
-            ByteConversionError::ZeroCopyFromError,
-        ))?;
+        .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
@@ -580,9 +575,9 @@ mod tests {
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        assert!(matches!(error, PusError::PacketError { .. }));
+        assert!(matches!(error, PusError::ByteConversionError { .. }));
         match error {
-            PusError::PacketError(err) => match err {
+            PusError::ByteConversionError(err) => match err {
                 ByteConversionError::ToSliceTooSmall(size_missmatch) => {
                     assert_eq!(size_missmatch.expected, 22);
                     assert_eq!(size_missmatch.found, 16);

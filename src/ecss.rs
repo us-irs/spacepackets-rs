@@ -41,7 +41,13 @@ pub enum PusError {
     NoRawData,
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
-    PacketError(ByteConversionError),
+    ByteConversionError(ByteConversionError),
+}
+
+impl From<ByteConversionError> for PusError {
+    fn from(e: ByteConversionError) -> Self {
+        PusError::ByteConversionError(e)
+    }
 }
 
 pub trait PusPacket: CcsdsPacket {
