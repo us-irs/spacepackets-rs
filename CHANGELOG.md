@@ -17,9 +17,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - Better names for generic error enumerations: `PacketError` renamed to `ByteConversionError`
-- `ssc` abbreviations fully replaced by better name `seq_count`
+- CCSDS module: `ssc` abbreviations fully replaced by better name `seq_count`
 - Time module: `CcsdsTimeProvider::date_time` now has `Option<DateTime<Utc>>` as
   a returnvalue instead of `DateTime<Utc>`
+- `PusTc` and `PusTm`: `new_from_raw_slice` renamed to simpler `from_bytes`
 
 # [v0.1.0] 16.08.2022
 

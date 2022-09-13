@@ -26,7 +26,7 @@
 //! println!("{:?}", &test_buf[0..size]);
 //!
 //! // Deserialize from the raw byte representation
-//! let pus_tc_deserialized = PusTc::new_from_raw_slice(&test_buf).expect("Deserialization failed");
+//! let pus_tc_deserialized = PusTc::from_bytes(&test_buf).expect("Deserialization failed");
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
 //! assert_eq!(pus_tc.apid(), 0x02);
@@ -401,7 +401,7 @@ impl<'slice> PusTc<'slice> {
 
     /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet
-    pub fn new_from_raw_slice(slice: &'slice [u8]) -> Result<(Self, usize), PusError> {
+    pub fn from_bytes(slice: &'slice [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
@@ -522,7 +522,7 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
-        let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
+        let (tc_from_raw, size) = PusTc::from_bytes(&test_buf)
             .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 13);
         verify_test_tc(&tc_from_raw, false, 13);
@@ -548,7 +548,7 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 16);
-        let (tc_from_raw, size) = PusTc::new_from_raw_slice(&test_buf)
+        let (tc_from_raw, size) = PusTc::from_bytes(&test_buf)
             .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 16);
         verify_test_tc(&tc_from_raw, true, 16);
@@ -579,7 +579,7 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         test_buf[12] = 0;
-        let res = PusTc::new_from_raw_slice(&test_buf);
+        let res = PusTc::from_bytes(&test_buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(matches!(err, PusError::IncorrectCrc { .. }));

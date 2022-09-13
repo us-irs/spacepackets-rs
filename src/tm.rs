@@ -387,7 +387,7 @@ impl<'slice> PusTm<'slice> {
     /// Create a [PusTm] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet. The timestamp length needs to be
     /// known beforehand.
-    pub fn new_from_raw_slice(
+    pub fn from_bytes(
         slice: &'slice [u8],
         timestamp_len: usize,
     ) -> Result<(Self, usize), PusError> {
@@ -541,7 +541,7 @@ mod tests {
             .expect("Serialization failed");
         assert_eq!(ser_len, 22);
         let (tm_deserialized, size) =
-            PusTm::new_from_raw_slice(&buf, 7).expect("Deserialization failed");
+            PusTm::from_bytes(&buf, 7).expect("Deserialization failed");
         assert_eq!(ser_len, size);
         verify_ping_reply(&tm_deserialized, false, 22, dummy_time_stamp());
     }
