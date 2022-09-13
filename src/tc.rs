@@ -522,8 +522,8 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
-        let (tc_from_raw, size) = PusTc::from_bytes(&test_buf)
-            .expect("Creating PUS TC struct from raw buffer failed");
+        let (tc_from_raw, size) =
+            PusTc::from_bytes(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 13);
         verify_test_tc(&tc_from_raw, false, 13);
         assert!(tc_from_raw.user_data().is_none());
@@ -548,8 +548,8 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 16);
-        let (tc_from_raw, size) = PusTc::from_bytes(&test_buf)
-            .expect("Creating PUS TC struct from raw buffer failed");
+        let (tc_from_raw, size) =
+            PusTc::from_bytes(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 16);
         verify_test_tc(&tc_from_raw, true, 16);
         let user_data = tc_from_raw.user_data().unwrap();

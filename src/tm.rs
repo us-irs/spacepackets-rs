@@ -540,8 +540,7 @@ mod tests {
             .write_to_bytes(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 22);
-        let (tm_deserialized, size) =
-            PusTm::from_bytes(&buf, 7).expect("Deserialization failed");
+        let (tm_deserialized, size) = PusTm::from_bytes(&buf, 7).expect("Deserialization failed");
         assert_eq!(ser_len, size);
         verify_ping_reply(&tm_deserialized, false, 22, dummy_time_stamp());
     }
