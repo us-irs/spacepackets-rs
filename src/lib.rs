@@ -60,6 +60,7 @@ pub mod time;
 pub mod tm;
 
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
+pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SizeMissmatch {
@@ -177,12 +178,13 @@ pub struct PacketSequenceCtrl {
 }
 
 impl PacketSequenceCtrl {
-    pub fn new(seq_flags: SequenceFlags, ssc: u16) -> Option<PacketSequenceCtrl> {
+    /// Returns [None] if the passed sequence count exceeds [MAX_SEQ_COUNT]
+    pub fn new(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
         let mut psc = PacketSequenceCtrl {
             seq_flags,
             seq_count: 0,
         };
-        psc.set_seq_count(ssc).then(|| psc)
+        psc.set_seq_count(seq_count).then(|| psc)
     }
     pub fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count
@@ -191,14 +193,14 @@ impl PacketSequenceCtrl {
     /// Set a new sequence count. If the passed number is invalid, the sequence count will not be
     /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383
     pub fn set_seq_count(&mut self, ssc: u16) -> bool {
-        if ssc > 2u16.pow(14) - 1 {
+        if ssc > MAX_SEQ_COUNT {
             return false;
         }
         self.seq_count = ssc;
         true
     }
 
-    pub fn ssc(&self) -> u16 {
+    pub fn seq_count(&self) -> u16 {
         self.seq_count
     }
 }
@@ -323,6 +325,7 @@ pub struct SpHeader {
     pub psc: PacketSequenceCtrl,
     pub data_len: u16,
 }
+
 impl Default for SpHeader {
     fn default() -> Self {
         SpHeader {
@@ -341,29 +344,36 @@ impl Default for SpHeader {
     }
 }
 impl SpHeader {
+    /// Create a new Space Packet Header instance which can be used to create generic
+    /// Space Packets. This will return [None] if the APID or sequence count argument
+    /// exceed [MAX_APID] or [MAX_SEQ_COUNT] respectively.
     pub fn new(
         ptype: PacketType,
         sec_header: bool,
         apid: u16,
-        ssc: u16,
+        seq_count: u16,
         data_len: u16,
     ) -> Option<Self> {
-        if ssc > 2u16.pow(14) - 1 || apid > MAX_APID {
+        if seq_count > MAX_SEQ_COUNT || apid > MAX_APID {
             return None;
         }
         let mut header = SpHeader::default();
         header.packet_id.sec_header_flag = sec_header;
         header.packet_id.apid = apid;
         header.packet_id.ptype = ptype;
-        header.psc.seq_count = ssc;
+        header.psc.seq_count = seq_count;
         header.data_len = data_len;
         Some(header)
     }
 
+    /// Helper function for telemetry space packet headers. The packet type  field will be
+    /// set accordingly.
     pub fn tm(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
         Self::new(PacketType::Tm, false, apid, seq_count, data_len)
     }
 
+    /// Helper function for telecommand space packet headers. The packet type  field will be
+    /// set accordingly.
     pub fn tc(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
         Self::new(PacketType::Tc, false, apid, seq_count, data_len)
     }
