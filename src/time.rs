@@ -91,9 +91,24 @@ pub trait CcsdsTimeProvider {
     fn p_field(&self) -> (usize, [u8; 2]);
     fn ccdsd_time_code(&self) -> CcsdsTimeCodes;
     fn unix_seconds(&self) -> i64;
-    fn date_time(&self) -> DateTime<Utc>;
+    fn date_time(&self) -> Option<DateTime<Utc>>;
 }
 
+/// This object is the abstraction for the CCSDS Day Segmented Time Code (CDS).
+///
+/// It has the capability to generate and read timestamps as specified in the CCSDS 301.0-B-4
+/// section 3.3
+///
+/// # Example
+///
+/// ```
+/// use spacepackets::time::{CdsShortTimeProvider, TimeWriter};
+/// use spacepackets::time::CcsdsTimeCodes::Cds;
+/// let timestamp_now = CdsShortTimeProvider::from_now().unwrap();
+/// let mut raw_stamp = [0; 7];
+/// timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
+/// assert_eq!((raw_stamp[0] >> 4) & 0b111, Cds as u8);
+/// ```
 #[derive(Debug, Copy, Clone, Default)]
 pub struct CdsShortTimeProvider {
     pfield: u8,
@@ -106,7 +121,7 @@ pub struct CdsShortTimeProvider {
 impl CdsShortTimeProvider {
     pub fn new(ccsds_days: u16, ms_of_day: u32) -> Self {
         let provider = Self {
-            pfield: (CcsdsTimeCodes::Cds as u8) << 4,
+            pfield: (Cds as u8) << 4,
             ccsds_days,
             ms_of_day,
             unix_seconds: 0,
@@ -192,15 +207,15 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
     }
 
     fn ccdsd_time_code(&self) -> CcsdsTimeCodes {
-        CcsdsTimeCodes::Cds
+        Cds
     }
 
     fn unix_seconds(&self) -> i64 {
         self.unix_seconds
     }
 
-    fn date_time(&self) -> DateTime<Utc> {
-        self.date_time.expect("Invalid date time")
+    fn date_time(&self) -> Option<DateTime<Utc>> {
+        self.date_time
     }
 }
 
@@ -235,19 +250,9 @@ impl TimeReader for CdsShortTimeProvider {
         match CcsdsTimeCodes::try_from(pfield >> 4 & 0b111) {
             Ok(cds_type) => match cds_type {
                 Cds => (),
-                _ => {
-                    return Err(TimestampError::InvalidTimeCode(
-                        CcsdsTimeCodes::Cds,
-                        cds_type as u8,
-                    ))
-                }
+                _ => return Err(TimestampError::InvalidTimeCode(Cds, cds_type as u8)),
             },
-            _ => {
-                return Err(TimestampError::InvalidTimeCode(
-                    CcsdsTimeCodes::Cds,
-                    pfield >> 4 & 0b111,
-                ))
-            }
+            _ => return Err(TimestampError::InvalidTimeCode(Cds, pfield >> 4 & 0b111)),
         };
         let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
         let ms_of_day: u32 = u32::from_be_bytes(buf[3..7].try_into().unwrap());
@@ -283,12 +288,9 @@ mod tests {
             time_stamper.unix_seconds(),
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
         );
-        assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
-        assert_eq!(
-            time_stamper.p_field(),
-            (1, [(CcsdsTimeCodes::Cds as u8) << 4, 0])
-        );
-        let date_time = time_stamper.date_time();
+        assert_eq!(time_stamper.ccdsd_time_code(), Cds);
+        assert_eq!(time_stamper.p_field(), (1, [(Cds as u8) << 4, 0]));
+        let date_time = time_stamper.date_time().unwrap();
         assert_eq!(date_time.year(), 1958);
         assert_eq!(date_time.month(), 1);
         assert_eq!(date_time.day(), 1);
@@ -301,7 +303,7 @@ mod tests {
     fn test_time_stamp_unix_epoch() {
         let time_stamper = CdsShortTimeProvider::new((-DAYS_CCSDS_TO_UNIX) as u16, 0);
         assert_eq!(time_stamper.unix_seconds(), 0);
-        let date_time = time_stamper.date_time();
+        let date_time = time_stamper.date_time().unwrap();
         assert_eq!(date_time.year(), 1970);
         assert_eq!(date_time.month(), 1);
         assert_eq!(date_time.day(), 1);
@@ -392,7 +394,7 @@ mod tests {
         let err = res.unwrap_err();
         match err {
             InvalidTimeCode(code, raw) => {
-                assert_eq!(code, CcsdsTimeCodes::Cds);
+                assert_eq!(code, Cds);
                 assert_eq!(raw, 0);
             }
             OtherPacketError(_) => {}
@@ -425,7 +427,7 @@ mod tests {
     fn test_time_now() {
         let timestamp_now = CdsShortTimeProvider::from_now().unwrap();
         let compare_stamp = Utc::now();
-        let dt = timestamp_now.date_time();
+        let dt = timestamp_now.date_time().unwrap();
         if compare_stamp.year() > dt.year() {
             assert_eq!(compare_stamp.year() - dt.year(), 1);
         } else {

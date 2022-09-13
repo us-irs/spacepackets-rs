@@ -34,6 +34,22 @@ impl TryFrom<u8> for PusVersion {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum PacketTypeCodes {
+    Boolean = 1,
+    Enumerated = 2,
+    UnsignedInt = 3,
+    SignedInt = 4,
+    Real = 5,
+    BitString = 6,
+    OctetString = 7,
+    CharString = 8,
+    AbsoluteTime = 9,
+    RelativeTime = 10,
+    Deduced = 11,
+    Packet = 12,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     IncorrectCrc(u16),
@@ -142,7 +158,12 @@ macro_rules! sp_header_impls {
 pub(crate) use ccsds_impl;
 pub(crate) use sp_header_impls;
 
+/// Generic trait for ECSS enumeration which consist of a PFC field denoting their length
+/// and an unsigned value. The trait makes no assumptions about the actual type of the unsigned
+/// value and only requires implementors to implement a function which writes the enumeration into
+/// a raw byte format.
 pub trait EcssEnumeration {
+    /// Packet Format Code, which denotes the number of bits of the enumeration
     fn pfc(&self) -> u8;
     fn byte_width(&self) -> usize {
         (self.pfc() / 8) as usize
@@ -192,6 +213,10 @@ pub struct GenericEcssEnumWrapper<TYPE> {
 }
 
 impl<TYPE> GenericEcssEnumWrapper<TYPE> {
+    pub const fn ptc() -> PacketTypeCodes {
+        PacketTypeCodes::Enumerated
+    }
+
     pub fn new(val: TYPE) -> Self {
         Self { val }
     }
