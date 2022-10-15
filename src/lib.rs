@@ -136,7 +136,7 @@ impl PacketId {
             sec_header_flag,
             apid: 0,
         };
-        pid.set_apid(apid).then(|| pid)
+        pid.set_apid(apid).then_some(pid)
     }
 
     /// Set a new Application Process ID (APID). If the passed number is invalid, the APID will
@@ -182,7 +182,7 @@ impl PacketSequenceCtrl {
             seq_flags,
             seq_count: 0,
         };
-        psc.set_seq_count(seq_count).then(|| psc)
+        psc.set_seq_count(seq_count).then_some(psc)
     }
     pub fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count
