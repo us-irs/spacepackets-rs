@@ -171,7 +171,7 @@ pub trait EcssEnumeration {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
 }
 
-trait ToBeBytes {
+pub trait ToBeBytes {
     type ByteArray: AsRef<[u8]>;
     fn to_be_bytes(&self) -> Self::ByteArray;
 }
