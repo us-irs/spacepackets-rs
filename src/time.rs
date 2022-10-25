@@ -47,6 +47,7 @@ pub enum TimestampError {
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub fn seconds_since_epoch() -> f64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -133,6 +134,7 @@ impl CdsShortTimeProvider {
     }
 
     #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
@@ -151,6 +153,7 @@ impl CdsShortTimeProvider {
     }
 
     #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self) -> Result<(), SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
@@ -168,6 +171,7 @@ impl CdsShortTimeProvider {
     }
 
     #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn ms_of_day_using_sysclock() -> u32 {
         Self::ms_of_day(seconds_since_epoch())
     }

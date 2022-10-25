@@ -65,6 +65,7 @@ pub struct SizeMissmatch {
     pub found: usize,
     pub expected: usize,
 }
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the found and expected minimum size

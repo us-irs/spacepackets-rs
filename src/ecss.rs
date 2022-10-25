@@ -158,7 +158,7 @@ macro_rules! sp_header_impls {
 pub(crate) use ccsds_impl;
 pub(crate) use sp_header_impls;
 
-/// Generic trait for ECSS enumeration which consist of a PFC field denoting their length
+/// Generic trait for ECSS enumeration which consist of a PFC field denoting their bit length
 /// and an unsigned value. The trait makes no assumptions about the actual type of the unsigned
 /// value and only requires implementors to implement a function which writes the enumeration into
 /// a raw byte format.

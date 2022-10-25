@@ -36,3 +36,7 @@ version = "1.0.1"
 default = ["std"]
 std = ["chrono/std", "chrono/clock", "alloc"]
 alloc = ["postcard/alloc"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
