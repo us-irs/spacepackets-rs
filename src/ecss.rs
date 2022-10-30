@@ -1,7 +1,7 @@
 //! Common definitions and helpers required to create PUS TMTC packets according to
 //! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
-use core::fmt::Debug;
 use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
+use core::fmt::Debug;
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
 use serde::{Deserialize, Serialize};
@@ -211,7 +211,7 @@ impl ToBeBytes for u64 {
     }
 }
 
-#[derive (Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct GenericEcssEnumWrapper<TYPE> {
     val: TYPE,
 }
@@ -243,7 +243,10 @@ impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes> EcssEnumerationExt for GenericEcssEnumWrapper<TYPE> {}
+impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes> EcssEnumerationExt
+    for GenericEcssEnumWrapper<TYPE>
+{
+}
 
 pub type EcssEnumU8 = GenericEcssEnumWrapper<u8>;
 pub type EcssEnumU16 = GenericEcssEnumWrapper<u16>;
