@@ -68,9 +68,9 @@ pub struct SizeMissmatch {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ByteConversionError {
-    /// The passed slice is too small. Returns the found and expected minimum size
+    /// The passed slice is too small. Returns the passed slice length and expected minimum size
     ToSliceTooSmall(SizeMissmatch),
-    /// The provider buffer it soo small. Returns the found and expected minimum size
+    /// The provider buffer is too small. Returns the passed slice length and expected minimum size
     FromSliceTooSmall(SizeMissmatch),
     /// The [zerocopy] library failed to write to bytes
     ZeroCopyToError,
