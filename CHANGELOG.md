@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `EcssEnumerationExt` trait which implements `Debug`, `Copy`, `Clone`,
+  `PartialEq` and `Eq` in addition to `EcssEnumeration`
+
+## Changed
+
+- `EcssEnumeration` trait: Rename `write_to_bytes`
+  to `write_to_be_bytes`
+
 # [v0.2.0] 13.09.2022
 
 ## Added
