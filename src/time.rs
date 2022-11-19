@@ -1,6 +1,6 @@
 //! CCSDS Time Code Formats according to [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
 use crate::{ByteConversionError, SizeMissmatch};
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, LocalResult, TimeZone, Utc};
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
@@ -197,7 +197,11 @@ impl CdsShortTimeProvider {
     fn calc_date_time(&mut self, ms_since_last_second: u32) {
         assert!(ms_since_last_second < 1000, "Invalid MS since last second");
         let ns_since_last_sec = ms_since_last_second * 1e6 as u32;
-        self.date_time = Some(Utc.timestamp(self.unix_seconds, ns_since_last_sec));
+        if let LocalResult::Single(val) = Utc.timestamp_opt(self.unix_seconds, ns_since_last_sec) {
+            self.date_time = Some(val);
+        } else {
+            self.date_time = None;
+        }
     }
 }
 
