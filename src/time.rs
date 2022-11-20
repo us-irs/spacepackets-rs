@@ -23,6 +23,8 @@ pub enum CcsdsTimeCodes {
     Ccs = 0b101,
 }
 
+const CDS_SHORT_P_FIELD: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
+
 impl TryFrom<u8> for CcsdsTimeCodes {
     type Error = ();
 
@@ -112,7 +114,6 @@ pub trait CcsdsTimeProvider {
 /// ```
 #[derive(Debug, Copy, Clone, Default)]
 pub struct CdsShortTimeProvider {
-    pfield: u8,
     ccsds_days: u16,
     ms_of_day: u32,
     unix_seconds: i64,
@@ -122,7 +123,6 @@ pub struct CdsShortTimeProvider {
 impl CdsShortTimeProvider {
     pub fn new(ccsds_days: u16, ms_of_day: u32) -> Self {
         let provider = Self {
-            pfield: (Cds as u8) << 4,
             ccsds_days,
             ms_of_day,
             unix_seconds: 0,
@@ -142,7 +142,6 @@ impl CdsShortTimeProvider {
         let unix_days_seconds = epoch - secs_of_day;
         let ms_of_day = secs_of_day * 1000 + now.subsec_millis() as u64;
         let provider = Self {
-            pfield: (Cds as u8) << 4,
             ccsds_days: unix_to_ccsds_days((unix_days_seconds / SECONDS_PER_DAY as u64) as i32)
                 as u16,
             ms_of_day: ms_of_day as u32,
@@ -211,7 +210,7 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
     }
 
     fn p_field(&self) -> (usize, [u8; 2]) {
-        (1, [self.pfield, 0])
+        (1, [CDS_SHORT_P_FIELD, 0])
     }
 
     fn ccdsd_time_code(&self) -> CcsdsTimeCodes {
@@ -237,7 +236,7 @@ impl TimeWriter for CdsShortTimeProvider {
                 }),
             ));
         }
-        buf[0] = self.pfield;
+        buf[0] = CDS_SHORT_P_FIELD;
         buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
         buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
         Ok(())
