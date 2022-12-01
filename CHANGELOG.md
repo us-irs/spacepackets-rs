@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.3.0] 01.12.2022
+
 ## Added
 
 - `EcssEnumerationExt` trait which implements `Debug`, `Copy`, `Clone`,
