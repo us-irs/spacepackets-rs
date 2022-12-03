@@ -42,6 +42,7 @@
 //! println!("{:?}", sp_header);
 //! ```
 #![no_std]
+#![cfg_attr(doc_cfg, feature(doc_cfg))]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 #[cfg(any(feature = "std", test))]
