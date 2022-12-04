@@ -27,6 +27,7 @@
 //!  - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
 //!     like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
 //!     Enabled by the `std` feature.
+//!  - [`serde`](https://serde.rs/): Adds `serde` support for most types by adding `Serialize` and `Deserialize` `derive`s
 //!
 //! ## Module
 //!

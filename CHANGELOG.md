@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- `serde` support is now optional behind the `serde` feature
+
 # [v0.3.1] 03.12.2022
 
 - Small fix for faulty docs.rs build
