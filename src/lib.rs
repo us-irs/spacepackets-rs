@@ -658,6 +658,45 @@ mod tests {
         0x90
     );
 
+    const PACKET_ID_TM: PacketId = PacketId::const_tm(true, 0x22);
+
+    #[test]
+    fn verify_const_packet_id() {
+        assert_eq!(PACKET_ID_TM.apid(), 0x22);
+        assert_eq!(PACKET_ID_TM.sec_header_flag, true);
+        assert_eq!(PACKET_ID_TM.ptype, PacketType::Tm);
+        let const_tc_id = PacketId::const_tc(true, 0x23);
+        assert_eq!(const_tc_id.ptype, PacketType::Tc);
+    }
+
+    #[test]
+    fn test_default_packet_id() {
+        let id_default = PacketId::default();
+        assert_eq!(id_default.ptype, PacketType::Tm);
+        assert_eq!(id_default.apid, 0x000);
+        assert_eq!(id_default.sec_header_flag, false);
+    }
+
+    #[test]
+    fn test_packet_id_ctors() {
+        let packet_id = PacketId::new(PacketType::Tc, true, 0x1ff);
+        assert!(packet_id.is_some());
+        let packet_id = packet_id.unwrap();
+        assert_eq!(packet_id.apid(), 0x1ff);
+        assert_eq!(packet_id.ptype, PacketType::Tc);
+        assert_eq!(packet_id.sec_header_flag, true);
+        let packet_id_tc = PacketId::tc(true, 0x1ff);
+        assert!(packet_id_tc.is_some());
+        let packet_id_tc = packet_id_tc.unwrap();
+        assert_eq!(packet_id_tc, packet_id);
+        let packet_id_tm = PacketId::tm(true, 0x2ff);
+        assert!(packet_id_tm.is_some());
+        let packet_id_tm = packet_id_tm.unwrap();
+        assert_eq!(packet_id_tm.sec_header_flag, true);
+        assert_eq!(packet_id_tm.ptype, PacketType::Tm);
+        assert_eq!(packet_id_tm.apid, 0x2ff);
+    }
+
     #[test]
     fn verify_const_sp_header() {
         assert_eq!(CONST_SP.sec_header_flag(), true);
