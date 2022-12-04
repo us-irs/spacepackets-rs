@@ -4,6 +4,7 @@ use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
 use core::fmt::Debug;
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 pub type CrcType = u16;
@@ -13,7 +14,8 @@ pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
 /// All PUS versions. Only PUS C is supported by this library.
-#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusVersion {
     EsaPus = 0,
     PusA = 1,
@@ -35,6 +37,7 @@ impl TryFrom<u8> for PusVersion {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PacketTypeCodes {
     Boolean = 1,
     Enumerated = 2,
@@ -51,6 +54,7 @@ pub enum PacketTypeCodes {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     IncorrectCrc(u16),
@@ -212,6 +216,7 @@ impl ToBeBytes for u64 {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GenericEcssEnumWrapper<TYPE> {
     val: TYPE,
 }

@@ -9,6 +9,7 @@ use crate::{
     CCSDS_HEADER_LEN,
 };
 use core::mem::size_of;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
 
@@ -21,7 +22,7 @@ pub const PUC_TM_MIN_SEC_HEADER_LEN: usize = 7;
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize =
     CCSDS_HEADER_LEN + PUC_TM_MIN_SEC_HEADER_LEN + size_of::<CrcType>();
 
-pub trait PusTmSecondaryHeaderT {
+pub trait GenericPusTmSecondaryHeader {
     fn pus_version(&self) -> PusVersion;
     fn sc_time_ref_status(&self) -> u8;
     fn service(&self) -> u8;
@@ -31,6 +32,7 @@ pub trait PusTmSecondaryHeaderT {
 }
 
 pub mod zc {
+    use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
     use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
 
@@ -76,7 +78,7 @@ pub mod zc {
         }
     }
 
-    impl super::PusTmSecondaryHeaderT for PusTmSecHeaderWithoutTimestamp {
+    impl GenericPusTmSecondaryHeader for PusTmSecHeaderWithoutTimestamp {
         fn pus_version(&self) -> PusVersion {
             PusVersion::try_from(self.pus_version_and_sc_time_ref_status >> 4 & 0b1111)
                 .unwrap_or(PusVersion::Invalid)
@@ -104,7 +106,8 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTmSecondaryHeader<'slice> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u8,
@@ -147,7 +150,7 @@ impl<'slice> PusTmSecondaryHeader<'slice> {
     }
 }
 
-impl PusTmSecondaryHeaderT for PusTmSecondaryHeader<'_> {
+impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
     fn pus_version(&self) -> PusVersion {
         self.pus_version
     }
@@ -198,14 +201,15 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTm<'slice> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'slice>,
     /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
     /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: Option<&'slice [u8]>,
     source_data: Option<&'slice [u8]>,
     crc16: Option<u16>,
@@ -452,7 +456,7 @@ impl PusPacket for PusTm<'_> {
 }
 
 //noinspection RsTraitImplementation
-impl PusTmSecondaryHeaderT for PusTm<'_> {
+impl GenericPusTmSecondaryHeader for PusTm<'_> {
     delegate!(to self.sec_header {
         fn pus_version(&self) -> PusVersion;
         fn service(&self) -> u8;
@@ -470,13 +474,13 @@ mod tests {
     use crate::SpHeader;
 
     fn base_ping_reply_full_ctor(time_stamp: &[u8]) -> PusTm {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
         PusTm::new(&mut sph, tc_header, None, true)
     }
 
     fn base_hk_reply<'a>(time_stamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &time_stamp);
         PusTm::new(&mut sph, tc_header, Some(src_data), true)
     }
@@ -548,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_manual_field_update() {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_time_stamp());
         let mut tm = PusTm::new(&mut sph, tc_header, None, false);
         tm.calc_crc_on_serialization = false;
