@@ -51,6 +51,7 @@ extern crate std;
 use crate::ecss::CCSDS_HEADER_LEN;
 use delegate::delegate;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 pub mod ecss;
@@ -62,12 +63,14 @@ pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SizeMissmatch {
     pub found: usize,
     pub expected: usize,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the passed slice length and expected minimum size
     ToSliceTooSmall(SizeMissmatch),
@@ -78,7 +81,8 @@ pub enum ByteConversionError {
     ZeroCopyFromError,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PacketType {
     Tm = 0,
     Tc = 1,
@@ -100,7 +104,8 @@ pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
     PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SequenceFlags {
     ContinuationSegment = 0b00,
     FirstSegment = 0b01,
@@ -124,7 +129,8 @@ impl TryFrom<u8> for SequenceFlags {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
@@ -171,7 +177,8 @@ impl From<u16> for PacketId {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketSequenceCtrl {
     pub seq_flags: SequenceFlags,
     seq_count: u16,
@@ -318,7 +325,8 @@ pub trait CcsdsPrimaryHeader {
 ///    13 bits of the first two bytes of the raw header
 /// * `psc` - Packet Sequence Control, occupies the third and fourth byte of the raw header
 /// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
-#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SpHeader {
     pub version: u8,
     pub packet_id: PacketId,
@@ -550,6 +558,7 @@ mod tests {
         packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId, PacketSequenceCtrl, PacketType,
         SequenceFlags,
     };
+    #[cfg(feature = "alloc")]
     use alloc::vec;
     #[cfg(not(feature = "std"))]
     use num::pow;
@@ -558,6 +567,7 @@ mod tests {
     use postcard::from_bytes;
     #[cfg(feature = "alloc")]
     use postcard::to_allocvec;
+    use std::println;
 
     #[test]
     fn test_seq_flag_helpers() {
@@ -640,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
+    #[cfg(all(feature = "std", feature = "serde"))]
     fn test_serde_sph() {
         let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
@@ -762,5 +772,14 @@ mod tests {
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.data_len(), 0);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_serialization() {
+        let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
+        let as_str =
+            serde_json::to_string(&sp_header).expect("Converting SP header to JSON string failed");
+        println!("{:?}", as_str);
     }
 }

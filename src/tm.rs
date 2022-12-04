@@ -9,6 +9,7 @@ use crate::{
     CCSDS_HEADER_LEN,
 };
 use core::mem::size_of;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
 
@@ -104,7 +105,8 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTmSecondaryHeader<'slice> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u8,
@@ -198,14 +200,15 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTm<'slice> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'slice>,
     /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
     /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: Option<&'slice [u8]>,
     source_data: Option<&'slice [u8]>,
     crc16: Option<u16>,

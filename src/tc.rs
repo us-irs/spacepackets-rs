@@ -41,6 +41,7 @@ use crate::{
 };
 use core::mem::size_of;
 use delegate::delegate;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zerocopy::AsBytes;
 
@@ -136,7 +137,8 @@ pub mod zc {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTcSecondaryHeader {
     pub service: u8,
     pub subservice: u8,
@@ -211,14 +213,15 @@ impl PusTcSecondaryHeader {
 /// [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Eq, Copy, Clone, Serialize, Deserialize, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTc<'slice> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
     /// If this is set to false, a manual call to [PusTc::calc_own_crc16] or
     /// [PusTc::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: Option<&'slice [u8]>,
     app_data: Option<&'slice [u8]>,
     crc16: Option<u16>,
@@ -480,6 +483,7 @@ mod tests {
     use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
+    #[cfg(feature = "alloc")]
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {

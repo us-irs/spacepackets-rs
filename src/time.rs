@@ -272,6 +272,7 @@ mod tests {
     use super::*;
     use crate::time::TimestampError::{InvalidTimeCode, OtherPacketError};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
+    #[cfg(feature = "alloc")]
     use alloc::format;
     use chrono::{Datelike, Timelike};
 
