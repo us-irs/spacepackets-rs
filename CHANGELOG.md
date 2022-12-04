@@ -13,11 +13,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `serde` support is now optional and behind the `serde` feature
 - `PusTcSecondaryHeaderT` trait renamed to `GenericPusTcSecondaryHeader`
 - `PusTmSecondaryHeaderT` trait renamed to `GenericPusTmSecondaryHeader`
+- `SpHeader`: Former `tc` and `tm` methods now named `tc_unseg` and `tm_unseg`.
+  Former `new` method now called `new_from_single_fields`
 
 ## Added
 
 - `serde` `Serialize` and `Deserialize` added to all types
-- `const_new` constructors for `PacketId` and `PacketSeqCtrl`
+- Added `const` constructors for `PacketId`, `PacketSeqCtrl` and
+  `SpHeader`
 - Added `PartialEq` and `Eq` `derive`s to `CdsShortTimeProvider`
 
 # [v0.3.1] 03.12.2022
