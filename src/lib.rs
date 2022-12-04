@@ -144,7 +144,7 @@ impl Default for PacketId {
         PacketId {
             ptype: PacketType::Tm,
             sec_header_flag: false,
-            apid: 0
+            apid: 0,
         }
     }
 }
@@ -400,16 +400,12 @@ impl Default for SpHeader {
 }
 
 impl SpHeader {
-    pub const fn new(
-        packet_id: PacketId,
-        psc: PacketSequenceCtrl,
-        data_len: u16
-    ) -> Self {
+    pub const fn new(packet_id: PacketId, psc: PacketSequenceCtrl, data_len: u16) -> Self {
         Self {
             version: 0,
             packet_id,
             psc,
-            data_len
+            data_len,
         }
     }
 
@@ -421,7 +417,7 @@ impl SpHeader {
         apid: u16,
         seq_flags: SequenceFlags,
         seq_count: u16,
-        data_len: u16
+        data_len: u16,
     ) -> Self {
         if seq_count > MAX_SEQ_COUNT {
             panic!("Sequence count is too large");
@@ -433,7 +429,7 @@ impl SpHeader {
             psc: PacketSequenceCtrl::const_new(seq_flags, seq_count),
             packet_id: PacketId::const_new(ptype, sec_header, apid),
             data_len,
-            version: 0
+            version: 0,
         }
     }
 
@@ -451,7 +447,9 @@ impl SpHeader {
         if seq_count > MAX_SEQ_COUNT || apid > MAX_APID {
             return None;
         }
-        Some(SpHeader::const_new_from_single_fields(ptype, sec_header, apid, seq_flags, seq_count, data_len))
+        Some(SpHeader::const_new_from_single_fields(
+            ptype, sec_header, apid, seq_flags, seq_count, data_len,
+        ))
     }
 
     /// Helper function for telemetry space packet headers. The packet type field will be
@@ -643,10 +641,10 @@ pub mod zc {
 mod tests {
     #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
-    use crate::{SequenceFlags, SpHeader};
     use crate::{
         packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId, PacketSequenceCtrl, PacketType,
     };
+    use crate::{SequenceFlags, SpHeader};
     use alloc::vec;
     use num_traits::pow;
     #[cfg(feature = "serde")]
@@ -655,7 +653,7 @@ mod tests {
     const CONST_SP: SpHeader = SpHeader::new(
         PacketId::const_tc(true, 0x36),
         PacketSequenceCtrl::const_new(SequenceFlags::ContinuationSegment, 0x88),
-        0x90
+        0x90,
     );
 
     const PACKET_ID_TM: PacketId = PacketId::const_tm(true, 0x22);
@@ -701,7 +699,10 @@ mod tests {
     fn verify_const_sp_header() {
         assert_eq!(CONST_SP.sec_header_flag(), true);
         assert_eq!(CONST_SP.apid(), 0x36);
-        assert_eq!(CONST_SP.sequence_flags(), SequenceFlags::ContinuationSegment);
+        assert_eq!(
+            CONST_SP.sequence_flags(),
+            SequenceFlags::ContinuationSegment
+        );
         assert_eq!(CONST_SP.seq_count(), 0x88);
         assert_eq!(CONST_SP.data_len, 0x90);
     }
@@ -714,7 +715,8 @@ mod tests {
         );
         assert_eq!(
             SequenceFlags::try_from(0b01).expect("SEQ flag creation failed"),
-            SequenceFlags::FirstSegment);
+            SequenceFlags::FirstSegment
+        );
         assert_eq!(
             SequenceFlags::try_from(0b10).expect("SEQ flag creation failed"),
             SequenceFlags::LastSegment
@@ -902,7 +904,8 @@ mod tests {
     fn test_zc_sph() {
         use zerocopy::AsBytes;
 
-        let sp_header = SpHeader::tc_unseg(0x7FF, pow(2, 14) - 1, 0).expect("Error creating SP header");
+        let sp_header =
+            SpHeader::tc_unseg(0x7FF, pow(2, 14) - 1, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.data_len(), 0);

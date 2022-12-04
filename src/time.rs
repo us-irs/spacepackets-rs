@@ -276,7 +276,7 @@ mod tests {
     use alloc::format;
     use chrono::{Datelike, Timelike};
     #[cfg(feature = "serde")]
-    use postcard::{to_allocvec, from_bytes};
+    use postcard::{from_bytes, to_allocvec};
 
     #[test]
     fn test_creation() {
