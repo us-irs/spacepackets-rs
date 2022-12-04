@@ -9,7 +9,7 @@
 //! use spacepackets::ecss::PusPacket;
 //!
 //! // Create a ping telecommand with no user application data
-//! let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+//! let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
 //! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
 //! let pus_tc = PusTc::new(&mut sph, tc_header, None, true);
 //! println!("{:?}", pus_tc);
@@ -486,18 +486,18 @@ mod tests {
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
         PusTc::new(&mut sph, tc_header, None, true)
     }
 
     fn base_ping_tc_simple_ctor() -> PusTc<'static> {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         PusTc::new_simple(&mut sph, 17, 1, None, true)
     }
 
     fn base_ping_tc_simple_ctor_with_app_data(app_data: &'static [u8]) -> PusTc<'static> {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         PusTc::new_simple(&mut sph, 17, 1, Some(app_data), true)
     }
 
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_update_func() {
-        let mut sph = SpHeader::tc(0x02, 0x34, 0).unwrap();
+        let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         let mut tc = PusTc::new_simple(&mut sph, 17, 1, None, false);
         tc.calc_crc_on_serialization = false;
         assert_eq!(tc.data_len(), 0);
@@ -700,7 +700,7 @@ mod tests {
         assert_eq!(tc.apid(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
         assert_eq!(tc.len_packed(), exp_full_len);
-        let mut comp_header = SpHeader::tc(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
+        let mut comp_header = SpHeader::tc_unseg(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
         comp_header.set_sec_header_flag();
         assert_eq!(tc.sp_header, comp_header);
     }

@@ -474,13 +474,13 @@ mod tests {
     use crate::SpHeader;
 
     fn base_ping_reply_full_ctor(time_stamp: &[u8]) -> PusTm {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
         PusTm::new(&mut sph, tc_header, None, true)
     }
 
     fn base_hk_reply<'a>(time_stamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &time_stamp);
         PusTm::new(&mut sph, tc_header, Some(src_data), true)
     }
@@ -552,7 +552,7 @@ mod tests {
 
     #[test]
     fn test_manual_field_update() {
-        let mut sph = SpHeader::tm(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_time_stamp());
         let mut tm = PusTm::new(&mut sph, tc_header, None, false);
         tm.calc_crc_on_serialization = false;

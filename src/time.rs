@@ -275,9 +275,8 @@ mod tests {
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
     use alloc::format;
     use chrono::{Datelike, Timelike};
-    use postcard::from_bytes;
     #[cfg(feature = "serde")]
-    use postcard::to_allocvec;
+    use postcard::{to_allocvec, from_bytes};
 
     #[test]
     fn test_creation() {
