@@ -10,7 +10,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
-- `serde` support is now optional behind the `serde` feature
+- `serde` support is now optional and behind the `serde` feature
+- `PusTcSecondaryHeaderT` trait renamed to `GenericPusTcSecondaryHeader`
+- `PusTmSecondaryHeaderT` trait renamed to `GenericPusTmSecondaryHeader`
+
+## Added
+
+- `serde` `Serialize` and `Deserialize` added to all types
+- `const_new` constructors for `PacketId` and `PacketSeqCtrl`
+- Added `PartialEq` and `Eq` `derive`s to `CdsShortTimeProvider`
 
 # [v0.3.1] 03.12.2022
 
