@@ -22,8 +22,7 @@ Currently, this includes the following components:
 
 `spacepackets` supports various runtime environments and is also suitable for `no_std` environments.
 
-It offers support for [`serde`](https://serde.rs/). The Space Packet, PUS TM and TC
-implementations derive the `serde` `Serialize` and `Deserialize` trait. This allows serializing and
+It also offers optional support for [`serde`](https://serde.rs/). This allows serializing and
 deserializing them with an appropriate `serde` provider like
 [`postcard`](https://github.com/jamesmunns/postcard).
 
