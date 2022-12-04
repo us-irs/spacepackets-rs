@@ -138,13 +138,22 @@ pub struct PacketId {
 }
 
 impl PacketId {
-    pub fn new(ptype: PacketType, sec_header_flag: bool, apid: u16) -> Option<PacketId> {
-        let mut pid = PacketId {
+    const fn const_new(ptype: PacketType, sec_header_flag: bool, apid: u16) -> PacketId {
+        if apid > MAX_APID {
+            panic!("APID too large");
+        }
+        PacketId {
             ptype,
             sec_header_flag,
-            apid: 0,
-        };
-        pid.set_apid(apid).then_some(pid)
+            apid,
+        }
+    }
+
+    pub fn new(ptype: PacketType, sec_header_flag: bool, apid: u16) -> Option<PacketId> {
+        if apid > MAX_APID {
+            return None;
+        }
+        Some(PacketId::const_new(ptype, sec_header_flag, apid))
     }
 
     /// Set a new Application Process ID (APID). If the passed number is invalid, the APID will
@@ -185,20 +194,31 @@ pub struct PacketSequenceCtrl {
 }
 
 impl PacketSequenceCtrl {
-    /// Returns [None] if the passed sequence count exceeds [MAX_SEQ_COUNT]
-    pub fn new(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
-        let mut psc = PacketSequenceCtrl {
+    /// const variant of [PacketSequenceCtrl::new], but panics if the sequence count exceeds
+    /// [MAX_SEQ_COUNT].
+    const fn const_new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
+        if seq_count > MAX_SEQ_COUNT {
+            panic!("Sequence count too large");
+        }
+        PacketSequenceCtrl {
             seq_flags,
-            seq_count: 0,
-        };
-        psc.set_seq_count(seq_count).then_some(psc)
+            seq_count,
+        }
+    }
+
+    /// Returns [None] if the passed sequence count exceeds [MAX_SEQ_COUNT].
+    pub fn new(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
+        if seq_count > MAX_SEQ_COUNT {
+            return None;
+        }
+        Some(PacketSequenceCtrl::const_new(seq_flags, seq_count))
     }
     pub fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count
     }
 
     /// Set a new sequence count. If the passed number is invalid, the sequence count will not be
-    /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383
+    /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383.
     pub fn set_seq_count(&mut self, ssc: u16) -> bool {
         if ssc > MAX_SEQ_COUNT {
             return false;
@@ -239,7 +259,7 @@ macro_rules! sph_from_other {
 const SSC_MASK: u16 = 0x3FFF;
 const VERSION_MASK: u16 = 0xE000;
 
-/// Generic trait to access fields of a CCSDS space packet header according to CCSDS 133.0-B-2
+/// Generic trait to access fields of a CCSDS space packet header according to CCSDS 133.0-B-2.
 pub trait CcsdsPacket {
     fn ccsds_version(&self) -> u8;
     fn packet_id(&self) -> PacketId;
@@ -253,7 +273,7 @@ pub trait CcsdsPacket {
     }
 
     /// Retrieve 13 bit Packet Identification field. Can usually be retrieved with a bitwise AND
-    /// of the first 2 bytes with 0x1FFF
+    /// of the first 2 bytes with 0x1FFF.
     #[inline]
     fn packet_id_raw(&self) -> u16 {
         self.packet_id().raw()
@@ -264,8 +284,8 @@ pub trait CcsdsPacket {
         self.psc().raw()
     }
 
+    /// Retrieve Packet Type (TM: 0, TC: 1).
     #[inline]
-    /// Retrieve Packet Type (TM: 0, TC: 1)
     fn ptype(&self) -> PacketType {
         // This call should never fail because only 0 and 1 can be passed to the try_from call
         self.packet_id().ptype
@@ -282,13 +302,13 @@ pub trait CcsdsPacket {
     }
 
     /// Retrieve the secondary header flag. Returns true if a secondary header is present
-    /// and false if it is not
+    /// and false if it is not.
     #[inline]
     fn sec_header_flag(&self) -> bool {
         self.packet_id().sec_header_flag
     }
 
-    /// Retrieve Application Process ID
+    /// Retrieve Application Process ID.
     #[inline]
     fn apid(&self) -> u16 {
         self.packet_id().apid
@@ -316,7 +336,7 @@ pub trait CcsdsPrimaryHeader {
     ) -> Self;
 }
 
-/// Space Packet Primary Header according to CCSDS 133.0-B-2
+/// Space Packet Primary Header according to CCSDS 133.0-B-2.
 ///
 /// # Arguments
 ///
@@ -351,6 +371,7 @@ impl Default for SpHeader {
         }
     }
 }
+
 impl SpHeader {
     /// Create a new Space Packet Header instance which can be used to create generic
     /// Space Packets. This will return [None] if the APID or sequence count argument
@@ -549,25 +570,19 @@ pub mod zc {
     sph_from_other!(SpHeader, crate::SpHeader);
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
-    #[cfg(feature = "std")]
+    #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
     use crate::SpHeader;
     use crate::{
         packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId, PacketSequenceCtrl, PacketType,
         SequenceFlags,
     };
-    #[cfg(feature = "alloc")]
     use alloc::vec;
-    #[cfg(not(feature = "std"))]
-    use num::pow;
-    #[cfg(feature = "std")]
     use num_traits::pow;
-    use postcard::from_bytes;
-    #[cfg(feature = "alloc")]
-    use postcard::to_allocvec;
-    use std::println;
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     #[test]
     fn test_seq_flag_helpers() {
@@ -650,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "serde"))]
+    #[cfg(feature = "serde")]
     fn test_serde_sph() {
         let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
@@ -772,14 +787,5 @@ mod tests {
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.data_len(), 0);
-    }
-
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_serde_serialization() {
-        let sp_header = SpHeader::tc(0x42, 12, 0).expect("Error creating SP header");
-        let as_str =
-            serde_json::to_string(&sp_header).expect("Converting SP header to JSON string failed");
-        println!("{:?}", as_str);
     }
 }

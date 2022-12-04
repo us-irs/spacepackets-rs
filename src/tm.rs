@@ -22,7 +22,7 @@ pub const PUC_TM_MIN_SEC_HEADER_LEN: usize = 7;
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize =
     CCSDS_HEADER_LEN + PUC_TM_MIN_SEC_HEADER_LEN + size_of::<CrcType>();
 
-pub trait PusTmSecondaryHeaderT {
+pub trait GenericPusTmSecondaryHeader {
     fn pus_version(&self) -> PusVersion;
     fn sc_time_ref_status(&self) -> u8;
     fn service(&self) -> u8;
@@ -32,6 +32,7 @@ pub trait PusTmSecondaryHeaderT {
 }
 
 pub mod zc {
+    use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
     use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
 
@@ -77,7 +78,7 @@ pub mod zc {
         }
     }
 
-    impl super::PusTmSecondaryHeaderT for PusTmSecHeaderWithoutTimestamp {
+    impl GenericPusTmSecondaryHeader for PusTmSecHeaderWithoutTimestamp {
         fn pus_version(&self) -> PusVersion {
             PusVersion::try_from(self.pus_version_and_sc_time_ref_status >> 4 & 0b1111)
                 .unwrap_or(PusVersion::Invalid)
@@ -149,7 +150,7 @@ impl<'slice> PusTmSecondaryHeader<'slice> {
     }
 }
 
-impl PusTmSecondaryHeaderT for PusTmSecondaryHeader<'_> {
+impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
     fn pus_version(&self) -> PusVersion {
         self.pus_version
     }
@@ -455,7 +456,7 @@ impl PusPacket for PusTm<'_> {
 }
 
 //noinspection RsTraitImplementation
-impl PusTmSecondaryHeaderT for PusTm<'_> {
+impl GenericPusTmSecondaryHeader for PusTm<'_> {
     delegate!(to self.sec_header {
         fn pus_version(&self) -> PusVersion;
         fn service(&self) -> u8;

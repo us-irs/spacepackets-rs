@@ -67,7 +67,7 @@ pub const ACK_ALL: u8 = AckOpts::Acceptance as u8
     | AckOpts::Progress as u8
     | AckOpts::Completion as u8;
 
-pub trait PusTcSecondaryHeaderT {
+pub trait GenericPusTcSecondaryHeader {
     fn pus_version(&self) -> PusVersion;
     fn ack_flags(&self) -> u8;
     fn service(&self) -> u8;
@@ -77,7 +77,7 @@ pub trait PusTcSecondaryHeaderT {
 
 pub mod zc {
     use crate::ecss::{PusError, PusVersion};
-    use crate::tc::PusTcSecondaryHeaderT;
+    use crate::tc::GenericPusTcSecondaryHeader;
     use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
 
     #[derive(FromBytes, AsBytes, Unaligned)]
@@ -104,7 +104,7 @@ pub mod zc {
         }
     }
 
-    impl PusTcSecondaryHeaderT for PusTcSecondaryHeader {
+    impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
         fn pus_version(&self) -> PusVersion {
             PusVersion::try_from(self.version_ack >> 4 & 0b1111).unwrap_or(PusVersion::Invalid)
         }
@@ -147,7 +147,7 @@ pub struct PusTcSecondaryHeader {
     pub version: PusVersion,
 }
 
-impl PusTcSecondaryHeaderT for PusTcSecondaryHeader {
+impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
     fn pus_version(&self) -> PusVersion {
         self.version
     }
@@ -263,7 +263,7 @@ impl<'slice> PusTc<'slice> {
     }
 
     /// Simplified version of the [PusTc::new] function which allows to only specify service and
-    /// subservice instead of the full PUS TC secondary header
+    /// subservice instead of the full PUS TC secondary header.
     pub fn new_simple(
         sph: &mut SpHeader,
         service: u8,
@@ -306,7 +306,7 @@ impl<'slice> PusTc<'slice> {
     /// used.
     /// If this was not done or the application data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
-    /// is set correctly
+    /// is set correctly.
     pub fn update_ccsds_data_len(&mut self) {
         self.sp_header.data_len =
             self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
@@ -326,7 +326,7 @@ impl<'slice> PusTc<'slice> {
         self.crc16 = Some(digest.finalize())
     }
 
-    /// This helper function calls both [PusTc.update_ccsds_data_len] and [PusTc.calc_own_crc16]
+    /// This helper function calls both [PusTc.update_ccsds_data_len] and [PusTc.calc_own_crc16].
     pub fn update_packet_fields(&mut self) {
         self.update_ccsds_data_len();
         self.calc_own_crc16();
@@ -404,7 +404,7 @@ impl<'slice> PusTc<'slice> {
     }
 
     /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
-    /// the instance and the found byte length of the packet
+    /// the instance and the found byte length of the packet.
     pub fn from_bytes(slice: &'slice [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
@@ -465,7 +465,7 @@ impl PusPacket for PusTc<'_> {
 }
 
 //noinspection RsTraitImplementation
-impl PusTcSecondaryHeaderT for PusTc<'_> {
+impl GenericPusTcSecondaryHeader for PusTc<'_> {
     delegate!(to self.sec_header {
         fn pus_version(&self) -> PusVersion;
         fn service(&self) -> u8;
@@ -475,15 +475,14 @@ impl PusTcSecondaryHeaderT for PusTc<'_> {
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket};
     use crate::tc::ACK_ALL;
-    use crate::tc::{PusTc, PusTcSecondaryHeader, PusTcSecondaryHeaderT};
+    use crate::tc::{GenericPusTcSecondaryHeader, PusTc, PusTcSecondaryHeader};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
-    #[cfg(feature = "alloc")]
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTc<'static> {
@@ -564,7 +563,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "alloc")]
     fn test_vec_ser_deser() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_vec = Vec::new();
@@ -629,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_buf_too_msall() {
+    fn test_write_buf_too_small() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf = [0; 12];
         let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());

@@ -10,11 +10,15 @@ use crate::time::CcsdsTimeCodes::Cds;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, SystemTimeError};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub const CDS_SHORT_LEN: usize = 7;
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
 pub const SECONDS_PER_DAY: u32 = 86400;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CcsdsTimeCodes {
     None = 0,
     CucCcsdsEpoch = 0b001,
@@ -23,7 +27,7 @@ pub enum CcsdsTimeCodes {
     Ccs = 0b101,
 }
 
-const CDS_SHORT_P_FIELD: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
+const CDS_SHORT_P_FIELD: u8 = (Cds as u8) << 4;
 
 impl TryFrom<u8> for CcsdsTimeCodes {
     type Error = ();
@@ -41,6 +45,7 @@ impl TryFrom<u8> for CcsdsTimeCodes {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value
@@ -83,7 +88,7 @@ pub trait TimeReader {
         Self: Sized;
 }
 
-/// Trait for generic CCSDS time providers
+/// Trait for generic CCSDS time providers.
 pub trait CcsdsTimeProvider {
     fn len_as_bytes(&self) -> usize;
 
@@ -112,12 +117,12 @@ pub trait CcsdsTimeProvider {
 /// timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
 /// assert_eq!((raw_stamp[0] >> 4) & 0b111, Cds as u8);
 /// ```
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CdsShortTimeProvider {
     ccsds_days: u16,
     ms_of_day: u32,
     unix_seconds: i64,
-    date_time: Option<DateTime<Utc>>,
 }
 
 impl CdsShortTimeProvider {
@@ -126,7 +131,6 @@ impl CdsShortTimeProvider {
             ccsds_days,
             ms_of_day,
             unix_seconds: 0,
-            date_time: None,
         };
         let unix_days_seconds =
             ccsds_to_unix_days(ccsds_days as i32) as i64 * SECONDS_PER_DAY as i64;
@@ -146,7 +150,6 @@ impl CdsShortTimeProvider {
                 as u16,
             ms_of_day: ms_of_day as u32,
             unix_seconds: 0,
-            date_time: None,
         };
         Ok(provider.setup(unix_days_seconds as i64, ms_of_day))
     }
@@ -165,7 +168,6 @@ impl CdsShortTimeProvider {
 
     fn setup(mut self, unix_days_seconds: i64, ms_of_day: u64) -> Self {
         self.calc_unix_seconds(unix_days_seconds, ms_of_day);
-        self.calc_date_time((ms_of_day % 1000) as u32);
         self
     }
 
@@ -193,14 +195,13 @@ impl CdsShortTimeProvider {
         }
     }
 
-    fn calc_date_time(&mut self, ms_since_last_second: u32) {
+    fn calc_date_time(&self, ms_since_last_second: u32) -> Option<DateTime<Utc>> {
         assert!(ms_since_last_second < 1000, "Invalid MS since last second");
         let ns_since_last_sec = ms_since_last_second * 1e6 as u32;
         if let LocalResult::Single(val) = Utc.timestamp_opt(self.unix_seconds, ns_since_last_sec) {
-            self.date_time = Some(val);
-        } else {
-            self.date_time = None;
+            return Some(val);
         }
+        None
     }
 }
 
@@ -222,7 +223,7 @@ impl CcsdsTimeProvider for CdsShortTimeProvider {
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>> {
-        self.date_time
+        self.calc_date_time((self.ms_of_day % 1000) as u32)
     }
 }
 
@@ -267,14 +268,16 @@ impl TimeReader for CdsShortTimeProvider {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use crate::time::TimestampError::{InvalidTimeCode, OtherPacketError};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
-    #[cfg(feature = "alloc")]
     use alloc::format;
     use chrono::{Datelike, Timelike};
+    use postcard::from_bytes;
+    #[cfg(feature = "serde")]
+    use postcard::to_allocvec;
 
     #[test]
     fn test_creation() {
@@ -282,7 +285,6 @@ mod tests {
         assert_eq!(ccsds_to_unix_days(0), DAYS_CCSDS_TO_UNIX);
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_get_current_time() {
         let sec_floats = seconds_since_epoch();
@@ -430,7 +432,6 @@ mod tests {
         assert_eq!(read_stamp.ms_of_day, u32::MAX - 1);
     }
 
-    #[cfg(feature = "std")]
     #[test]
     fn test_time_now() {
         let timestamp_now = CdsShortTimeProvider::from_now().unwrap();
@@ -456,7 +457,17 @@ mod tests {
         generic_dt_property_equality_check(dt.minute(), compare_stamp.minute(), 0, 59);
     }
 
-    #[cfg(feature = "std")]
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serialization() {
+        let stamp_now = CdsShortTimeProvider::from_now().expect("Error retrieving time");
+        let val = to_allocvec(&stamp_now).expect("Serializing timestamp failed");
+        assert!(val.len() > 0);
+        let stamp_deser: CdsShortTimeProvider =
+            from_bytes(&val).expect("Stamp deserialization failed");
+        assert_eq!(stamp_deser, stamp_now);
+    }
+
     fn generic_dt_property_equality_check(first: u32, second: u32, start: u32, end: u32) {
         if second < first {
             assert_eq!(second, start);

@@ -37,6 +37,7 @@ impl TryFrom<u8> for PusVersion {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PacketTypeCodes {
     Boolean = 1,
     Enumerated = 2,
@@ -53,6 +54,7 @@ pub enum PacketTypeCodes {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     IncorrectCrc(u16),
@@ -214,6 +216,7 @@ impl ToBeBytes for u64 {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GenericEcssEnumWrapper<TYPE> {
     val: TYPE,
 }

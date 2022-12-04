@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
 # [v0.3.1] 03.12.2022
 
 - Small fix for faulty docs.rs build
