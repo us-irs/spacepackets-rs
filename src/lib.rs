@@ -502,8 +502,8 @@ impl SpHeader {
     }
 
     /// Create a struct from a raw slice where the fields have network endianness (big).
-    /// This function will also returns the remaining part of the passed slice starting starting
-    /// past the read CCSDS header.
+    /// This function also returns the remaining part of the passed slice starting past the read
+    /// CCSDS header.
     pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, &[u8]), ByteConversionError> {
         if buf.len() < CCSDS_HEADER_LEN {
             return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
