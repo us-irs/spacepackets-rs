@@ -335,7 +335,6 @@ impl<'slice> PusTc<'slice> {
     /// Write the raw PUS byte representation to a provided buffer.
     pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
-        let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let total_size = self.len_packed();
         if total_size > slice.len() {
@@ -345,10 +344,7 @@ impl<'slice> PusTc<'slice> {
             })
             .into());
         }
-        sph_zc
-            .to_bytes(&mut slice[curr_idx..curr_idx + CCSDS_HEADER_LEN])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
-
+        self.sp_header.write_to_be_bytes(slice)?;
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
@@ -411,11 +407,9 @@ impl<'slice> PusTc<'slice> {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
         let mut current_idx = 0;
-        let sph =
-            crate::zc::SpHeader::from_bytes(&slice[current_idx..current_idx + CCSDS_HEADER_LEN])
-                .ok_or(ByteConversionError::ZeroCopyFromError)?;
+        let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
         current_idx += CCSDS_HEADER_LEN;
-        let total_len = sph.total_len();
+        let total_len = sp_header.total_len();
         if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
         }
@@ -426,7 +420,7 @@ impl<'slice> PusTc<'slice> {
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let pus_tc = PusTc {
-            sp_header: SpHeader::from(sph),
+            sp_header,
             sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
             raw_data: Some(raw_data),
             app_data: user_data_from_raw(current_idx, total_len, raw_data_len, slice)?,

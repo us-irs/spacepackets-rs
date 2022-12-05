@@ -498,16 +498,38 @@ impl SpHeader {
         self.packet_id.ptype = packet_type;
     }
 
-    pub fn from_raw_slice(buf: &[u8]) -> Result<Self, ByteConversionError> {
-        if buf.len() < CCSDS_HEADER_LEN + 1 {
+    /// Create a struct from a raw slice where the fields have network endianness (big).
+    /// This function will also returns the remaining part of the passed slice starting starting
+    /// past the read CCSDS header.
+    pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, &[u8]), ByteConversionError> {
+        if buf.len() < CCSDS_HEADER_LEN {
             return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: CCSDS_HEADER_LEN + 1,
+                expected: CCSDS_HEADER_LEN,
             }));
         }
         let zc_header = zc::SpHeader::from_bytes(&buf[0..CCSDS_HEADER_LEN])
             .ok_or(ByteConversionError::ZeroCopyFromError)?;
-        Ok(Self::from(zc_header))
+        Ok((Self::from(zc_header), &buf[CCSDS_HEADER_LEN..]))
+    }
+
+    /// Write the header to a raw buffer using big endian format. This function returns the
+    /// remaining part of the passed slice starting past the written CCSDS header.
+    pub fn write_to_be_bytes<'a>(
+        &self,
+        buf: &'a mut [u8],
+    ) -> Result<&'a mut [u8], ByteConversionError> {
+        if buf.len() < CCSDS_HEADER_LEN {
+            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: CCSDS_HEADER_LEN,
+            }));
+        }
+        let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
+        zc_header
+            .to_bytes(&mut buf[0..CCSDS_HEADER_LEN])
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
+        Ok(&mut buf[CCSDS_HEADER_LEN..])
     }
 }
 
