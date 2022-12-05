@@ -208,9 +208,9 @@ impl PusTcSecondaryHeader {
 /// This class models a PUS telecommand. It is the primary data structure to generate the raw byte
 /// representation of a PUS telecommand or to deserialize from one from raw bytes.
 ///
-/// This class also derives the [serde::Serialize] and [serde::Deserialize] trait which allows
-/// to send around TC packets in a raw byte format using a serde provider like
-/// [postcard](https://docs.rs/postcard/latest/postcard/).
+/// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
+/// [serde] feature is used, which allows to send around TC packets in a raw byte format using a
+/// serde provider like [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -326,7 +326,7 @@ impl<'slice> PusTc<'slice> {
         self.crc16 = Some(digest.finalize())
     }
 
-    /// This helper function calls both [PusTc.update_ccsds_data_len] and [PusTc.calc_own_crc16].
+    /// This helper function calls both [PusTc::update_ccsds_data_len] and [PusTc::calc_own_crc16].
     pub fn update_packet_fields(&mut self) {
         self.update_ccsds_data_len();
         self.calc_own_crc16();

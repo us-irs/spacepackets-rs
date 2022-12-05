@@ -196,9 +196,9 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// structure to generate the raw byte representation of PUS telemetry or to
 /// deserialize from one from raw bytes.
 ///
-/// This class also derives the [serde::Serialize] and [serde::Deserialize] trait which allows
-/// to send around TM packets in a raw byte format using a serde provider like
-/// [postcard](https://docs.rs/postcard/latest/postcard/).
+/// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the [serde]
+/// feature is used which allows to send around TM packets in a raw byte format using a serde
+/// provider like [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]

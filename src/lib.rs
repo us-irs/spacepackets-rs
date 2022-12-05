@@ -478,10 +478,12 @@ impl SpHeader {
 
     //noinspection RsTraitImplementation
     delegate!(to self.packet_id {
+        /// Returns [false] and fails if the APID exceeds [MAX_APID]
         pub fn set_apid(&mut self, apid: u16) -> bool;
     });
 
     delegate!(to self.psc {
+        /// Returns [false] and fails if the sequence count exceeds [MAX_SEQ_COUNT]
         pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
     });
 
