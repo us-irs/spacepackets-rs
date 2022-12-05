@@ -268,6 +268,28 @@ impl TimeReader for CdsShortTimeProvider {
     }
 }
 
+pub mod ascii {
+    use chrono::format::{DelayedFormat, StrftimeItems};
+    use chrono::{DateTime, Utc};
+
+    pub const FMT_STR_CODE_A_WITH_SIZE: (&str, usize) = ("%FT%T%.3f", 23);
+    pub const FMT_STR_CODE_A_TERMINATED_WITH_SIZE: (&str, usize) = ("%FT%T%.3fZ", 24);
+
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+    pub fn generate_time_code_a(date: &DateTime<Utc>) -> DelayedFormat<StrftimeItems<'static>> {
+        date.format(FMT_STR_CODE_A_WITH_SIZE.0)
+    }
+
+    #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+    pub fn generate_time_code_a_terminated(
+        date: &DateTime<Utc>,
+    ) -> DelayedFormat<StrftimeItems<'static>> {
+        date.format(FMT_STR_CODE_A_TERMINATED_WITH_SIZE.0)
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
@@ -277,6 +299,33 @@ mod tests {
     use chrono::{Datelike, Timelike};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
+
+    #[test]
+    fn test_ascii_timestamp_unterminated() {
+        let date = Utc::now();
+        let stamp_formatter = ascii::generate_time_code_a(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find("T");
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 10);
+        assert_eq!(stamp.len(), 23);
+        assert_eq!(stamp.len(), ascii::FMT_STR_CODE_A_WITH_SIZE.1);
+    }
+
+    #[test]
+    fn test_ascii_timestamp_terminated() {
+        let date = Utc::now();
+        let stamp_formatter = ascii::generate_time_code_a_terminated(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find("T");
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 10);
+        let z_terminator = stamp.find("Z");
+        assert!(z_terminator.is_some());
+        assert_eq!(z_terminator.unwrap(), 23);
+        assert_eq!(stamp.len(), 24);
+        assert_eq!(stamp.len(), ascii::FMT_STR_CODE_A_TERMINATED_WITH_SIZE.1);
+    }
 
     #[test]
     fn test_creation() {

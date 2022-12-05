@@ -37,7 +37,7 @@ version = "1.0"
 default = ["std", "dep:serde"]
 std = ["chrono/std", "chrono/clock", "alloc"]
 serde = ["chrono/serde"]
-alloc = ["postcard/alloc"]
+alloc = ["postcard/alloc", "chrono/alloc"]
 
 [package.metadata.docs.rs]
 all-features = true
