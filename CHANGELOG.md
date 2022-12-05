@@ -10,18 +10,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
-- `serde` support is now optional and behind the `serde` feature
+- `serde` support is now optional and behind the `serde` feature.
 - `PusTcSecondaryHeaderT` trait renamed to `GenericPusTcSecondaryHeader`
-- `PusTmSecondaryHeaderT` trait renamed to `GenericPusTmSecondaryHeader`
+- `PusTmSecondaryHeaderT` trait renamed to `GenericPusTmSecondaryHeader`.
 - `SpHeader`: Former `tc` and `tm` methods now named `tc_unseg` and `tm_unseg`.
-  Former `new` method now called `new_from_single_fields`
+  Former `new` method now called `new_from_single_fields`.
+- `SpHeader`: Renamed `from_bytes` to `from_be_bytes`.
+  The function now returns the remaining slice as well.
 
 ## Added
 
-- `serde` `Serialize` and `Deserialize` added to all types
+- `serde` `Serialize` and `Deserialize` added to all types.
 - Added `const` constructors for `PacketId`, `PacketSeqCtrl` and
-  `SpHeader`
-- Added `PartialEq` and `Eq` `derive`s to `CdsShortTimeProvider`
+  `SpHeader`.
+- Added `PartialEq` and `Eq` `derive`s to `CdsShortTimeProvider`.
+- `SpHeader`: Added serialization function into raw format `write_to_be_bytes`.
 
 # [v0.3.1] 03.12.2022
 
