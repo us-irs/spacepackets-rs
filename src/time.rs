@@ -268,19 +268,35 @@ impl TimeReader for CdsShortTimeProvider {
     }
 }
 
+/// Module to generate the ASCII timecodes specified in
+/// [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.5 .
 pub mod ascii {
     use chrono::format::{DelayedFormat, StrftimeItems};
     use chrono::{DateTime, Utc};
 
+    /// Tuple of format string and formatted size for time code A.
+    ///
+    ///     YYYY-MM-DDThh:mm:ss.ddd
+    ///
+    /// Three digits are used for the decimal fraction
     pub const FMT_STR_CODE_A_WITH_SIZE: (&str, usize) = ("%FT%T%.3f", 23);
+    /// Tuple of format string and formatted size for time code A.
+    ///
+    ///     YYYY-MM-DDThh:mm:ss.dddZ
+    ///
+    /// Three digits are used for the decimal fraction and a terminator is added at the end.
     pub const FMT_STR_CODE_A_TERMINATED_WITH_SIZE: (&str, usize) = ("%FT%T%.3fZ", 24);
 
+    /// Generates a time code formatter using the [FMT_STR_CODE_A_WITH_SIZE] format.
+    /// See [chrono::DateTime::format] for a usage example.
     #[cfg(feature = "alloc")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn generate_time_code_a(date: &DateTime<Utc>) -> DelayedFormat<StrftimeItems<'static>> {
         date.format(FMT_STR_CODE_A_WITH_SIZE.0)
     }
 
+    /// Generates a time code formatter using the [FMT_STR_CODE_A_TERMINATED_WITH_SIZE] format.
+    /// See [chrono::DateTime::format] for a usage example.
     #[cfg(feature = "alloc")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn generate_time_code_a_terminated(
