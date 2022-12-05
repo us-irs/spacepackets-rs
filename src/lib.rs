@@ -39,7 +39,7 @@
 //!
 //! ```rust
 //! use spacepackets::SpHeader;
-//! let sp_header = SpHeader::tc_unseg(0x42, 12, 0).expect("Error creating CCSDS TC header");
+//! let sp_header = SpHeader::tc_unseg(0x42, 12, 1).expect("Error creating CCSDS TC header");
 //! println!("{:?}", sp_header);
 //! let mut ccsds_buf: [u8; 32] = [0; 32];
 //! sp_header.write_to_be_bytes(&mut ccsds_buf).expect("Writing CCSDS TC header failed");
