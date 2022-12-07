@@ -66,6 +66,10 @@ pub mod tc;
 pub mod time;
 pub mod tm;
 
+mod private {
+    pub trait Sealed {}
+}
+
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 
