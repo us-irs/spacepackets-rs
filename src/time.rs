@@ -222,7 +222,7 @@ pub trait CcsdsTimeProvider {
 /// Module to generate or read CDS timestamps as specified in
 /// [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.3 .
 ///
-/// The core data structure to do this is the [cds::CdsTimeProvider] struct.
+/// The core data structure to do this is the [cds::TimeProvider] struct.
 pub mod cds {
     use super::*;
     use crate::private::Sealed;
@@ -237,7 +237,7 @@ pub mod cds {
         type FieldType: Copy + Clone + TryFrom<i32>;
     }
 
-    /// Type level token to be used as a generic parameter to [CdsTimeProvider].
+    /// Type level token to be used as a generic parameter to [TimeProvider].
     #[derive(Debug, PartialEq, Eq)]
     pub struct DaysLen16Bits {}
 
@@ -246,7 +246,7 @@ pub mod cds {
         type FieldType = u16;
     }
 
-    /// Type level token to be used as a generic parameter to [CdsTimeProvider].
+    /// Type level token to be used as a generic parameter to [TimeProvider].
     pub struct DaysLen24Bits {}
     impl Sealed for DaysLen24Bits {}
     impl ProvidesDaysLength for DaysLen24Bits {
