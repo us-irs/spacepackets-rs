@@ -814,6 +814,125 @@ pub mod cds {
     }
 }
 
+pub mod cuc {
+    use core::fmt::Debug;
+    use super::*;
+
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+    pub struct WidthCounterPair(u8, u32);
+
+    /// This provider uses the CCSDS epoch. Furthermore the preamble field only has one byte,
+    /// which allows a time code representation through the year 2094.
+    ///
+    /// More specifically, only having a preamble field of one byte limits the width of the counter
+    /// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes.
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+    pub struct TimeProviderCcsdsEpoch {
+        pfield: u8,
+        counter: WidthCounterPair,
+        fractions: Option<WidthCounterPair>
+    }
+
+    #[inline]
+    pub fn pfield_len(pfield: u8) -> usize {
+        if ((pfield >> 7) & 0b1) == 1 {
+            return 2;
+        }
+        return 1
+    }
+
+    impl TimeProviderCcsdsEpoch {
+        fn build_p_field(counter_width: u8, fractions_width: Option<u8>) -> u8 {
+            let mut pfield = (CcsdsTimeCodes::CucCcsdsEpoch as u8) << 4;
+            if counter_width < 1 || counter_width > 4 {
+                panic!("invalid counter width {} for cuc timestamp", counter_width);
+            }
+            pfield |= counter_width << 3;
+            if let Some(fractions_width) = fractions_width {
+                if fractions_width < 1 || fractions_width > 3 {
+                    panic!("invalid fractions width {} for cuc timestamp", fractions_width);
+                }
+                pfield |= fractions_width;
+            }
+            pfield
+        }
+
+
+        pub fn len_packed(&self) -> usize {
+            // TODO: Implement
+            todo!()
+        }
+    }
+
+    impl TimeProviderCcsdsEpoch {
+        pub fn new_default(counter: u32) -> Self {
+            Self::new(WidthCounterPair(4, counter), None)
+        }
+
+        pub fn new(counter: WidthCounterPair, fractions: Option<WidthCounterPair>) -> Self {
+            let fractions_width = match fractions {
+                None => 0,
+                Some(fractions) => fractions.0
+            };
+            Self {
+                pfield: Self::build_p_field(counter.0.into(), fractions_width.into()),
+                counter,
+                fractions
+            }
+        }
+    }
+
+    impl TimeReader for TimeProviderCcsdsEpoch {
+        fn from_bytes(_buf: &[u8]) -> Result<Self, TimestampError> where Self: Sized {
+            todo!()
+        }
+    }
+
+    impl TimeWriter for TimeProviderCcsdsEpoch {
+        fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
+            // Cross check the sizes of the counters against byte widths in the ctor
+            if bytes.len() < self.len_packed() {
+                return Err(TimestampError::ByteConversionError(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                    found: bytes.len(),
+                    expected: self.len_packed()
+                })))
+            }
+            bytes[0] = self.pfield;
+            let mut current_idx: usize = 1;
+            match self.counter.0 {
+                1 => {
+                    bytes[1] = self.counter.1 as u8;
+                },
+                2 => {
+                    bytes[1..3].copy_from_slice(&(self.counter.1 as u16).to_be_bytes());
+                },
+                3 => {
+                    bytes[1..4].copy_from_slice(&self.counter.1.to_be_bytes()[1..4]);
+                },
+                4 => {
+                    bytes[1..5].copy_from_slice(&self.counter.1.to_be_bytes());
+                },
+                // Should never happen
+                _ => panic!("invalid counter width value")
+            }
+            current_idx += self.counter.0 as usize;
+            if let Some(fractions) = self.fractions {
+                match fractions.0 {
+                    1 => bytes[current_idx] = fractions.1 as u8,
+                    2 => bytes[current_idx..current_idx + 2].copy_from_slice(&(fractions.1 as u16).to_be_bytes()),
+                    3 => bytes[current_idx..current_idx + 3].copy_from_slice(&fractions.1.to_be_bytes()[1..4]),
+                    // Should also never happen
+                    _ => panic!("invalid fractions value")
+                }
+                current_idx += fractions.0 as usize;
+            }
+            Ok(current_idx)
+        }
+    }
+
+}
 /// Module to generate the ASCII timecodes specified in
 /// [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.5 .
 /// See [chrono::DateTime::format] for a usage example of the generated

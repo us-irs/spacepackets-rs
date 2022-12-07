@@ -224,6 +224,14 @@ pub trait ToBeBytes {
     fn to_be_bytes(&self) -> Self::ByteArray;
 }
 
+impl ToBeBytes for () {
+    type ByteArray = [u8; 0];
+
+    fn to_be_bytes(&self) -> Self::ByteArray {
+        []
+    }
+}
+
 impl ToBeBytes for u8 {
     type ByteArray = [u8; 1];
 
