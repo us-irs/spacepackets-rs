@@ -16,8 +16,10 @@ Currently, this includes the following components:
 - PUS Telecommand and PUS Telemetry implementation according to the
   [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 - CDS Short Time Code implementation according to
-  [CCSDS CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
- 
+  [CCSDS 301.0-B-4 3.3](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+- Some helper types to support ASCII timecodes ad specified in
+  [CCSDS 301.0-B-4 3.5](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
+
 # Features
 
 `spacepackets` supports various runtime environments and is also suitable for `no_std` environments.
