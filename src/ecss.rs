@@ -1,11 +1,13 @@
 //! Common definitions and helpers required to create PUS TMTC packets according to
 //! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
 use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
+use std::error::Error;
 
 pub type CrcType = u16;
 
@@ -63,6 +65,45 @@ pub enum PusError {
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
     ByteConversionError(ByteConversionError),
+}
+
+impl Display for PusError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            PusError::VersionNotSupported(v) => {
+                write!(f, "PUS version {:?} not supported", v)
+            }
+            PusError::IncorrectCrc(crc) => {
+                write!(f, "crc16 {:#04x} is incorrect", crc)
+            }
+            PusError::RawDataTooShort(size) => {
+                write!(
+                    f,
+                    "deserialization error, provided raw data with size {} too short",
+                    size
+                )
+            }
+            PusError::NoRawData => {
+                write!(f, "no raw data provided")
+            }
+            PusError::CrcCalculationMissing => {
+                write!(f, "crc16 was not calculated")
+            }
+            PusError::ByteConversionError(e) => {
+                write!(f, "low level byte conversion error: {}", e)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Error for PusError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        if let PusError::ByteConversionError(e) = self {
+            return Some(e);
+        }
+        None
+    }
 }
 
 impl From<ByteConversionError> for PusError {

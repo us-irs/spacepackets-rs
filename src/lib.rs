@@ -53,7 +53,10 @@ extern crate alloc;
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
+use core::fmt::{Display, Formatter};
 use delegate::delegate;
+#[cfg(feature = "std")]
+use std::error::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -84,6 +87,36 @@ pub enum ByteConversionError {
     ZeroCopyToError,
     ZeroCopyFromError,
 }
+
+impl Display for ByteConversionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                write!(
+                    f,
+                    "target slice with size {} is too small, expected size of at least {}",
+                    missmatch.found, missmatch.expected
+                )
+            }
+            ByteConversionError::FromSliceTooSmall(missmatch) => {
+                write!(
+                    f,
+                    "source slice with size {} too small, expected at least {} bytes",
+                    missmatch.found, missmatch.expected
+                )
+            }
+            ByteConversionError::ZeroCopyToError => {
+                write!(f, "zerocopy serialization error")
+            }
+            ByteConversionError::ZeroCopyFromError => {
+                write!(f, "zerocopy deserialization error")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Error for ByteConversionError {}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
