@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - `serde` support is now optional and behind the `serde` feature.
-- `PusTcSecondaryHeaderT` trait renamed to `GenericPusTcSecondaryHeader`
+- `PusTcSecondaryHeaderT` trait renamed to `GenericPusTcSecondaryHeader`.
 - `PusTmSecondaryHeaderT` trait renamed to `GenericPusTmSecondaryHeader`.
 - `SpHeader`: Former `tc` and `tm` methods now named `tc_unseg` and `tm_unseg`.
   Former `new` method now called `new_from_single_fields`.
@@ -22,7 +22,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
-- ACII timestamps as specified in CCSDS 301.0-B-4
+- Added `std::error::Error` implementation for all error enumerations if the `std` feature
+  is enabled.
+- ACII timestamps as specified in CCSDS 301.0-B-4.
 - `serde` `Serialize` and `Deserialize` added to all types.
 - Added `const` constructors for `PacketId`, `PacketSeqCtrl` and
   `SpHeader`.
