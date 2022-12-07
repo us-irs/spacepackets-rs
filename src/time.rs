@@ -273,6 +273,7 @@ impl TimeReader for CdsShortTimeProvider {
 /// See [chrono::DateTime::format] for a usage example of the generated
 /// [chrono::format::DelayedFormat] structs.
 pub mod ascii {
+    #[cfg(feature = "alloc")]
     use chrono::format::{DelayedFormat, StrftimeItems};
     use chrono::{DateTime, Utc};
 
