@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- Added MSRV in `Cargo.toml` with the `rust-version` field set to Rust 1.60.
 - ACII timestamps as specified in CCSDS 301.0-B-4
 - `serde` `Serialize` and `Deserialize` added to all types.
 - Added `const` constructors for `PacketId`, `PacketSeqCtrl` and
