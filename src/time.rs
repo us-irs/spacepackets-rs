@@ -238,7 +238,7 @@ pub mod cds {
     }
 
     /// Type level token to be used as a generic parameter to [TimeProvider].
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Default)]
     pub struct DaysLen16Bits {}
 
     impl Sealed for DaysLen16Bits {}
@@ -247,6 +247,7 @@ pub mod cds {
     }
 
     /// Type level token to be used as a generic parameter to [TimeProvider].
+    #[derive(Debug, PartialEq, Eq, Default)]
     pub struct DaysLen24Bits {}
     impl Sealed for DaysLen24Bits {}
     impl ProvidesDaysLength for DaysLen24Bits {
