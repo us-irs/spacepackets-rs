@@ -1,4 +1,4 @@
-//! Module to generate or read CDS timestamps as specified in
+//! Module to generate or read CCSDS Day Segmented (CDS) timestamps as specified in
 //! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.3 .
 //!
 //! The core data structure to do this is the [cds::TimeProvider] struct.

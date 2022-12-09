@@ -1,7 +1,13 @@
+//! Module to generate or read CCSDS Unsegmented (CUC) timestamps as specified in
+//! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.2 .
+//!
+//! The core data structure to do this is the [TimeProviderCcsdsEpoch] struct.
 use super::*;
 use core::fmt::Debug;
 
 const MIN_CUC_LEN: usize = 2;
+/// Maximum length if the preamble field is not extended.
+pub const MAX_CUC_LEN_SMALL_PREAMBLE: usize = 8;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -103,11 +109,18 @@ pub struct WidthCounterPair(u8, u32);
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FractionalPart(FractionalResolution, u32);
 
-/// This provider uses the CCSDS epoch. Furthermore the preamble field only has one byte,
-/// which allows a time code representation through the year 2094.
+/// This object is the abstraction for the CCSDS Unsegmented Time Code (CUC) using the CCSDS epoch
+/// and a small preamble field.
 ///
-/// More specifically, only having a preamble field of one byte limits the width of the counter
-/// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes.
+/// It has the capability to generate and read timestamps as specified in the CCSDS 301.0-B-4
+/// section 3.2 . The preamble field only has one byte, which allows a time code representation
+/// through the year 2094. The time is represented as a simple binary counter starting from the
+/// fixed CCSDS epoch (1958-01-01 00:00:00). It is possible to provide subsecond accuracy using the
+/// fractional field with various available resolutions.
+///
+/// Having a preamble field of one byte limits the width of the counter
+/// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes. This limits
+/// the maximum time stamp size to [MAX_CUC_LEN_SMALL_PREAMBLE] (8 bytes).
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimeProviderCcsdsEpoch {
