@@ -43,6 +43,28 @@ pub const fn fractional_res_to_div(res: FractionalResolution) -> u32 {
     2_u32.pow(8 * res as u32) - 1
 }
 
+/// Calculate the fractional part for a given resolution and subsecond nanoseconds.
+/// Please note that this function will panic if the passed nanoseconds exceeds 1 second
+/// as a nanosecond (10 to the power of 9). Furthermore, it will return [None] if the
+/// given resolution is [FractionalResolution::Seconds].
+pub fn fractional_part_from_subsec_ns(
+    res: FractionalResolution,
+    ns: u64,
+) -> Option<FractionalPart> {
+    if res == FractionalResolution::Seconds {
+        return None;
+    }
+    let sec_as_ns = 10_u64.pow(9);
+    if ns > sec_as_ns {
+        panic!("passed nanosecond value larger than 1 second");
+    }
+    // First determine the nanoseconds for the smallest segment given the resolution.
+    // Then divide by that to find out the fractional part. An integer division floors
+    // which is what we want here.
+    let fractional_part = ns / (sec_as_ns / fractional_res_to_div(res) as u64);
+    Some(FractionalPart(res, fractional_part as u32))
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CucError {
@@ -195,14 +217,55 @@ impl TimeProviderCcsdsEpoch {
 }
 
 impl TimeProviderCcsdsEpoch {
-    pub fn new_default(counter: u32) -> Self {
+    pub fn new(counter: u32) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
-        Self::new(WidthCounterPair(4, counter), None).unwrap()
+        Self::new_generic(WidthCounterPair(4, counter), None).unwrap()
+    }
+
+    pub fn new_with_coarse_fractions(counter: u32, subsec_fractions: u8) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::FourMs,
+                subsec_fractions as u32,
+            )),
+        )
+        .unwrap()
+    }
+
+    pub fn new_with_submillis_fractions(counter: u32, subsec_fractions: u16) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::FifteenUs,
+                subsec_fractions as u32,
+            )),
+        )
+        .unwrap()
+    }
+
+    pub fn new_with_fine_fractions(counter: u32, subsec_fractions: u32) -> Result<Self, CucError> {
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::SixtyNs,
+                subsec_fractions as u32,
+            )),
+        )
+    }
+
+    pub fn new_with_fractions(
+        counter: u32,
+        fractions: Option<FractionalPart>,
+    ) -> Result<Self, CucError> {
+        Self::new_generic(WidthCounterPair(4, counter), fractions)
     }
 
     pub fn new_u16_counter(counter: u16) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
-        Self::new(WidthCounterPair(2, counter as u32), None).unwrap()
+        Self::new_generic(WidthCounterPair(2, counter as u32), None).unwrap()
     }
 
     /// This function will return the current time as a CUC timestamp.
@@ -212,17 +275,26 @@ impl TimeProviderCcsdsEpoch {
     pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
-        let mut fractions = None;
-        if fraction_resolution != FractionalResolution::Seconds {
-            let fractional_part = 10_u64.pow(9) * now.subsec_nanos() as u64
-                / fractional_res_to_div(fraction_resolution) as u64;
-            fractions = Some(FractionalPart(fraction_resolution, fractional_part as u32));
-        }
+        let fractions =
+            fractional_part_from_subsec_ns(fraction_resolution, now.subsec_nanos() as u64);
         Ok(Self {
             pfield: 0,
             counter: WidthCounterPair(4, ccsds_epoch as u32),
             fractions,
         })
+    }
+
+    #[cfg(feature = "std")]
+    pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        self.counter.1 = unix_epoch_to_ccsds_epoch(now.as_secs()) as u32;
+        if self.fractions.is_some() {
+            self.fractions = fractional_part_from_subsec_ns(
+                self.fractions.unwrap().0,
+                now.subsec_nanos() as u64,
+            );
+        }
+        Ok(())
     }
 
     pub fn width_counter_pair(&self) -> WidthCounterPair {
@@ -241,7 +313,20 @@ impl TimeProviderCcsdsEpoch {
         Ok(())
     }
 
-    pub fn new(
+    /// Set a fractional resolution. Please note that this function will reset the fractional value
+    /// to 0 if the resolution changes.
+    pub fn set_fractional_resolution(&mut self, res: FractionalResolution) {
+        if res == FractionalResolution::Seconds {
+            self.fractions = None;
+        }
+        if let Some(existing_fractions) = self.fractions {
+            if existing_fractions.0 != res {
+                self.fractions = Some(FractionalPart(res, 0));
+            }
+        }
+    }
+
+    pub fn new_generic(
         counter: WidthCounterPair,
         fractions: Option<FractionalPart>,
     ) -> Result<Self, CucError> {
@@ -324,7 +409,7 @@ impl TimeReader for TimeProviderCcsdsEpoch {
                 _ => panic!("unreachable match arm"),
             }
         }
-        let provider = Self::new(WidthCounterPair(cntr_len, counter), fractions)?;
+        let provider = Self::new_generic(WidthCounterPair(cntr_len, counter), fractions)?;
         Ok(provider)
     }
 }
@@ -379,6 +464,7 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::time::cuc::{convert_fractional_part_to_ns, FractionalPart, FractionalResolution};
 
     #[test]
@@ -410,5 +496,33 @@ mod tests {
             FractionalResolution::SixtyNs,
             2_u32.pow(32) - 1,
         ));
+    }
+
+    #[test]
+    fn fractional_part_formula() {
+        let fractional_part =
+            7843137 / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FourMs) as u64);
+        assert_eq!(fractional_part, 2);
+    }
+
+    #[test]
+    fn fractional_part_formula_2() {
+        let fractional_part =
+            12000000 / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FourMs) as u64);
+        assert_eq!(fractional_part, 3);
+    }
+
+    #[test]
+    fn fractional_part_formula_3() {
+        let one_fraction_with_width_two_in_ns = 10_u64.pow(9) / (2_u32.pow(8 * 2) - 1) as u64;
+        assert_eq!(one_fraction_with_width_two_in_ns, 15259);
+        let hundred_fractions_and_some = 100 * one_fraction_with_width_two_in_ns + 7000;
+        let fractional_part = hundred_fractions_and_some
+            / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FifteenUs) as u64);
+        assert_eq!(fractional_part, 100);
+        let hundred_and_one_fractions = 101 * one_fraction_with_width_two_in_ns;
+        let fractional_part = hundred_and_one_fractions
+            / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FifteenUs) as u64);
+        assert_eq!(fractional_part, 101);
     }
 }
