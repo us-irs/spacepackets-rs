@@ -5,11 +5,51 @@ const MIN_CUC_LEN: usize = 2;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum FractionalResolution {
+    /// No fractional part, only second resolution
+    Seconds = 0,
+    /// 256 fractional parts, resulting in 1/255 ~= 4 ms fractional resolution
+    FourMs = 1,
+    /// 65535 fractional parts, resulting in 1/65535 ~= 15 us fractional resolution
+    FifteenUs = 2,
+    /// 16777215 fractional parts, resulting in 1/16777215 ~= 60 ns fractional resolution
+    SixtyNs = 3,
+}
+
+impl TryFrom<u8> for FractionalResolution {
+    type Error = ();
+
+    fn try_from(v: u8) -> Result<Self, Self::Error> {
+        match v {
+            0 => Ok(FractionalResolution::Seconds),
+            1 => Ok(FractionalResolution::FourMs),
+            2 => Ok(FractionalResolution::FifteenUs),
+            3 => Ok(FractionalResolution::SixtyNs),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Please note that this function will panic if the fractional value is not smaller than
+/// the maximum number of fractions allowed for the particular resolution.
+/// (e.g. passing 270 when the resolution only allows 255 values).
+pub fn convert_fractional_part_to_ns(fractional_part: FractionalPart) -> u64 {
+    let div = fractional_res_to_div(fractional_part.0);
+    assert!(fractional_part.1 < div);
+    10_u64.pow(9) * fractional_part.1 as u64 / div as u64
+}
+
+pub const fn fractional_res_to_div(res: FractionalResolution) -> u32 {
+    2_u32.pow(8 * res as u32) - 1
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CucError {
     InvalidCounterWidth(u8),
-    InvalidFractionWidth(u8),
+    InvalidFractionResolution(FractionalResolution),
     InvalidCounter(u8, u64),
-    InvalidFractions(u8, u64),
+    InvalidFractions(FractionalResolution, u64),
 }
 
 impl Display for CucError {
@@ -18,14 +58,14 @@ impl Display for CucError {
             CucError::InvalidCounterWidth(w) => {
                 write!(f, "invalid cuc counter byte width {}", w)
             }
-            CucError::InvalidFractionWidth(w) => {
-                write!(f, "invalid cuc fractional part byte width {}", w)
+            CucError::InvalidFractionResolution(w) => {
+                write!(f, "invalid cuc fractional part byte width {:?}", w)
             }
             CucError::InvalidCounter(w, c) => {
                 write!(f, "invalid cuc counter {} for width {}", c, w)
             }
             CucError::InvalidFractions(w, c) => {
-                write!(f, "invalid cuc fractional part {} for width {}", c, w)
+                write!(f, "invalid cuc fractional part {} for width {:?}", c, w)
             }
         }
     }
@@ -37,6 +77,9 @@ impl Error for CucError {}
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WidthCounterPair(u8, u32);
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FractionalPart(FractionalResolution, u32);
 
 /// This provider uses the CCSDS epoch. Furthermore the preamble field only has one byte,
 /// which allows a time code representation through the year 2094.
@@ -48,7 +91,7 @@ pub struct WidthCounterPair(u8, u32);
 pub struct TimeProviderCcsdsEpoch {
     pfield: u8,
     counter: WidthCounterPair,
-    fractions: Option<WidthCounterPair>,
+    fractions: Option<FractionalPart>,
 }
 
 #[inline]
@@ -60,7 +103,7 @@ pub fn pfield_len(pfield: u8) -> usize {
 }
 
 impl TimeProviderCcsdsEpoch {
-    fn build_p_field(counter_width: u8, fractions_width: Option<u8>) -> u8 {
+    fn build_p_field(counter_width: u8, fractions_width: Option<FractionalResolution>) -> u8 {
         let mut pfield = (CcsdsTimeCodes::CucCcsdsEpoch as u8) << 4;
         if !(1..=4).contains(&counter_width) {
             // Okay to panic here, this function is private and all input values should
@@ -69,15 +112,15 @@ impl TimeProviderCcsdsEpoch {
         }
         pfield |= (counter_width - 1) << 3;
         if let Some(fractions_width) = fractions_width {
-            if !(1..=3).contains(&fractions_width) {
+            if !(1..=3).contains(&(fractions_width as u8)) {
                 // Okay to panic here, this function is private and all input values should
                 // have been sanitized
                 panic!(
-                    "invalid fractions width {} for cuc timestamp",
+                    "invalid fractions width {:?} for cuc timestamp",
                     fractions_width
                 );
             }
-            pfield |= fractions_width;
+            pfield |= fractions_width as u8;
         }
         pfield
     }
@@ -85,7 +128,7 @@ impl TimeProviderCcsdsEpoch {
     fn update_p_field_fractions(&mut self) {
         self.pfield &= !(0b11);
         if let Some(fractions) = self.fractions {
-            self.pfield |= fractions.0;
+            self.pfield |= fractions.0 as u8;
         }
     }
 
@@ -136,14 +179,14 @@ impl TimeProviderCcsdsEpoch {
         Ok(())
     }
 
-    fn verify_fractions_width(width: u8) -> Result<(), CucError> {
-        if width > 3 {
-            return Err(CucError::InvalidFractionWidth(width));
+    fn verify_fractions_width(width: FractionalResolution) -> Result<(), CucError> {
+        if width as u8 > 3 {
+            return Err(CucError::InvalidFractionResolution(width));
         }
         Ok(())
     }
 
-    fn verify_fractions_value(val: WidthCounterPair) -> Result<(), CucError> {
+    fn verify_fractions_value(val: FractionalPart) -> Result<(), CucError> {
         if val.1 > 2u32.pow((val.0 as u32) * 8) - 1 {
             return Err(CucError::InvalidFractions(val.0, val.1 as u64));
         }
@@ -156,12 +199,41 @@ impl TimeProviderCcsdsEpoch {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new(WidthCounterPair(4, counter), None).unwrap()
     }
+
     pub fn new_u16_counter(counter: u16) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new(WidthCounterPair(2, counter as u32), None).unwrap()
     }
 
-    pub fn set_fractions(&mut self, fractions: WidthCounterPair) -> Result<(), CucError> {
+    /// This function will return the current time as a CUC timestamp.
+    /// The counter width will always be set to 4 bytes because the normal CCSDS epoch will overflow
+    /// when using less than that.
+    #[cfg(feature = "std")]
+    pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
+        let mut fractions = None;
+        if fraction_resolution != FractionalResolution::Seconds {
+            let fractional_part = 10_u64.pow(9) * now.subsec_nanos() as u64
+                / fractional_res_to_div(fraction_resolution) as u64;
+            fractions = Some(FractionalPart(fraction_resolution, fractional_part as u32));
+        }
+        Ok(Self {
+            pfield: 0,
+            counter: WidthCounterPair(4, ccsds_epoch as u32),
+            fractions,
+        })
+    }
+
+    pub fn width_counter_pair(&self) -> WidthCounterPair {
+        self.counter
+    }
+
+    pub fn width_fractions_pair(&self) -> Option<FractionalPart> {
+        self.fractions
+    }
+
+    pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
         Self::verify_fractions_width(fractions.0)?;
         Self::verify_fractions_value(fractions)?;
         self.fractions = Some(fractions);
@@ -171,7 +243,7 @@ impl TimeProviderCcsdsEpoch {
 
     pub fn new(
         counter: WidthCounterPair,
-        fractions: Option<WidthCounterPair>,
+        fractions: Option<FractionalPart>,
     ) -> Result<Self, CucError> {
         Self::verify_counter_width(counter.0)?;
         if counter.1 > 2u32.pow(counter.0 as u32 * 8) - 1 {
@@ -228,10 +300,15 @@ impl TimeReader for TimeProviderCcsdsEpoch {
         let mut fractions = None;
         if fractions_len > 0 {
             match fractions_len {
-                1 => fractions = Some(WidthCounterPair(fractions_len, buf[current_idx] as u32)),
+                1 => {
+                    fractions = Some(FractionalPart(
+                        fractions_len.try_into().unwrap(),
+                        buf[current_idx] as u32,
+                    ))
+                }
                 2 => {
-                    fractions = Some(WidthCounterPair(
-                        fractions_len,
+                    fractions = Some(FractionalPart(
+                        fractions_len.try_into().unwrap(),
                         u16::from_be_bytes(buf[current_idx..current_idx + 2].try_into().unwrap())
                             as u32,
                     ))
@@ -239,8 +316,8 @@ impl TimeReader for TimeProviderCcsdsEpoch {
                 3 => {
                     let mut tmp_buf: [u8; 4] = [0; 4];
                     tmp_buf[1..4].copy_from_slice(&buf[current_idx..current_idx + 3]);
-                    fractions = Some(WidthCounterPair(
-                        fractions_len,
+                    fractions = Some(FractionalPart(
+                        fractions_len.try_into().unwrap(),
                         u32::from_be_bytes(tmp_buf) as u32,
                     ))
                 }
@@ -286,10 +363,10 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
         current_idx += self.counter.0 as usize;
         if let Some(fractions) = self.fractions {
             match fractions.0 {
-                1 => bytes[current_idx] = fractions.1 as u8,
-                2 => bytes[current_idx..current_idx + 2]
+                FractionalResolution::FourMs => bytes[current_idx] = fractions.1 as u8,
+                FractionalResolution::FifteenUs => bytes[current_idx..current_idx + 2]
                     .copy_from_slice(&(fractions.1 as u16).to_be_bytes()),
-                3 => bytes[current_idx..current_idx + 3]
+                FractionalResolution::SixtyNs => bytes[current_idx..current_idx + 3]
                     .copy_from_slice(&fractions.1.to_be_bytes()[1..4]),
                 // Should also never happen
                 _ => panic!("invalid fractions value"),
@@ -297,5 +374,41 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
             current_idx += fractions.0 as usize;
         }
         Ok(current_idx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::time::cuc::{convert_fractional_part_to_ns, FractionalPart, FractionalResolution};
+
+    #[test]
+    fn test_basic() {}
+
+    #[test]
+    fn test_fractional_converter() {
+        let ns = convert_fractional_part_to_ns(FractionalPart(FractionalResolution::FourMs, 2));
+        // The formula for this is 2/255 * 10e9 = 7.843.137.
+        assert_eq!(ns, 7843137);
+        // This is the largest value we should be able to pass without this function panicking.
+        let ns = convert_fractional_part_to_ns(FractionalPart(
+            FractionalResolution::SixtyNs,
+            2_u32.pow(24) - 2,
+        ));
+        assert_eq!(ns, 999999940);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fractional_converter_invalid_input() {
+        convert_fractional_part_to_ns(FractionalPart(FractionalResolution::FourMs, 256));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_fractional_converter_invalid_input_2() {
+        convert_fractional_part_to_ns(FractionalPart(
+            FractionalResolution::SixtyNs,
+            2_u32.pow(32) - 1,
+        ));
     }
 }

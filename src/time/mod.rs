@@ -163,6 +163,12 @@ pub const fn ccsds_to_unix_days(ccsds_days: i64) -> i64 {
     ccsds_days + DAYS_CCSDS_TO_UNIX as i64
 }
 
+/// Similar to [unix_to_ccsds_days] but converts the epoch instead, which is the number of elpased
+/// seconds since the CCSDS and UNIX epoch times.
+pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: u64) -> u64 {
+    (unix_epoch as i64 - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)) as u64
+}
+
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub fn ms_of_day_using_sysclock() -> u32 {
@@ -217,5 +223,18 @@ mod tests {
     fn test_get_current_time() {
         let sec_floats = seconds_since_epoch();
         assert!(sec_floats > 0.0);
+    }
+
+    #[test]
+    fn test_ccsds_epoch() {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let unix_epoch = now.as_secs();
+        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
+        assert!(ccsds_epoch > unix_epoch);
+        assert_eq!((ccsds_epoch - unix_epoch) % SECONDS_PER_DAY as u64, 0);
+        let days_diff = (ccsds_epoch - unix_epoch) / SECONDS_PER_DAY as u64;
+        assert_eq!(days_diff, -DAYS_CCSDS_TO_UNIX as u64);
     }
 }
