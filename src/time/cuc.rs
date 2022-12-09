@@ -132,7 +132,7 @@ impl TimeProviderCcsdsEpoch {
             // have been sanitized
             panic!("invalid counter width {} for cuc timestamp", counter_width);
         }
-        pfield |= (counter_width - 1) << 3;
+        pfield |= (counter_width - 1) << 2;
         if let Some(fractions_width) = fractions_width {
             if !(1..=3).contains(&(fractions_width as u8)) {
                 // Okay to panic here, this function is private and all input values should
@@ -192,8 +192,7 @@ impl TimeProviderCcsdsEpoch {
         base_len
     }
 
-    /// Verifies the raw width parameter and returns the actual length, which is the raw
-    /// value plus 1.
+    /// Verifies the raw width parameter.
     fn verify_counter_width(width: u8) -> Result<(), CucError> {
         if width == 0 || width > 4 {
             return Err(CucError::InvalidCounterWidth(width));
@@ -331,7 +330,7 @@ impl TimeProviderCcsdsEpoch {
         fractions: Option<FractionalPart>,
     ) -> Result<Self, CucError> {
         Self::verify_counter_width(counter.0)?;
-        if counter.1 > 2u32.pow(counter.0 as u32 * 8) - 1 {
+        if counter.1 > (2u64.pow(counter.0 as u32 * 8) - 1) as u32 {
             return Err(CucError::InvalidCounter(counter.0, counter.1 as u64));
         }
         if let Some(fractions) = fractions {
@@ -462,13 +461,86 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
     }
 }
 
+impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
+    fn len_as_bytes(&self) -> usize {
+        self.len_packed()
+    }
+
+    fn p_field(&self) -> (usize, [u8; 2]) {
+        (1, [self.pfield, 0])
+    }
+
+    fn ccdsd_time_code(&self) -> CcsdsTimeCodes {
+        CcsdsTimeCodes::CucCcsdsEpoch
+    }
+
+    /// Please note that this function only works as intended if the time counter resolution
+    /// is one second.
+    fn unix_seconds(&self) -> i64 {
+        ccsds_epoch_to_unix_epoch(self.counter.1 as u64) as i64
+    }
+
+    fn date_time(&self) -> Option<DateTime<Utc>> {
+        let unix_seconds = self.unix_seconds();
+        let ns = if let Some(fractional_part) = self.fractions {
+            convert_fractional_part_to_ns(fractional_part)
+        } else {
+            0
+        };
+        if let LocalResult::Single(res) = Utc.timestamp_opt(unix_seconds, ns as u32) {
+            return Some(res);
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::cuc::{convert_fractional_part_to_ns, FractionalPart, FractionalResolution};
+    use chrono::{Datelike, Timelike};
+    #[allow(unused_imports)]
+    use std::println;
 
     #[test]
-    fn test_basic() {}
+    fn test_basic_zero_epoch() {
+        let zero_cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(4, 0), None);
+        assert!(zero_cuc.is_ok());
+        let zero_cuc = zero_cuc.unwrap();
+        let counter = zero_cuc.width_counter_pair();
+        assert_eq!(counter.0, 4);
+        assert_eq!(counter.1, 0);
+        let fractions = zero_cuc.width_fractions_pair();
+        assert!(fractions.is_none());
+        let dt = zero_cuc.date_time();
+        assert!(dt.is_some());
+        let dt = dt.unwrap();
+        assert_eq!(dt.year(), 1958);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 1);
+        assert_eq!(dt.hour(), 0);
+        assert_eq!(dt.minute(), 0);
+        assert_eq!(dt.second(), 0);
+    }
+
+    #[test]
+    fn test_write() {
+        let mut buf: [u8; 16] = [0; 16];
+        let zero_cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(4, 0x20102030), None);
+        assert!(zero_cuc.is_ok());
+        let zero_cuc = zero_cuc.unwrap();
+        let res = zero_cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 5);
+        assert_eq!((buf[0] >> 7) & 0b1, 0);
+        let time_code = ccsds_time_code_from_p_field(buf[0]);
+        assert!(time_code.is_ok());
+        assert_eq!(time_code.unwrap(), CcsdsTimeCodes::CucCcsdsEpoch);
+        assert_eq!((buf[0] >> 2) & 0b11, 0b11);
+        assert_eq!(buf[0] & 0b11, 0);
+        let raw_counter = u32::from_be_bytes(buf[1..5].try_into().unwrap());
+        assert_eq!(raw_counter, 0x20102030);
+    }
 
     #[test]
     fn test_fractional_converter() {

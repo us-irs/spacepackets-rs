@@ -169,6 +169,10 @@ pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: u64) -> u64 {
     (unix_epoch as i64 - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)) as u64
 }
 
+pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: u64) -> u64 {
+    (ccsds_epoch as i64 + (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)) as u64
+}
+
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub fn ms_of_day_using_sysclock() -> u32 {
