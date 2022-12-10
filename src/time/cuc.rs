@@ -161,6 +161,144 @@ pub fn pfield_len(pfield: u8) -> usize {
 }
 
 impl TimeProviderCcsdsEpoch {
+    /// Create a time provider with a four byte counter and no fractional part.
+    pub fn new(counter: u32) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(WidthCounterPair(4, counter), None).unwrap()
+    }
+
+    /// Like [TimeProviderCcsdsEpoch::new] but allow to supply a fractional part as well.
+    pub fn new_with_fractions(counter: u32, fractions: FractionalPart) -> Result<Self, CucError> {
+        Self::new_generic(WidthCounterPair(4, counter), Some(fractions))
+    }
+
+    /// Fractions with a resolution of ~ 4 ms
+    pub fn new_with_coarse_fractions(counter: u32, subsec_fractions: u8) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::FourMs,
+                subsec_fractions as u32,
+            )),
+        )
+        .unwrap()
+    }
+
+    /// Fractions with a resolution of ~ 16 us
+    pub fn new_with_medium_fractions(counter: u32, subsec_fractions: u16) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::FifteenUs,
+                subsec_fractions as u32,
+            )),
+        )
+        .unwrap()
+    }
+
+    /// Fractions with a resolution of ~ 60 ns. The fractional part value is limited by the
+    /// 24 bits of the fractional field, so this function will fail with
+    /// [CucError::InvalidFractions] if the fractional value exceeds the value.
+    pub fn new_with_fine_fractions(counter: u32, subsec_fractions: u32) -> Result<Self, CucError> {
+        Self::new_generic(
+            WidthCounterPair(4, counter),
+            Some(FractionalPart(
+                FractionalResolution::SixtyNs,
+                subsec_fractions as u32,
+            )),
+        )
+    }
+
+    /// This function will return the current time as a CUC timestamp.
+    /// The counter width will always be set to 4 bytes because the normal CCSDS epoch will overflow
+    /// when using less than that.
+    #[cfg(feature = "std")]
+    pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
+        if fraction_resolution == FractionalResolution::Seconds {
+            return Ok(Self::new(ccsds_epoch as u32));
+        }
+        let fractions =
+            fractional_part_from_subsec_ns(fraction_resolution, now.subsec_nanos() as u64);
+        Self::new_with_fractions(ccsds_epoch as u32, fractions.unwrap())
+            .map_err(|e| StdTimestampError::TimestampError(e.into()))
+    }
+
+    /// Updates the current time stamp from the current time. The fractional field width remains
+    /// the same and will be updated accordingly.
+    #[cfg(feature = "std")]
+    pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        self.counter.1 = unix_epoch_to_ccsds_epoch(now.as_secs()) as u32;
+        if self.fractions.is_some() {
+            self.fractions = fractional_part_from_subsec_ns(
+                self.fractions.unwrap().0,
+                now.subsec_nanos() as u64,
+            );
+        }
+        Ok(())
+    }
+
+    pub fn new_u16_counter(counter: u16) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(WidthCounterPair(2, counter as u32), None).unwrap()
+    }
+
+    pub fn width_counter_pair(&self) -> WidthCounterPair {
+        self.counter
+    }
+
+    pub fn width_fractions_pair(&self) -> Option<FractionalPart> {
+        self.fractions
+    }
+
+    pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
+        Self::verify_fractions_width(fractions.0)?;
+        Self::verify_fractions_value(fractions)?;
+        self.fractions = Some(fractions);
+        self.update_p_field_fractions();
+        Ok(())
+    }
+
+    /// Set a fractional resolution. Please note that this function will reset the fractional value
+    /// to 0 if the resolution changes.
+    pub fn set_fractional_resolution(&mut self, res: FractionalResolution) {
+        if res == FractionalResolution::Seconds {
+            self.fractions = None;
+        }
+        let mut update_fractions = true;
+        if let Some(existing_fractions) = self.fractions {
+            if existing_fractions.0 == res {
+                update_fractions = false;
+            }
+        };
+        if update_fractions {
+            self.fractions = Some(FractionalPart(res, 0));
+        }
+    }
+
+    pub fn new_generic(
+        counter: WidthCounterPair,
+        fractions: Option<FractionalPart>,
+    ) -> Result<Self, CucError> {
+        Self::verify_counter_width(counter.0)?;
+        if counter.1 > (2u64.pow(counter.0 as u32 * 8) - 1) as u32 {
+            return Err(CucError::InvalidCounter(counter.0, counter.1 as u64));
+        }
+        if let Some(fractions) = fractions {
+            Self::verify_fractions_width(fractions.0)?;
+            Self::verify_fractions_value(fractions)?;
+        }
+        Ok(Self {
+            pfield: Self::build_p_field(counter.0, fractions.map(|v| v.0)),
+            counter,
+            fractions,
+        })
+    }
+
     fn build_p_field(counter_width: u8, fractions_width: Option<FractionalResolution>) -> u8 {
         let mut pfield = (CcsdsTimeCodes::CucCcsdsEpoch as u8) << 4;
         if !(1..=4).contains(&counter_width) {
@@ -244,142 +382,6 @@ impl TimeProviderCcsdsEpoch {
             return Err(CucError::InvalidFractions(val.0, val.1 as u64));
         }
         Ok(())
-    }
-}
-
-impl TimeProviderCcsdsEpoch {
-    /// Create a time provider with a four byte counter and no fractional part.
-    pub fn new(counter: u32) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(WidthCounterPair(4, counter), None).unwrap()
-    }
-
-    /// Like [TimeProviderCcsdsEpoch::new] but allow to supply a fractional part as well.
-    pub fn new_with_fractions(counter: u32, fractions: FractionalPart) -> Result<Self, CucError> {
-        Self::new_generic(WidthCounterPair(4, counter), Some(fractions))
-    }
-
-    /// Fractions with a resolution of ~ 4 ms
-    pub fn new_with_coarse_fractions(counter: u32, subsec_fractions: u8) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(
-            WidthCounterPair(4, counter),
-            Some(FractionalPart(
-                FractionalResolution::FourMs,
-                subsec_fractions as u32,
-            )),
-        )
-        .unwrap()
-    }
-
-    /// Fractions with a resolution of ~ 16 us
-    pub fn new_with_medium_fractions(counter: u32, subsec_fractions: u16) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(
-            WidthCounterPair(4, counter),
-            Some(FractionalPart(
-                FractionalResolution::FifteenUs,
-                subsec_fractions as u32,
-            )),
-        )
-        .unwrap()
-    }
-
-    /// Fractions with a resolution of ~ 60 ns
-    pub fn new_with_fine_fractions(counter: u32, subsec_fractions: u32) -> Result<Self, CucError> {
-        Self::new_generic(
-            WidthCounterPair(4, counter),
-            Some(FractionalPart(
-                FractionalResolution::SixtyNs,
-                subsec_fractions as u32,
-            )),
-        )
-    }
-
-    /// This function will return the current time as a CUC timestamp.
-    /// The counter width will always be set to 4 bytes because the normal CCSDS epoch will overflow
-    /// when using less than that.
-    #[cfg(feature = "std")]
-    pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
-        if fraction_resolution == FractionalResolution::Seconds {
-            return Ok(Self::new(ccsds_epoch as u32));
-        }
-        let fractions =
-            fractional_part_from_subsec_ns(fraction_resolution, now.subsec_nanos() as u64);
-        Self::new_with_fractions(ccsds_epoch as u32, fractions.unwrap())
-            .map_err(|e| StdTimestampError::TimestampError(e.into()))
-    }
-
-    #[cfg(feature = "std")]
-    pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-        self.counter.1 = unix_epoch_to_ccsds_epoch(now.as_secs()) as u32;
-        if self.fractions.is_some() {
-            self.fractions = fractional_part_from_subsec_ns(
-                self.fractions.unwrap().0,
-                now.subsec_nanos() as u64,
-            );
-        }
-        Ok(())
-    }
-
-    pub fn new_u16_counter(counter: u16) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(WidthCounterPair(2, counter as u32), None).unwrap()
-    }
-
-    pub fn width_counter_pair(&self) -> WidthCounterPair {
-        self.counter
-    }
-
-    pub fn width_fractions_pair(&self) -> Option<FractionalPart> {
-        self.fractions
-    }
-
-    pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
-        Self::verify_fractions_width(fractions.0)?;
-        Self::verify_fractions_value(fractions)?;
-        self.fractions = Some(fractions);
-        self.update_p_field_fractions();
-        Ok(())
-    }
-
-    /// Set a fractional resolution. Please note that this function will reset the fractional value
-    /// to 0 if the resolution changes.
-    pub fn set_fractional_resolution(&mut self, res: FractionalResolution) {
-        if res == FractionalResolution::Seconds {
-            self.fractions = None;
-        }
-        let mut update_fractions = true;
-        if let Some(existing_fractions) = self.fractions {
-            if existing_fractions.0 == res {
-                update_fractions = false;
-            }
-        };
-        if update_fractions {
-            self.fractions = Some(FractionalPart(res, 0));
-        }
-    }
-
-    pub fn new_generic(
-        counter: WidthCounterPair,
-        fractions: Option<FractionalPart>,
-    ) -> Result<Self, CucError> {
-        Self::verify_counter_width(counter.0)?;
-        if counter.1 > (2u64.pow(counter.0 as u32 * 8) - 1) as u32 {
-            return Err(CucError::InvalidCounter(counter.0, counter.1 as u64));
-        }
-        if let Some(fractions) = fractions {
-            Self::verify_fractions_width(fractions.0)?;
-            Self::verify_fractions_value(fractions)?;
-        }
-        Ok(Self {
-            pfield: Self::build_p_field(counter.0, fractions.map(|v| v.0)),
-            counter,
-            fractions,
-        })
     }
 }
 
