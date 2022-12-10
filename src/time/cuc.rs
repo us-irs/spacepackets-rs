@@ -167,10 +167,6 @@ impl TimeProviderCcsdsEpoch {
         }
     }
 
-    pub fn len_packed(&self) -> usize {
-        Self::len_packed_from_pfield(self.pfield)
-    }
-
     #[inline]
     pub fn len_cntr_from_pfield(pfield: u8) -> u8 {
         ((pfield >> 2) & 0b11) + 1
@@ -448,11 +444,11 @@ impl TimeReader for TimeProviderCcsdsEpoch {
 impl TimeWriter for TimeProviderCcsdsEpoch {
     fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError> {
         // Cross check the sizes of the counters against byte widths in the ctor
-        if bytes.len() < self.len_packed() {
+        if bytes.len() < self.len_as_bytes() {
             return Err(TimestampError::ByteConversionError(
                 ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                     found: bytes.len(),
-                    expected: self.len_packed(),
+                    expected: self.len_as_bytes(),
                 }),
             ));
         }
@@ -495,7 +491,7 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
 
 impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
     fn len_as_bytes(&self) -> usize {
-        self.len_packed()
+        Self::len_packed_from_pfield(self.pfield)
     }
 
     fn p_field(&self) -> (usize, [u8; 2]) {
@@ -660,6 +656,18 @@ mod tests {
     }
 
     #[test]
+    fn test_read_with_medium_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_medium_fractions(0x30303030, 30000);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let res = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(res.is_ok());
+        let cuc_read_back = res.unwrap();
+        assert_eq!(cuc_read_back, cuc);
+    }
+
+    #[test]
     fn test_write_with_fine_fractions() {
         let mut buf: [u8; 16] = [0; 16];
         let cuc = TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
@@ -674,6 +682,19 @@ mod tests {
         assert_eq!(buf[8], 0);
     }
 
+    #[test]
+    fn test_read_with_fine_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
+        assert!(cuc.is_ok());
+        let cuc = cuc.unwrap();
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let res = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(res.is_ok());
+        let cuc_read_back = res.unwrap();
+        assert_eq!(cuc_read_back, cuc);
+    }
 
     #[test]
     fn test_fractional_converter() {
