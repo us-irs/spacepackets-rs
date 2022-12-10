@@ -234,6 +234,7 @@ impl TimeProviderCcsdsEpoch {
         Self::new_generic(WidthCounterPair(4, counter), None).unwrap()
     }
 
+    /// Fractions with a resolution of ~ 4 ms
     pub fn new_with_coarse_fractions(counter: u32, subsec_fractions: u8) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(
@@ -246,7 +247,8 @@ impl TimeProviderCcsdsEpoch {
         .unwrap()
     }
 
-    pub fn new_with_submillis_fractions(counter: u32, subsec_fractions: u16) -> Self {
+    /// Fractions with a resolution of ~ 16 us
+    pub fn new_with_medium_fractions(counter: u32, subsec_fractions: u16) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(
             WidthCounterPair(4, counter),
@@ -258,6 +260,7 @@ impl TimeProviderCcsdsEpoch {
         .unwrap()
     }
 
+    /// Fractions with a resolution of ~ 60 ns
     pub fn new_with_fine_fractions(counter: u32, subsec_fractions: u32) -> Result<Self, CucError> {
         Self::new_generic(
             WidthCounterPair(4, counter),
@@ -370,6 +373,22 @@ impl TimeReader for TimeProviderCcsdsEpoch {
                     found: buf.len(),
                 }),
             ));
+        }
+        match ccsds_time_code_from_p_field(buf[0]) {
+            Ok(code) => {
+                if code != CcsdsTimeCodes::CucCcsdsEpoch {
+                    return Err(TimestampError::InvalidTimeCode(
+                        CcsdsTimeCodes::CucCcsdsEpoch,
+                        code as u8,
+                    ));
+                }
+            }
+            Err(raw) => {
+                return Err(TimestampError::InvalidTimeCode(
+                    CcsdsTimeCodes::CucCcsdsEpoch,
+                    raw,
+                ))
+            }
         }
         let (cntr_len, fractions_len, total_len) =
             Self::len_components_and_total_from_pfield(buf[0]);
@@ -536,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write() {
+    fn test_write_no_fractions() {
         let mut buf: [u8; 16] = [0; 16];
         let zero_cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(4, 0x20102030), None);
         assert!(zero_cuc.is_ok());
@@ -553,7 +572,108 @@ mod tests {
         assert_eq!(buf[0] & 0b11, 0);
         let raw_counter = u32::from_be_bytes(buf[1..5].try_into().unwrap());
         assert_eq!(raw_counter, 0x20102030);
+        assert_eq!(buf[5], 0);
     }
+
+    #[test]
+    fn test_read_no_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let zero_cuc =
+            TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(4, 0x20102030), None).unwrap();
+        zero_cuc.write_to_bytes(&mut buf).unwrap();
+        let cuc_read_back =
+            TimeProviderCcsdsEpoch::from_bytes(&buf).expect("reading cuc timestamp failed");
+        assert_eq!(cuc_read_back, zero_cuc);
+        assert_eq!(cuc_read_back.width_counter_pair().1, 0x20102030);
+        assert_eq!(cuc_read_back.width_fractions_pair(), None);
+    }
+
+    #[test]
+    fn invalid_read_len() {
+        let buf: [u8; 8] = [0; 8];
+        for i in 0..2 {
+            let res = TimeProviderCcsdsEpoch::from_bytes(&buf[0..i]);
+            assert!(res.is_err());
+            let err = res.unwrap_err();
+            if let TimestampError::ByteConversionError(ByteConversionError::FromSliceTooSmall(e)) =
+                err
+            {
+                assert_eq!(e.found, i);
+                assert_eq!(e.expected, 2);
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_ccsds_stamp_type() {
+        let mut buf: [u8; 16] = [0; 16];
+        buf[0] |= (CcsdsTimeCodes::CucAgencyEpoch as u8) << 4;
+        let res = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        if let TimestampError::InvalidTimeCode(code, raw) = err {
+            assert_eq!(code, CcsdsTimeCodes::CucCcsdsEpoch);
+            assert_eq!(raw, CcsdsTimeCodes::CucAgencyEpoch as u8);
+        } else {
+            panic!("unexpected error: {}", err);
+        }
+    }
+
+    #[test]
+    fn test_write_with_coarse_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_coarse_fractions(0x30201060, 120);
+        assert!(cuc.fractions.is_some());
+        assert_eq!(cuc.fractions.unwrap().1, 120);
+        assert_eq!(cuc.fractions.unwrap().0, FractionalResolution::FourMs);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 6);
+        assert_eq!(buf[5], 120);
+        assert_eq!(buf[6], 0);
+        assert_eq!(u32::from_be_bytes(buf[1..5].try_into().unwrap()), 0x30201060);
+    }
+
+    #[test]
+    fn test_read_with_coarse_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_coarse_fractions(0x30201060, 120);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let res= TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(res.is_ok());
+        let read_back = res.unwrap();
+        assert_eq!(read_back, cuc);
+    }
+
+    #[test]
+    fn test_write_with_medium_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_medium_fractions(0x30303030, 30000);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 7);
+        assert_eq!(u16::from_be_bytes(buf[5..7].try_into().unwrap()), 30000);
+        assert_eq!(buf[7], 0);
+    }
+
+    #[test]
+    fn test_write_with_fine_fractions() {
+        let mut buf: [u8; 16] = [0; 16];
+        let cuc = TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
+        assert!(cuc.is_ok());
+        let cuc = cuc.unwrap();
+        let res = cuc.write_to_bytes(&mut buf);
+        let written = res.unwrap();
+        assert_eq!(written, 8);
+        let mut dummy_buf: [u8; 4] = [0; 4];
+        dummy_buf[1..4].copy_from_slice(&buf[5..8]);
+        assert_eq!(u32::from_be_bytes(dummy_buf), u16::MAX as u32 + 60000);
+        assert_eq!(buf[8], 0);
+    }
+
 
     #[test]
     fn test_fractional_converter() {
