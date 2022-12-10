@@ -531,9 +531,9 @@ mod tests {
 
     #[test]
     fn test_basic_zero_epoch() {
-        let zero_cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(4, 0), None);
-        assert!(zero_cuc.is_ok());
-        let zero_cuc = zero_cuc.unwrap();
+        let zero_cuc = TimeProviderCcsdsEpoch::new(0);
+        assert_eq!(zero_cuc.len_as_bytes(), 5);
+        assert_eq!(zero_cuc.ccdsd_time_code(), CcsdsTimeCodes::CucCcsdsEpoch);
         let counter = zero_cuc.width_counter_pair();
         assert_eq!(counter.0, 4);
         assert_eq!(counter.1, 0);
@@ -558,6 +558,8 @@ mod tests {
         let zero_cuc = zero_cuc.unwrap();
         let res = zero_cuc.write_to_bytes(&mut buf);
         assert!(res.is_ok());
+        assert_eq!(zero_cuc.len_as_bytes(), 5);
+        assert_eq!(pfield_len(buf[0]), 1);
         let written = res.unwrap();
         assert_eq!(written, 5);
         assert_eq!((buf[0] >> 7) & 0b1, 0);
@@ -569,6 +571,21 @@ mod tests {
         let raw_counter = u32::from_be_bytes(buf[1..5].try_into().unwrap());
         assert_eq!(raw_counter, 0x20102030);
         assert_eq!(buf[5], 0);
+    }
+
+    #[test]
+    fn test_datetime_now() {
+        let now = Utc::now();
+        let cuc_now = TimeProviderCcsdsEpoch::from_now(FractionalResolution::SixtyNs);
+        assert!(cuc_now.is_ok());
+        let cuc_now = cuc_now.unwrap();
+        let dt_opt = cuc_now.date_time();
+        assert!(dt_opt.is_some());
+        let dt = dt_opt.unwrap();
+        let diff = dt - now;
+        assert!(diff.num_milliseconds() < 1000);
+        println!("datetime from cuc: {}", dt);
+        println!("datetime now: {}", now);
     }
 
     #[test]
@@ -586,7 +603,7 @@ mod tests {
 
     #[test]
     fn invalid_read_len() {
-        let buf: [u8; 8] = [0; 8];
+        let mut buf: [u8; 16] = [0; 16];
         for i in 0..2 {
             let res = TimeProviderCcsdsEpoch::from_bytes(&buf[0..i]);
             assert!(res.is_err());
@@ -598,8 +615,98 @@ mod tests {
                 assert_eq!(e.expected, 2);
             }
         }
+        let large_stamp = TimeProviderCcsdsEpoch::new_with_fine_fractions(22, 300).unwrap();
+        large_stamp.write_to_bytes(&mut buf).unwrap();
+        for i in 2..large_stamp.len_as_bytes() - 1 {
+            let res = TimeProviderCcsdsEpoch::from_bytes(&buf[0..i]);
+            assert!(res.is_err());
+            let err = res.unwrap_err();
+            if let TimestampError::ByteConversionError(ByteConversionError::FromSliceTooSmall(e)) =
+                err
+            {
+                assert_eq!(e.found, i);
+                assert_eq!(e.expected, large_stamp.len_as_bytes());
+            }
+        }
     }
 
+    #[test]
+    fn write_and_read_tiny_stamp() {
+        let mut buf = [0; 2];
+        let cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(1, 200), None);
+        assert!(cuc.is_ok());
+        let cuc = cuc.unwrap();
+        assert_eq!(cuc.len_as_bytes(), 2);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 2);
+        assert_eq!(buf[1], 200);
+        let cuc_read_back = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(cuc_read_back.is_ok());
+        let cuc_read_back = cuc_read_back.unwrap();
+        assert_eq!(cuc_read_back, cuc);
+    }
+
+    #[test]
+    fn write_slightly_larger_stamp() {
+        let mut buf = [0; 4];
+        let cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(2, 40000), None);
+        assert!(cuc.is_ok());
+        let cuc = cuc.unwrap();
+        assert_eq!(cuc.len_as_bytes(), 3);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 3);
+        assert_eq!(u16::from_be_bytes(buf[1..3].try_into().unwrap()), 40000);
+        let cuc_read_back = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(cuc_read_back.is_ok());
+        let cuc_read_back = cuc_read_back.unwrap();
+        assert_eq!(cuc_read_back, cuc);
+    }
+
+    #[test]
+    fn invalid_buf_len_for_read() {}
+    #[test]
+    fn write_read_three_byte_cntr_stamp() {
+        let mut buf = [0; 4];
+        let cuc = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(3, 2_u32.pow(24) - 2), None);
+        assert!(cuc.is_ok());
+        let cuc = cuc.unwrap();
+        assert_eq!(cuc.len_as_bytes(), 4);
+        let res = cuc.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 4);
+        let mut temp_buf = [0; 4];
+        temp_buf[1..4].copy_from_slice(&buf[1..4]);
+        assert_eq!(u32::from_be_bytes(temp_buf), 2_u32.pow(24) - 2);
+        let cuc_read_back = TimeProviderCcsdsEpoch::from_bytes(&buf);
+        assert!(cuc_read_back.is_ok());
+        let cuc_read_back = cuc_read_back.unwrap();
+        assert_eq!(cuc_read_back, cuc);
+    }
+
+    #[test]
+    fn test_write_invalid_buf() {
+        let mut buf: [u8; 16] = [0; 16];
+        let res = TimeProviderCcsdsEpoch::new_with_fine_fractions(0, 0);
+        let cuc = res.unwrap();
+        for i in 0..cuc.len_as_bytes() - 1 {
+            let err = cuc.write_to_bytes(&mut buf[0..i]);
+            assert!(err.is_err());
+            let err = err.unwrap_err();
+            if let TimestampError::ByteConversionError(ByteConversionError::ToSliceTooSmall(e)) =
+                err
+            {
+                assert_eq!(e.expected, cuc.len_as_bytes());
+                assert_eq!(e.found, i);
+            } else {
+                panic!("unexpected error: {}", err);
+            }
+        }
+    }
     #[test]
     fn invalid_ccsds_stamp_type() {
         let mut buf: [u8; 16] = [0; 16];
@@ -628,7 +735,10 @@ mod tests {
         assert_eq!(written, 6);
         assert_eq!(buf[5], 120);
         assert_eq!(buf[6], 0);
-        assert_eq!(u32::from_be_bytes(buf[1..5].try_into().unwrap()), 0x30201060);
+        assert_eq!(
+            u32::from_be_bytes(buf[1..5].try_into().unwrap()),
+            0x30201060
+        );
     }
 
     #[test]
@@ -637,7 +747,7 @@ mod tests {
         let cuc = TimeProviderCcsdsEpoch::new_with_coarse_fractions(0x30201060, 120);
         let res = cuc.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        let res= TimeProviderCcsdsEpoch::from_bytes(&buf);
+        let res = TimeProviderCcsdsEpoch::from_bytes(&buf);
         assert!(res.is_ok());
         let read_back = res.unwrap();
         assert_eq!(read_back, cuc);
@@ -670,7 +780,8 @@ mod tests {
     #[test]
     fn test_write_with_fine_fractions() {
         let mut buf: [u8; 16] = [0; 16];
-        let cuc = TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
+        let cuc =
+            TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
         let res = cuc.write_to_bytes(&mut buf);
@@ -685,7 +796,8 @@ mod tests {
     #[test]
     fn test_read_with_fine_fractions() {
         let mut buf: [u8; 16] = [0; 16];
-        let cuc = TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
+        let cuc =
+            TimeProviderCcsdsEpoch::new_with_fine_fractions(0x30303030, u16::MAX as u32 + 60000);
         assert!(cuc.is_ok());
         let cuc = cuc.unwrap();
         let res = cuc.write_to_bytes(&mut buf);
