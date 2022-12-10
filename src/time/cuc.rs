@@ -121,6 +121,29 @@ pub struct FractionalPart(FractionalResolution, u32);
 /// Having a preamble field of one byte limits the width of the counter
 /// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes. This limits
 /// the maximum time stamp size to [MAX_CUC_LEN_SMALL_PREAMBLE] (8 bytes).
+///
+/// # Example
+///
+/// ```
+/// use spacepackets::time::cuc::{FractionalResolution, TimeProviderCcsdsEpoch};
+/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, TimeReader, CcsdsTimeProvider};
+///
+/// // Highest fractional resolution
+/// let timestamp_now = TimeProviderCcsdsEpoch::from_now(FractionalResolution::SixtyNs).expect("creating cuc stamp failed");
+/// let mut raw_stamp = [0; 16];
+/// {
+///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).expect("writing timestamp failed");
+///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCodes::CucCcsdsEpoch as u8);
+///     // 1 byte preamble + 4 byte counter + 3 byte fractional part
+///     assert_eq!(written, 8);
+/// }
+/// {
+///     let read_result = TimeProviderCcsdsEpoch::from_bytes(&raw_stamp);
+///     assert!(read_result.is_ok());
+///     let stamp_deserialized = read_result.unwrap();
+///     assert_eq!(stamp_deserialized, timestamp_now);
+/// }
+/// ```
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimeProviderCcsdsEpoch {
@@ -288,11 +311,8 @@ impl TimeProviderCcsdsEpoch {
         let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
         let fractions =
             fractional_part_from_subsec_ns(fraction_resolution, now.subsec_nanos() as u64);
-        Ok(Self {
-            pfield: 0,
-            counter: WidthCounterPair(4, ccsds_epoch as u32),
-            fractions,
-        })
+        Self::new_with_fractions(ccsds_epoch as u32, fractions)
+            .map_err(|e| TimestampError::CucError(e).into())
     }
 
     #[cfg(feature = "std")]
@@ -330,10 +350,14 @@ impl TimeProviderCcsdsEpoch {
         if res == FractionalResolution::Seconds {
             self.fractions = None;
         }
+        let mut update_fractions = true;
         if let Some(existing_fractions) = self.fractions {
-            if existing_fractions.0 != res {
-                self.fractions = Some(FractionalPart(res, 0));
+            if existing_fractions.0 == res {
+                update_fractions = false;
             }
+        };
+        if update_fractions {
+            self.fractions = Some(FractionalPart(res, 0));
         }
     }
 
@@ -862,5 +886,28 @@ mod tests {
         let fractional_part = hundred_and_one_fractions
             / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FifteenUs) as u64);
         assert_eq!(fractional_part, 101);
+    }
+
+    #[test]
+    fn update_fractions() {
+        let mut stamp = TimeProviderCcsdsEpoch::new(2000);
+        let res = stamp.set_fractions(FractionalPart(FractionalResolution::SixtyNs, 5000));
+        assert!(res.is_ok());
+        assert!(stamp.fractions.is_some());
+        let fractions = stamp.fractions.unwrap();
+        assert_eq!(fractions.0, FractionalResolution::SixtyNs);
+        assert_eq!(fractions.1, 5000);
+    }
+
+    #[test]
+    fn set_fract_resolution() {
+        let mut stamp = TimeProviderCcsdsEpoch::new(2000);
+        stamp.set_fractional_resolution(FractionalResolution::SixtyNs);
+        assert!(stamp.fractions.is_some());
+        let fractions = stamp.fractions.unwrap();
+        assert_eq!(fractions.0, FractionalResolution::SixtyNs);
+        assert_eq!(fractions.1, 0);
+        let res = stamp.update_from_now();
+        assert!(res.is_ok());
     }
 }

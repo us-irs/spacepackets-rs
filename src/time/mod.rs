@@ -7,7 +7,6 @@ use core::fmt::{Display, Formatter};
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 
-use crate::time::cuc::CucError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
@@ -73,7 +72,7 @@ impl From<cds::CdsError> for TimestampError {
 }
 
 impl From<cuc::CucError> for TimestampError {
-    fn from(e: CucError) -> Self {
+    fn from(e: cuc::CucError) -> Self {
         TimestampError::CucError(e)
     }
 }
