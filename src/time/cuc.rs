@@ -116,7 +116,7 @@ pub struct FractionalPart(FractionalResolution, u32);
 /// section 3.2 . The preamble field only has one byte, which allows a time code representation
 /// through the year 2094. The time is represented as a simple binary counter starting from the
 /// fixed CCSDS epoch (1958-01-01 00:00:00). It is possible to provide subsecond accuracy using the
-/// fractional field with various available resolutions.
+/// fractional field with various available [resolutions][FractionalResolution].
 ///
 /// Having a preamble field of one byte limits the width of the counter
 /// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes. This limits
@@ -248,9 +248,15 @@ impl TimeProviderCcsdsEpoch {
 }
 
 impl TimeProviderCcsdsEpoch {
+    /// Create a time provider with a four byte counter and no fractional part.
     pub fn new(counter: u32) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(WidthCounterPair(4, counter), None).unwrap()
+    }
+
+    /// Like [TimeProviderCcsdsEpoch::new] but allow to supply a fractional part as well.
+    pub fn new_with_fractions(counter: u32, fractions: FractionalPart) -> Result<Self, CucError> {
+        Self::new_generic(WidthCounterPair(4, counter), Some(fractions))
     }
 
     /// Fractions with a resolution of ~ 4 ms
@@ -290,18 +296,6 @@ impl TimeProviderCcsdsEpoch {
         )
     }
 
-    pub fn new_with_fractions(
-        counter: u32,
-        fractions: Option<FractionalPart>,
-    ) -> Result<Self, CucError> {
-        Self::new_generic(WidthCounterPair(4, counter), fractions)
-    }
-
-    pub fn new_u16_counter(counter: u16) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(WidthCounterPair(2, counter as u32), None).unwrap()
-    }
-
     /// This function will return the current time as a CUC timestamp.
     /// The counter width will always be set to 4 bytes because the normal CCSDS epoch will overflow
     /// when using less than that.
@@ -309,10 +303,13 @@ impl TimeProviderCcsdsEpoch {
     pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
+        if fraction_resolution == FractionalResolution::Seconds {
+            return Ok(Self::new(ccsds_epoch as u32));
+        }
         let fractions =
             fractional_part_from_subsec_ns(fraction_resolution, now.subsec_nanos() as u64);
-        Self::new_with_fractions(ccsds_epoch as u32, fractions)
-            .map_err(|e| TimestampError::CucError(e).into())
+        Self::new_with_fractions(ccsds_epoch as u32, fractions.unwrap())
+            .map_err(|e| StdTimestampError::TimestampError(e.into()))
     }
 
     #[cfg(feature = "std")]
@@ -326,6 +323,11 @@ impl TimeProviderCcsdsEpoch {
             );
         }
         Ok(())
+    }
+
+    pub fn new_u16_counter(counter: u16) -> Self {
+        // These values are definitely valid, so it is okay to unwrap here.
+        Self::new_generic(WidthCounterPair(2, counter as u32), None).unwrap()
     }
 
     pub fn width_counter_pair(&self) -> WidthCounterPair {
