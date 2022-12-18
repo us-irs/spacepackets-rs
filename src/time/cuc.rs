@@ -206,7 +206,7 @@ impl TimeProviderCcsdsEpoch {
             WidthCounterPair(4, counter),
             Some(FractionalPart(
                 FractionalResolution::SixtyNs,
-                subsec_fractions as u32,
+                subsec_fractions,
             )),
         )
     }
@@ -431,9 +431,9 @@ impl TimeReader for TimeProviderCcsdsEpoch {
             3 => {
                 let mut tmp_buf: [u8; 4] = [0; 4];
                 tmp_buf[1..4].copy_from_slice(&buf[current_idx..current_idx + 3]);
-                u32::from_be_bytes(tmp_buf) as u32
+                u32::from_be_bytes(tmp_buf)
             }
-            4 => u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap()) as u32,
+            4 => u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap()),
             _ => panic!("unreachable match arm"),
         };
         current_idx += cntr_len as usize;
@@ -458,7 +458,7 @@ impl TimeReader for TimeProviderCcsdsEpoch {
                     tmp_buf[1..4].copy_from_slice(&buf[current_idx..current_idx + 3]);
                     fractions = Some(FractionalPart(
                         fractions_len.try_into().unwrap(),
-                        u32::from_be_bytes(tmp_buf) as u32,
+                        u32::from_be_bytes(tmp_buf),
                     ))
                 }
                 _ => panic!("unreachable match arm"),
