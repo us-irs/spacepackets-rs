@@ -308,13 +308,13 @@ impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
-        if buf.len() < self.byte_width() as usize {
+        if buf.len() < self.byte_width() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: self.byte_width() as usize,
+                expected: self.byte_width(),
             }));
         }
-        buf[0..self.byte_width() as usize].copy_from_slice(self.val.to_be_bytes().as_ref());
+        buf[0..self.byte_width()].copy_from_slice(self.val.to_be_bytes().as_ref());
         Ok(())
     }
 }
