@@ -22,7 +22,7 @@ pub enum PusServiceId {
     Housekeeping = 3,
     Event = 5,
     Action = 8,
-    Test = 17
+    Test = 17,
 }
 
 /// All PUS versions. Only PUS C is supported by this library.
