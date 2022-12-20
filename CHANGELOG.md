@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   The function now returns the remaining slice as well.
 - All CDS specific functionality was moved into the `cds` submodule of the `time`
   module. `CdsShortTimeProvider` was renamed to `TimeProvider`.
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/3
 
 ## Added
 
