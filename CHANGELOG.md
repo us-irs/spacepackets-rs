@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+CUC PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/4/files
+
 - Added PFC enumerations: `ecss::UnsignedPfc` and `ecss::RealPfc`.
   PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/5
 - Added `std::error::Error` implementation for all error enumerations if the `std` feature
