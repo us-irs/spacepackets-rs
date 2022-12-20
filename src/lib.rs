@@ -22,12 +22,15 @@
 //! deserializing them with an appropriate `serde` provider like
 //! [`postcard`](https://github.com/jamesmunns/postcard).
 //!
-//! Default features:
+//! ### Default features
 //!
 //!  - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
 //!  - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
 //!     like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
 //!     Enabled by the `std` feature.
+//!
+//! ### Optional features
+//!
 //!  - [`serde`](https://serde.rs/): Adds `serde` support for most types by adding `Serialize` and
 //!    `Deserialize` `derive`s
 //!
