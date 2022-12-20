@@ -15,6 +15,16 @@ pub type CrcType = u16;
 pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum PusServiceId {
+    Verification = 1,
+    Housekeeping = 3,
+    Event = 5,
+    Action = 8,
+    Test = 17,
+}
+
 /// All PUS versions. Only PUS C is supported by this library.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

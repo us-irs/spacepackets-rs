@@ -35,9 +35,9 @@ default-features = false
 version = "1.0"
 
 [features]
-default = ["std", "dep:serde"]
+default = ["std"]
 std = ["chrono/std", "chrono/clock", "alloc"]
-serde = ["chrono/serde"]
+serde = ["dep:serde", "chrono/serde"]
 alloc = ["postcard/alloc", "chrono/alloc"]
 
 [package.metadata.docs.rs]
