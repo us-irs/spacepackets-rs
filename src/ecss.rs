@@ -65,6 +65,36 @@ pub enum PacketTypeCodes {
     Packet = 12,
 }
 
+pub type Ptc = PacketTypeCodes;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum UnsignedPfc {
+    OneByte = 4,
+    TwelveBits = 8,
+    TwoBytes = 12,
+    ThreeBytes = 13,
+    FourBytes = 14,
+    SixBytes = 15,
+    EightBytes = 16,
+    OneBit = 17,
+    TwoBits = 18,
+    ThreeBits = 19,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum RealPfc {
+    /// 4 octets simple precision format (IEEE)
+    Float = 1,
+    /// 8 octets simple precision format (IEEE)
+    Double = 2,
+    /// 4 octets simple precision format (MIL-STD)
+    FloatMilStd = 3,
+    /// 8 octets simple precision format (MIL-STD)
+    DoubleMilStd = 4,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusError {
@@ -288,13 +318,13 @@ impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
-        if buf.len() < self.byte_width() as usize {
+        if buf.len() < self.byte_width() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: self.byte_width() as usize,
+                expected: self.byte_width(),
             }));
         }
-        buf[0..self.byte_width() as usize].copy_from_slice(self.val.to_be_bytes().as_ref());
+        buf[0..self.byte_width()].copy_from_slice(self.val.to_be_bytes().as_ref());
         Ok(())
     }
 }
