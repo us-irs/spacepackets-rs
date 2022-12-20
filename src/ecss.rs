@@ -15,6 +15,16 @@ pub type CrcType = u16;
 pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum PusServiceId {
+    Verification = 1,
+    Housekeeping = 3,
+    Event = 5,
+    Action = 8,
+    Test = 17,
+}
+
 /// All PUS versions. Only PUS C is supported by this library.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -53,6 +63,36 @@ pub enum PacketTypeCodes {
     RelativeTime = 10,
     Deduced = 11,
     Packet = 12,
+}
+
+pub type Ptc = PacketTypeCodes;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum UnsignedPfc {
+    OneByte = 4,
+    TwelveBits = 8,
+    TwoBytes = 12,
+    ThreeBytes = 13,
+    FourBytes = 14,
+    SixBytes = 15,
+    EightBytes = 16,
+    OneBit = 17,
+    TwoBits = 18,
+    ThreeBits = 19,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum RealPfc {
+    /// 4 octets simple precision format (IEEE)
+    Float = 1,
+    /// 8 octets simple precision format (IEEE)
+    Double = 2,
+    /// 4 octets simple precision format (MIL-STD)
+    FloatMilStd = 3,
+    /// 8 octets simple precision format (MIL-STD)
+    DoubleMilStd = 4,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
