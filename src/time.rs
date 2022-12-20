@@ -535,9 +535,8 @@ pub mod cds {
                 unix_seconds: 0,
                 submillis_precision: None,
             };
-            let unix_days_seconds =
-                ccsds_to_unix_days(ccsds_days.into()) as i64 * SECONDS_PER_DAY as i64;
-            provider.setup(unix_days_seconds as i64, ms_of_day.into());
+            let unix_days_seconds = ccsds_to_unix_days(ccsds_days.into()) * SECONDS_PER_DAY as i64;
+            provider.setup(unix_days_seconds, ms_of_day.into());
             Ok(provider)
         }
 
@@ -755,7 +754,7 @@ pub mod cds {
         }
 
         fn date_time(&self) -> Option<DateTime<Utc>> {
-            self.calc_date_time((self.ms_of_day % 1000) as u32)
+            self.calc_date_time(self.ms_of_day % 1000)
         }
     }
 
