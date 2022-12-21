@@ -76,6 +76,8 @@ pub fn fractional_part_from_subsec_ns(
     // TODO: Floating point division might actually be faster option, but requires additional
     //       code on small embedded systems..
     let fractional_part = ns * 100000 / ((sec_as_ns * 100000 + resolution) / resolution);
+    // Floating point division.
+    //let fractional_part = (ns as f64 / ((sec_as_ns as f64) / resolution as f64)).floor() as u32;
     Some(FractionalPart(res, fractional_part as u32))
 }
 
@@ -930,4 +932,17 @@ mod tests {
         // Assert that the maximum resolution can be reached
         assert_eq!(fractions.1, 2_u32.pow(3 * 8) - 2);
     }
+
+    // extern crate test;
+    // use test::Bencher;
+    //
+    // #[bench]
+    // fn speed_test(b: &mut Bencher) {
+    //     let ns = 10_u32.pow(9) - 1;
+    //     let sec_as_ns = ns + 1;
+    //     let resolution = 2_u32.pow(3 * 8) - 1;
+    //     b.iter(|| {
+    //         ns * 100000 / ((sec_as_ns * 100000 + resolution) / resolution)
+    //     });
+    // }
 }
