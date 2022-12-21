@@ -73,6 +73,8 @@ pub fn fractional_part_from_subsec_ns(
     // invalid fractional parts which are too large. For the division of the nanoseconds by the
     // smallest fraction, a flooring division is correct.
     // The multiplication with 100000 is necessary to avoid precision loss during integer division.
+    // TODO: Floating point division might actually be faster option, but requires additional
+    //       code on small embedded systems..
     let fractional_part = ns * 100000 / ((sec_as_ns * 100000 + resolution) / resolution);
     Some(FractionalPart(res, fractional_part as u32))
 }
