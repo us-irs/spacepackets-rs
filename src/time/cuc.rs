@@ -64,10 +64,16 @@ pub fn fractional_part_from_subsec_ns(
     if ns > sec_as_ns {
         panic!("passed nanosecond value larger than 1 second");
     }
+    let resolution = fractional_res_to_div(res) as u64;
+    // Use integer division because this can reduce code size of really small systems.
     // First determine the nanoseconds for the smallest segment given the resolution.
-    // Then divide by that to find out the fractional part. An integer division floors
-    // which is what we want here.
-    let fractional_part = ns / (sec_as_ns / fractional_res_to_div(res) as u64);
+    // Then divide by that to find out the fractional part. For the calculation of the smallest
+    // fraction, we perform a ceiling division. This is because if we would use the default
+    // flooring division, we would divide by a smaller value, thereby allowing the calculation to
+    // invalid fractional parts which are too large. For the division of the nanoseconds by the
+    // smallest fraction, a flooring division is correct.
+    // The multiplication with 100000 is necessary to avoid precision loss during integer division.
+    let fractional_part = ns * 100000 / ((sec_as_ns * 100000 + resolution) / resolution);
     Some(FractionalPart(res, fractional_part as u32))
 }
 
@@ -913,5 +919,13 @@ mod tests {
         assert_eq!(fractions.1, 0);
         let res = stamp.update_from_now();
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn assert_largest_fractions() {
+        let fractions = fractional_part_from_subsec_ns(FractionalResolution::SixtyNs, 10u64.pow(9) - 1).unwrap();
+        // The value can not be larger than representable by 3 bytes
+        // Assert that the maximum resolution can be reached
+        assert_eq!(fractions.1, 2_u32.pow(3 * 8) - 2);
     }
 }
