@@ -279,6 +279,10 @@ impl<'slice> PusTc<'slice> {
         )
     }
 
+    pub fn sp_header(&self) -> &SpHeader {
+        &self.sp_header
+    }
+
     pub fn len_packed(&self) -> usize {
         let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
         if let Some(app_data) = self.app_data {
