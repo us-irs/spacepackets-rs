@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Fixed
+
+- Remove `Default` derive on CDS time provider. This can lead to uninitialized preamble fields.
+
 ## Changed
 
 - `serde` support is now optional and behind the `serde` feature.
