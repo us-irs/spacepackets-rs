@@ -317,7 +317,7 @@ pub mod cds {
     ///     assert_eq!(stamp_deserialized.len_as_bytes(), 7);
     /// }
     /// ```
-    #[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
         pfield: u8,
