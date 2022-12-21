@@ -927,7 +927,9 @@ mod tests {
 
     #[test]
     fn assert_largest_fractions() {
-        let fractions = fractional_part_from_subsec_ns(FractionalResolution::SixtyNs, 10u64.pow(9) - 1).unwrap();
+        let fractions =
+            fractional_part_from_subsec_ns(FractionalResolution::SixtyNs, 10u64.pow(9) - 1)
+                .unwrap();
         // The value can not be larger than representable by 3 bytes
         // Assert that the maximum resolution can be reached
         assert_eq!(fractions.1, 2_u32.pow(3 * 8) - 2);
