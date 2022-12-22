@@ -877,29 +877,39 @@ mod tests {
     #[test]
     fn fractional_part_formula() {
         let fractional_part =
-            7843137 / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FourMs) as u64);
-        assert_eq!(fractional_part, 2);
+            fractional_part_from_subsec_ns(FractionalResolution::FourMs, 7843138).unwrap();
+        assert_eq!(fractional_part.1, 2);
     }
 
     #[test]
     fn fractional_part_formula_2() {
         let fractional_part =
-            12000000 / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FourMs) as u64);
-        assert_eq!(fractional_part, 3);
+            fractional_part_from_subsec_ns(FractionalResolution::FourMs, 12000000).unwrap();
+        assert_eq!(fractional_part.1, 3);
     }
 
     #[test]
     fn fractional_part_formula_3() {
-        let one_fraction_with_width_two_in_ns = 10_u64.pow(9) / (2_u32.pow(8 * 2) - 1) as u64;
-        assert_eq!(one_fraction_with_width_two_in_ns, 15259);
-        let hundred_fractions_and_some = 100 * one_fraction_with_width_two_in_ns + 7000;
-        let fractional_part = hundred_fractions_and_some
-            / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FifteenUs) as u64);
-        assert_eq!(fractional_part, 100);
-        let hundred_and_one_fractions = 101 * one_fraction_with_width_two_in_ns;
-        let fractional_part = hundred_and_one_fractions
-            / (10_u64.pow(9) / fractional_res_to_div(FractionalResolution::FifteenUs) as u64);
-        assert_eq!(fractional_part, 101);
+        let one_fraction_with_width_two_in_ns =
+            10_u64.pow(9) as f64 / (2_u32.pow(8 * 2) - 1) as f64;
+        assert_eq!(one_fraction_with_width_two_in_ns.ceil(), 15260.0);
+        let hundred_fractions_and_some =
+            (100.0 * one_fraction_with_width_two_in_ns).floor() as u64 + 7000;
+        let fractional_part = fractional_part_from_subsec_ns(
+            FractionalResolution::FifteenUs,
+            hundred_fractions_and_some,
+        )
+        .unwrap();
+        assert_eq!(fractional_part.1, 100);
+        // Using exactly 101.0 can yield values which will later be rounded down to 100
+        let hundred_and_one_fractions =
+            (101.001 * one_fraction_with_width_two_in_ns).floor() as u64;
+        let fractional_part = fractional_part_from_subsec_ns(
+            FractionalResolution::FifteenUs,
+            hundred_and_one_fractions,
+        )
+        .unwrap();
+        assert_eq!(fractional_part.1, 101);
     }
 
     #[test]
@@ -934,17 +944,4 @@ mod tests {
         // Assert that the maximum resolution can be reached
         assert_eq!(fractions.1, 2_u32.pow(3 * 8) - 2);
     }
-
-    // extern crate test;
-    // use test::Bencher;
-    //
-    // #[bench]
-    // fn speed_test(b: &mut Bencher) {
-    //     let ns = 10_u32.pow(9) - 1;
-    //     let sec_as_ns = ns + 1;
-    //     let resolution = 2_u32.pow(3 * 8) - 1;
-    //     b.iter(|| {
-    //         ns * 100000 / ((sec_as_ns * 100000 + resolution) / resolution)
-    //     });
-    // }
 }
