@@ -6,7 +6,7 @@ use super::*;
 use crate::private::Sealed;
 use core::fmt::Debug;
 
-const CDS_SHORT_P_FIELD: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
+pub const CDS_SHORT_P_FIELD: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
 pub const MIN_CDS_FIELD_LEN: usize = 7;
 
 /// Generic trait implemented by token structs to specify the length of day field at type
