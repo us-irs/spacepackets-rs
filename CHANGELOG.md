@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.4.0] 09.01.2023
+
 ## Fixed
 
 - Remove `Default` derive on CDS time provider. This can lead to uninitialized preamble fields.
