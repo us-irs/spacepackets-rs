@@ -3,8 +3,7 @@
 //! See [chrono::DateTime::format] for a usage example of the generated
 //! [chrono::format::DelayedFormat] structs.
 #[cfg(feature = "alloc")]
-use chrono::format::{DelayedFormat, StrftimeItems};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, format::{DelayedFormat, StrftimeItems}};
 
 /// Tuple of format string and formatted size for time code A.
 ///
