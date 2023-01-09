@@ -14,11 +14,11 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 
 [dependencies]
 zerocopy = "0.6"
-crc = "3.0"
+crc = "3"
 delegate = "0.8"
 
 [dependencies.serde]
-version = "1.0"
+version = "1"
 optional = true
 default-features = false
 features = ["derive"]
