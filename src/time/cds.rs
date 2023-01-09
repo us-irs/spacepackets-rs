@@ -6,7 +6,8 @@ use super::*;
 use crate::private::Sealed;
 use core::fmt::Debug;
 
-pub const CDS_SHORT_P_FIELD: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
+/// Base value for the preamble field for a time field parser to determine the time field type.
+pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
 pub const MIN_CDS_FIELD_LEN: usize = 7;
 
 /// Generic trait implemented by token structs to specify the length of day field at type
@@ -391,7 +392,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         day_seg_len: LengthOfDaySegment,
         submillis_prec: Option<SubmillisPrecision>,
     ) -> u8 {
-        let mut pfield = CDS_SHORT_P_FIELD | ((day_seg_len as u8) << 2);
+        let mut pfield = P_FIELD_BASE | ((day_seg_len as u8) << 2);
         if let Some(submillis_prec) = submillis_prec {
             match submillis_prec {
                 SubmillisPrecision::Microseconds(_) => pfield |= 0b01,

@@ -6,6 +6,9 @@ use super::*;
 use core::fmt::Debug;
 
 const MIN_CUC_LEN: usize = 2;
+
+/// Base value for the preamble field for a time field parser to determine the time field type.
+pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::CucCcsdsEpoch as u8) << 4;
 /// Maximum length if the preamble field is not extended.
 pub const MAX_CUC_LEN_SMALL_PREAMBLE: usize = 8;
 
@@ -310,7 +313,7 @@ impl TimeProviderCcsdsEpoch {
     }
 
     fn build_p_field(counter_width: u8, fractions_width: Option<FractionalResolution>) -> u8 {
-        let mut pfield = (CcsdsTimeCodes::CucCcsdsEpoch as u8) << 4;
+        let mut pfield = P_FIELD_BASE;
         if !(1..=4).contains(&counter_width) {
             // Okay to panic here, this function is private and all input values should
             // have been sanitized
