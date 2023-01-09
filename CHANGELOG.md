@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- `SpHeader` getter function `sp_header` added for `PusTc`
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/6
 - Added PFC enumerations: `ecss::UnsignedPfc` and `ecss::RealPfc`.
   PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/5
 - Added `std::error::Error` implementation for all error enumerations if the `std` feature
