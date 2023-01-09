@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/5
 - Added `std::error::Error` implementation for all error enumerations if the `std` feature
   is enabled.
+- CUC timestamp implementation as specified in CCSDS 301.0-B-4 section 3.2.
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/4/files
 - ACII timestamps as specified in CCSDS 301.0-B-4 section 3.5.
 - Added MSRV in `Cargo.toml` with the `rust-version` field set to Rust 1.60.
 - `serde` `Serialize` and `Deserialize` added to all types.
