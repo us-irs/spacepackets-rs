@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Fixed
+
+- Remove `Default` derive on CDS time provider. This can lead to uninitialized preamble fields.
+
 ## Changed
 
 - `serde` support is now optional and behind the `serde` feature.
@@ -17,6 +21,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   Former `new` method now called `new_from_single_fields`.
 - `SpHeader`: Renamed `from_bytes` to `from_be_bytes`.
   The function now returns the remaining slice as well.
+- All CDS specific functionality was moved into the `cds` submodule of the `time`
+  module. `CdsShortTimeProvider` was renamed to `TimeProvider`.
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/3
 
 ## Added
 
@@ -24,14 +31,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/5
 - Added `std::error::Error` implementation for all error enumerations if the `std` feature
   is enabled.
-- ACII timestamps as specified in CCSDS 301.0-B-4.
+- ACII timestamps as specified in CCSDS 301.0-B-4 section 3.5.
 - Added MSRV in `Cargo.toml` with the `rust-version` field set to Rust 1.60.
-- ACII timestamps as specified in CCSDS 301.0-B-4
 - `serde` `Serialize` and `Deserialize` added to all types.
 - Added `const` constructors for `PacketId`, `PacketSeqCtrl` and
   `SpHeader`.
-- Added `PartialEq` and `Eq` `derive`s to `CdsShortTimeProvider`.
+- Added `PartialEq` and `Eq` `derive`s to `TimeProvider`.
 - `SpHeader`: Added serialization function into raw format `write_to_be_bytes`.
+- Added 24-bit day field support for CDS short. The bit width is configured at type level
+  via a generic parameter type passed to the `cds::TimeProvider`
+- Added submillisecond precision support for `cds::TimeProvider`
 
 # [v0.3.1] 03.12.2022
 
