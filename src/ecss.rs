@@ -18,10 +18,15 @@ pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusServiceId {
+    /// Service 1
     Verification = 1,
+    /// Service 3
     Housekeeping = 3,
+    /// Service 5
     Event = 5,
+    /// Service 8
     Action = 8,
+    /// Service 17
     Test = 17,
 }
 
@@ -48,6 +53,7 @@ impl TryFrom<u8> for PusVersion {
     }
 }
 
+/// ECSS Packet Type Codes (PTC)s.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PacketTypeCodes {
@@ -67,6 +73,7 @@ pub enum PacketTypeCodes {
 
 pub type Ptc = PacketTypeCodes;
 
+/// ECSS Packet Field Codes (PFC)s for the unsigned [Ptc].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum UnsignedPfc {
@@ -82,6 +89,7 @@ pub enum UnsignedPfc {
     ThreeBits = 19,
 }
 
+/// ECSS Packet Field Codes (PFC)s for the real (floating point) [Ptc].
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum RealPfc {
@@ -152,6 +160,8 @@ impl From<ByteConversionError> for PusError {
     }
 }
 
+/// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry
+/// (TM) packets. All PUS packets are also a special type of [CcsdsPacket]s.
 pub trait PusPacket: CcsdsPacket {
     const PUS_VERSION: PusVersion = PusVersion::PusC;
 
