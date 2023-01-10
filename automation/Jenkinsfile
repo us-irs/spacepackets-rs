@@ -15,17 +15,22 @@ pipeline {
         }
         stage('Rustfmt') {
             steps {
-                sh 'cargo fmt'
+                sh 'cargo fmt --all --check'
             }
         }
         stage('Test') {
             steps {
-                sh 'cargo test'
+                sh 'cargo test --all-features'
             }
         }
-        stage('Check') {
+        stage('Check with all features') {
             steps {
-                sh 'cargo check'
+                sh 'cargo check --all-features'
+            }
+        }
+        stage('Check with no features') {
+            steps {
+                sh 'cargo check --no-default-features'
             }
         }
         stage('Check Cross Embedded Bare Metal') {
