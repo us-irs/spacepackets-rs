@@ -108,18 +108,18 @@ pub mod zc {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PusTmSecondaryHeader<'slice> {
+pub struct PusTmSecondaryHeader<'stamp> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u8,
     pub service: u8,
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub time_stamp: &'slice [u8],
+    pub time_stamp: &'stamp [u8],
 }
 
-impl<'slice> PusTmSecondaryHeader<'slice> {
-    pub fn new_simple(service: u8, subservice: u8, time_stamp: &'slice [u8]) -> Self {
+impl<'stamp> PusTmSecondaryHeader<'stamp> {
+    pub fn new_simple(service: u8, subservice: u8, time_stamp: &'stamp [u8]) -> Self {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
             sc_time_ref_status: 0,
@@ -136,7 +136,7 @@ impl<'slice> PusTmSecondaryHeader<'slice> {
         subservice: u8,
         msg_counter: u16,
         dest_id: u16,
-        time_stamp: &'slice [u8],
+        time_stamp: &'stamp [u8],
     ) -> Self {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
@@ -203,19 +203,19 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// There is no spare bytes support yet.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PusTm<'slice> {
+pub struct PusTm<'src_data> {
     pub sp_header: SpHeader,
-    pub sec_header: PusTmSecondaryHeader<'slice>,
+    pub sec_header: PusTmSecondaryHeader<'src_data>,
     /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
     /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
     #[cfg_attr(feature = "serde", serde(skip))]
-    raw_data: Option<&'slice [u8]>,
-    source_data: Option<&'slice [u8]>,
+    raw_data: Option<&'src_data [u8]>,
+    source_data: Option<&'src_data [u8]>,
     crc16: Option<u16>,
 }
 
-impl<'slice> PusTm<'slice> {
+impl<'src_data> PusTm<'src_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
@@ -228,10 +228,15 @@ impl<'slice> PusTm<'slice> {
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
     ///     field. If this is not set to true, [PusTm::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
+    ///
+    /// # Lifetimes
+    ///
+    /// * `'src_data` - Life time of a buffer where the time stamp and then user source data will
+    ///    be serialized into.
     pub fn new(
         sp_header: &mut SpHeader,
-        sec_header: PusTmSecondaryHeader<'slice>,
-        source_data: Option<&'slice [u8]>,
+        sec_header: PusTmSecondaryHeader<'src_data>,
+        source_data: Option<&'src_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tm);
@@ -259,11 +264,11 @@ impl<'slice> PusTm<'slice> {
         length
     }
 
-    pub fn time_stamp(&self) -> &'slice [u8] {
+    pub fn time_stamp(&self) -> &'src_data [u8] {
         self.sec_header.time_stamp
     }
 
-    pub fn source_data(&self) -> Option<&'slice [u8]> {
+    pub fn source_data(&self) -> Option<&'src_data [u8]> {
         self.source_data
     }
 
@@ -390,7 +395,7 @@ impl<'slice> PusTm<'slice> {
     /// the instance and the found byte length of the packet. The timestamp length needs to be
     /// known beforehand.
     pub fn from_bytes(
-        slice: &'slice [u8],
+        slice: &'src_data [u8],
         timestamp_len: usize,
     ) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();

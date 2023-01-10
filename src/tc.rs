@@ -215,19 +215,19 @@ impl PusTcSecondaryHeader {
 /// There is no spare bytes support yet.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PusTc<'slice> {
+pub struct PusTc<'app_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
     /// If this is set to false, a manual call to [PusTc::calc_own_crc16] or
     /// [PusTc::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
     #[cfg_attr(feature = "serde", serde(skip))]
-    raw_data: Option<&'slice [u8]>,
-    app_data: Option<&'slice [u8]>,
+    raw_data: Option<&'app_data [u8]>,
+    app_data: Option<&'app_data [u8]>,
     crc16: Option<u16>,
 }
 
-impl<'slice> PusTc<'slice> {
+impl<'app_data> PusTc<'app_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
@@ -243,7 +243,7 @@ impl<'slice> PusTc<'slice> {
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
-        app_data: Option<&'slice [u8]>,
+        app_data: Option<&'app_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tc);
@@ -268,7 +268,7 @@ impl<'slice> PusTc<'slice> {
         sph: &mut SpHeader,
         service: u8,
         subservice: u8,
-        app_data: Option<&'slice [u8]>,
+        app_data: Option<&'app_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         Self::new(
@@ -405,7 +405,7 @@ impl<'slice> PusTc<'slice> {
 
     /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet.
-    pub fn from_bytes(slice: &'slice [u8]) -> Result<(Self, usize), PusError> {
+    pub fn from_bytes(slice: &'app_data [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
@@ -435,7 +435,7 @@ impl<'slice> PusTc<'slice> {
         Ok((pus_tc, total_len))
     }
 
-    pub fn raw(&self) -> Option<&'slice [u8]> {
+    pub fn raw(&self) -> Option<&'app_data [u8]> {
         self.raw_data
     }
 }
