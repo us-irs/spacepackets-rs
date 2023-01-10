@@ -20,6 +20,21 @@ jobs:
           command: check
           args: --release
 
+  msrv:
+    name: Check with MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.60.0
+          override: true
+          profile: minimal
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release
+
   cross-check:
     name: Check Cross
     runs-on: ubuntu-latest
