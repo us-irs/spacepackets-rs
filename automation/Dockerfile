@@ -10,6 +10,6 @@ ARG DEBIAN_FRONTEND=noninteractive
 # set CROSS_CONTAINER_IN_CONTAINER to inform `cross` that it is executed from within a container
 ENV CROSS_CONTAINER_IN_CONTAINER=true
 
-# TODO: installing cross is problematic, permission issues
-RUN rustup target add thumbv7em-none-eabihf armv7-unknown-linux-gnueabihf && \
+RUN rustup install nightly && \
+    rustup target add thumbv7em-none-eabihf armv7-unknown-linux-gnueabihf && \
     rustup component add rustfmt clippy
