@@ -13,6 +13,11 @@ pipeline {
                 sh 'cargo clippy'
             }
         }
+        stage('Docs') {
+            steps {
+                sh 'cargo +nightly doc --all-features'
+            }
+        }
         stage('Rustfmt') {
             steps {
                 sh 'cargo fmt --all --check'
