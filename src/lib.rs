@@ -129,6 +129,7 @@ impl Display for ByteConversionError {
 #[cfg(feature = "std")]
 impl Error for ByteConversionError {}
 
+/// CCSDS packet type enumeration.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PacketType {
@@ -177,6 +178,8 @@ impl TryFrom<u8> for SequenceFlags {
     }
 }
 
+/// Abstraction for the CCSDS Packet ID, which forms the last thirteen bits
+/// of the first two bytes in the CCSDS primary header.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketId {
@@ -260,6 +263,8 @@ impl From<u16> for PacketId {
     }
 }
 
+/// Abstraction for the CCSDS Packet Sequence Control (PSC) field which is the
+/// third and the fourth byte in the CCSDS primary header.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketSequenceCtrl {
