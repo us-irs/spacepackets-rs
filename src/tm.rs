@@ -201,6 +201,11 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 /// provider like [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
+///
+/// # Lifetimes
+///
+/// * `'src_data` - Life time of a buffer where the user provided time stamp and source data will
+///    be serialized into.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTm<'src_data> {
@@ -228,11 +233,6 @@ impl<'src_data> PusTm<'src_data> {
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
     ///     field. If this is not set to true, [PusTm::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
-    ///
-    /// # Lifetimes
-    ///
-    /// * `'src_data` - Life time of a buffer where the time stamp and then user source data will
-    ///    be serialized into.
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTmSecondaryHeader<'src_data>,
