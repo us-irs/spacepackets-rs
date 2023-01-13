@@ -601,7 +601,6 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self::Output {
-        #[allow(clippy::suspicious_arithmetic_impl)]
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
         let mut provider = Self::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
