@@ -20,6 +20,7 @@ pub mod cuc;
 
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
 pub const SECONDS_PER_DAY: u32 = 86400;
+pub const MS_PER_DAY: u32 = SECONDS_PER_DAY * 1000;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
