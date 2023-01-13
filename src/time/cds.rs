@@ -11,11 +11,12 @@ use core::time::Duration;
 /// Base value for the preamble field for a time field parser to determine the time field type.
 pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
 pub const MIN_CDS_FIELD_LEN: usize = 7;
+pub const MAX_DAYS_24_BITS: u32 = 2_u32.pow(24) - 1;
 
 /// Generic trait implemented by token structs to specify the length of day field at type
 /// level. This trait is only meant to be implemented in this crate and therefore sealed.
 pub trait ProvidesDaysLength: Sealed {
-    type FieldType: Copy + Clone + TryFrom<i32>;
+    type FieldType: Copy + Clone + TryFrom<i32> + Into<u32> + Into<i64>;
 }
 
 /// Type level token to be used as a generic parameter to [TimeProvider].
@@ -217,6 +218,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         self.ccsds_days
     }
 
+    fn ccsds_days_as_u32(&self) -> u32 {
+        self.ccsds_days.into()
+    }
+
     pub fn submillis_precision(&self) -> Option<SubmillisPrecision> {
         self.submillis_precision
     }
@@ -341,7 +346,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             unix_seconds: 0,
             submillis_precision: None,
         };
-        let unix_days_seconds = ccsds_to_unix_days(ccsds_days.into()) * SECONDS_PER_DAY as i64;
+        let unix_days_seconds = ccsds_to_unix_days(i64::from(ccsds_days)) * SECONDS_PER_DAY as i64;
         provider.setup(unix_days_seconds, ms_of_day.into());
         Ok(provider)
     }
@@ -536,6 +541,59 @@ impl TimeProvider<DaysLen16Bits> {
     }
 }
 
+fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
+    time_provider: TimeProvider<T>,
+    max_days_val: u32,
+    duration: Duration,
+) -> (u32, u32, Option<SubmillisPrecision>) {
+    let mut next_ccsds_days = time_provider.ccsds_days_as_u32();
+    let mut next_ms_of_day = time_provider.ms_of_day;
+    let mut precision = None;
+    // Increment CCSDS days by a certain amount while also accounting for overflow.
+    let increment_days = |ccsds_days: &mut u32, days_inc: u32| {
+        let days_addition = *ccsds_days + days_inc;
+        if days_addition >= (max_days_val - 1) {
+            *ccsds_days = days_addition - max_days_val;
+        } else {
+            *ccsds_days += days_inc;
+        }
+    };
+    // Increment MS of day by a certain amount while also accounting for overflow, where
+    // the new value exceeds the MS of a day.
+    let increment_ms_of_day = |ms_of_day: &mut u32, ms_inc: u32, ccsds_days: &mut u32| {
+        let ms_addition = *ms_of_day + ms_inc;
+        if ms_addition >= MS_PER_DAY {
+            *ms_of_day = ms_addition - MS_PER_DAY;
+            // Re-use existing closure to always amount for overflow.
+            increment_days(ccsds_days, 1);
+        }
+    };
+    if let Some(submillis_prec) = time_provider.submillis_precision {
+        match submillis_prec {
+            SubmillisPrecision::Absent => {}
+            SubmillisPrecision::Microseconds(mut us) => {
+                let micros = duration.as_micros();
+                let submilli_micros = (micros % 1000) as u16;
+                us += submilli_micros;
+                if us >= 1000 {
+                    let carryover_us = us - 1000;
+                    increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                    precision = Some(SubmillisPrecision::Microseconds(carryover_us));
+                }
+            }
+            SubmillisPrecision::Picoseconds(_ps) => {}
+            SubmillisPrecision::Reserved => {}
+        }
+    }
+    let full_ms = duration.as_millis();
+    let ms_of_day = (full_ms % MS_PER_DAY as u128) as u32;
+    increment_ms_of_day(&mut next_ms_of_day, ms_of_day, &mut next_ccsds_days);
+    increment_days(
+        &mut next_ccsds_days,
+        (full_ms as u32 - ms_of_day) / MS_PER_DAY,
+    );
+    (next_ccsds_days, next_ms_of_day, precision)
+}
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
@@ -543,53 +601,10 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self::Output {
-        let mut next_ccsds_days = self.ccsds_days;
-        let mut next_ms_of_day = self.ms_of_day;
-        let mut precision = None;
-        // Increment CCSDS days by a certain amount while also accounting for overflow.
-        let increment_days = |ccsds_days: &mut u16, days_inc: u16| {
-            let days_addition = *ccsds_days as u32 + days_inc as u32;
-            if days_addition >= (u16::MAX - 1) as u32 {
-                *ccsds_days = (days_addition - u16::MAX as u32) as u16;
-            } else {
-                *ccsds_days += days_inc;
-            }
-        };
-        // Increment MS of day by a certain amount while also accounting for overflow, where
-        // the new value exceeds the MS of a day.
-        let increment_ms_of_day = |ms_of_day: &mut u32, ms_inc: u32, ccsds_days: &mut u16| {
-            let ms_addition = *ms_of_day + ms_inc;
-            if ms_addition >= MS_PER_DAY {
-                *ms_of_day = ms_addition - MS_PER_DAY;
-                // Re-use existing closure to always amount for overflow.
-                increment_days(ccsds_days, 1);
-            }
-        };
-        if let Some(submillis_prec) = self.submillis_precision {
-            match submillis_prec {
-                SubmillisPrecision::Absent => {}
-                SubmillisPrecision::Microseconds(mut us) => {
-                    let micros = duration.as_micros();
-                    let submilli_micros = (micros % 1000) as u16;
-                    us += submilli_micros;
-                    if us >= 1000 {
-                        let carryover_us = us - 1000;
-                        increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                        precision = Some(SubmillisPrecision::Microseconds(carryover_us));
-                    }
-                }
-                SubmillisPrecision::Picoseconds(_ps) => {}
-                SubmillisPrecision::Reserved => {}
-            }
-        }
-        let full_ms = duration.as_millis();
-        let ms_of_day = (full_ms % MS_PER_DAY as u128) as u32;
-        increment_ms_of_day(&mut next_ms_of_day, ms_of_day, &mut next_ccsds_days);
-        increment_days(
-            &mut next_ccsds_days,
-            ((full_ms as u32 - ms_of_day) / MS_PER_DAY) as u16,
-        );
-        let mut provider = Self::new_with_u16_days(next_ccsds_days, next_ms_of_day);
+        #[allow(clippy::suspicious_arithmetic_impl)]
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
+        let mut provider = Self::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
         if let Some(prec) = precision {
             provider.set_submillis_precision(prec);
         }
@@ -600,8 +615,14 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
 impl Add<Duration> for TimeProvider<DaysLen24Bits> {
     type Output = Self;
 
-    fn add(self, _rhs: Duration) -> Self::Output {
-        Self::new_with_u24_days(0, 0).unwrap()
+    fn add(self, duration: Duration) -> Self::Output {
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
+        let mut provider = Self::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
+        if let Some(prec) = precision {
+            provider.set_submillis_precision(prec);
+        }
+        provider
     }
 }
 
