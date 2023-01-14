@@ -530,14 +530,14 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     }
 
     #[cfg(feature = "std")]
-    pub fn from_now_generic(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
+    fn from_now_generic(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
             .map_err(StdTimestampError::TimestampError)
     }
 
     #[cfg(feature = "std")]
-    pub fn from_now_generic_us_prec(
+    fn from_now_generic_us_prec(
         days_len: LengthOfDaySegment,
     ) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new_with_submillis_us_prec()?;
@@ -546,7 +546,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     }
 
     #[cfg(feature = "std")]
-    pub fn from_now_generic_ps_prec(
+    fn from_now_generic_ps_prec(
         days_len: LengthOfDaySegment,
     ) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new_with_submillis_ps_prec()?;
@@ -608,8 +608,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     #[cfg(feature = "std")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self) -> Result<(), StdTimestampError>
-    where
-        <ProvidesDaysLen as ProvidesDaysLength>::FieldType: TryFrom<u32>,
     {
         let conversion_from_now = self.generic_conversion_from_now()?;
         let ccsds_days: ProvidesDaysLen::FieldType = conversion_from_now
