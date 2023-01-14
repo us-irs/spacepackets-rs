@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.4.1] 14.01.2023
+
+## Fixed
+
+- CDS timestamp: The conversion function from the current time were buggy
+  when specifying picoseconds precision, which could lead to overflow
+  multiplications and/or incorrect precision fields.
+
 # [v0.4.0] 10.01.2023
 
 ## Fixed
