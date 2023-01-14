@@ -63,6 +63,7 @@ pub enum TimestampError {
     ByteConversionError(ByteConversionError),
     CdsError(cds::CdsError),
     CucError(cuc::CucError),
+    DateBeforeCcsdsEpoch(DateTime<Utc>),
     CustomEpochNotSupported,
 }
 
@@ -118,6 +119,9 @@ impl Display for TimestampError {
             }
             TimestampError::ByteConversionError(e) => {
                 write!(f, "byte conversion error {}", e)
+            }
+            TimestampError::DateBeforeCcsdsEpoch(e) => {
+                write!(f, "datetime with date before ccsds epoch: {}", e)
             }
             TimestampError::CustomEpochNotSupported => {
                 write!(f, "custom epochs are not supported")
