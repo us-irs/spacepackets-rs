@@ -227,7 +227,7 @@ fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
     // 1969 (-1 unix days) shortly before midnight (SECONDS_PER_DAY - 5).
     if secs_of_day < 0 {
         unix_days -= 1;
-        secs_of_day = SECONDS_PER_DAY as i64 + secs_of_day
+        secs_of_day += SECONDS_PER_DAY as i64
     }
     (unix_days, secs_of_day as u32)
 }
@@ -264,7 +264,9 @@ impl ConversionFromDatetime {
                     ));
                 }
                 SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds((dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000));
+                    prec = Some(SubmillisPrecision::Picoseconds(
+                        (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000,
+                    ));
                 }
                 _ => (),
             }
@@ -689,14 +691,14 @@ impl TimeProvider<DaysLen24Bits> {
     /// Like [Self::from_now_with_u24_days] but with microsecond sub-millisecond precision.
     #[cfg(feature = "std")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-    pub fn from_now_with_u24_days_us_prec() -> Result<Self, StdTimestampError> {
+    pub fn from_now_with_u24_days_us_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
     /// Like [Self::from_now_with_u24_days] but with picoseconds sub-millisecond precision.
     #[cfg(feature = "std")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-    pub fn from_now_with_u24_days_ps_prec() -> Result<Self, StdTimestampError> {
+    pub fn from_now_with_u24_days_ps_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
@@ -1212,7 +1214,10 @@ mod tests {
         assert_eq!(read_stamp.ms_of_day(), u32::MAX - 1);
     }
 
-    fn generic_now_test(timestamp_now: TimeProvider, compare_stamp: DateTime<Utc>) {
+    fn generic_now_test<T: ProvidesDaysLength>(
+        timestamp_now: TimeProvider<T>,
+        compare_stamp: DateTime<Utc>,
+    ) {
         let dt = timestamp_now.date_time().unwrap();
         if compare_stamp.year() > dt.year() {
             assert_eq!(compare_stamp.year() - dt.year(), 1);
@@ -1233,6 +1238,7 @@ mod tests {
         generic_dt_property_equality_check(dt.hour(), compare_stamp.hour(), 0, 23);
         generic_dt_property_equality_check(dt.minute(), compare_stamp.minute(), 0, 59);
     }
+
     #[test]
     fn test_time_now() {
         let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
@@ -1241,8 +1247,29 @@ mod tests {
     }
 
     #[test]
+    fn test_time_now_us_prec() {
+        let timestamp_now = TimeProvider::from_now_with_u16_days_us_precision().unwrap();
+        let compare_stamp = Utc::now();
+        generic_now_test(timestamp_now, compare_stamp);
+    }
+
+    #[test]
     fn test_time_now_ps_prec() {
         let timestamp_now = TimeProvider::from_now_with_u16_days_ps_precision().unwrap();
+        let compare_stamp = Utc::now();
+        generic_now_test(timestamp_now, compare_stamp);
+    }
+
+    #[test]
+    fn test_time_now_ps_prec_u16_days() {
+        let timestamp_now = TimeProvider::from_now_with_u16_days_ps_precision().unwrap();
+        let compare_stamp = Utc::now();
+        generic_now_test(timestamp_now, compare_stamp);
+    }
+
+    #[test]
+    fn test_time_now_ps_prec_u24_days() {
+        let timestamp_now = TimeProvider::from_now_with_u24_days_ps_precision().unwrap();
         let compare_stamp = Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
@@ -1343,9 +1370,13 @@ mod tests {
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
-        assert_eq!(time_provider.ms_of_day, 30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis);
+        assert_eq!(
+            time_provider.ms_of_day,
+            30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
+        );
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
-        let time_provider_2: TimeProvider<DaysLen16Bits> = datetime_utc.try_into().expect("conversion failed");
+        let time_provider_2: TimeProvider<DaysLen16Bits> =
+            datetime_utc.try_into().expect("conversion failed");
         // Test the TryInto trait impl
         assert_eq!(time_provider, time_provider_2);
     }
@@ -1360,17 +1391,21 @@ mod tests {
             .and_hms_micro_opt(16, 49, 30, subsec_micros)
             .unwrap();
         let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
-        let time_provider = TimeProvider::from_dt_with_u16_days_us_precision(&datetime_utc).unwrap();
+        let time_provider =
+            TimeProvider::from_dt_with_u16_days_us_precision(&datetime_utc).unwrap();
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
-        assert_eq!(time_provider.ms_of_day, 30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis);
+        assert_eq!(
+            time_provider.ms_of_day,
+            30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
+        );
         assert!(time_provider.submillis_precision.is_some());
         match time_provider.submillis_precision.unwrap() {
             SubmillisPrecision::Microseconds(us) => {
                 assert_eq!(us, 500);
             }
-            _=> panic!("unexpected precision field")
+            _ => panic!("unexpected precision field"),
         }
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
     }
@@ -1386,17 +1421,21 @@ mod tests {
             .and_hms_nano_opt(16, 49, 30, subsec_nanos)
             .unwrap();
         let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
-        let time_provider = TimeProvider::from_dt_with_u16_days_ps_precision(&datetime_utc).unwrap();
+        let time_provider =
+            TimeProvider::from_dt_with_u16_days_ps_precision(&datetime_utc).unwrap();
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
-        assert_eq!(time_provider.ms_of_day, 30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis);
+        assert_eq!(
+            time_provider.ms_of_day,
+            30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
+        );
         assert!(time_provider.submillis_precision.is_some());
         match time_provider.submillis_precision.unwrap() {
             SubmillisPrecision::Picoseconds(ps) => {
                 assert_eq!(ps, submilli_nanos * 1000);
             }
-            _=> panic!("unexpected precision field")
+            _ => panic!("unexpected precision field"),
         }
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
     }
@@ -1418,12 +1457,16 @@ mod tests {
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
             .unwrap();
         let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(datetime_utc.timestamp(), subsec_millis)
-            .expect("creating provider from unix stamp failed");
+        let time_provider =
+            TimeProvider::from_unix_secs_with_u16_days(datetime_utc.timestamp(), subsec_millis)
+                .expect("creating provider from unix stamp failed");
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
-        assert_eq!(time_provider.ms_of_day, 30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis);
+        assert_eq!(
+            time_provider.ms_of_day,
+            30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
+        );
         let dt_back = time_provider.date_time().unwrap();
         assert_eq!(datetime_utc, dt_back);
     }
