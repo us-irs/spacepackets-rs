@@ -4,6 +4,7 @@
 //! The core data structure to do this is the [cds::TimeProvider] struct.
 use super::*;
 use crate::private::Sealed;
+use chrono::Datelike;
 use core::fmt::Debug;
 use core::ops::Add;
 use core::time::Duration;
@@ -135,15 +136,56 @@ pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     ccsds_days: DaysLen::FieldType,
     ms_of_day: u32,
     submillis_precision: Option<SubmillisPrecision>,
+    /// This is not strictly necessary but still cached because it significantly simplifies the
+    /// calculation of [`DateTime<Utc>`].
     unix_seconds: i64,
+}
+
+/// Helper struct which generates fields for the CDS time provider from a datetime.
+struct ConversionFromDatetime {
+    ccsds_days: u32,
+    ms_of_day: u32,
+    /// This is a side-product of the calculation of the CCSDS days. It is useful for
+    /// re-calculating the datetime at a later point and therefore supplied as well.
+    unix_days_seconds: i64,
+    submillis_prec: Option<SubmillisPrecision>,
+}
+
+fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, i64) {
+    let secs_of_day = unix_seconds % SECONDS_PER_DAY as i64;
+    let unix_days = if secs_of_day > 0 {
+        (unix_seconds - secs_of_day) / SECONDS_PER_DAY as i64
+    } else {
+        (unix_seconds + secs_of_day) / SECONDS_PER_DAY as i64
+    };
+    (unix_days, secs_of_day)
+}
+
+impl ConversionFromDatetime {
+    fn new(dt: DateTime<Utc>) -> Self {
+        // The CDS timestamp does not support timestamps before the CCSDS epoch.
+        assert!(dt.year() >= 1958);
+        let unix_seconds = dt.timestamp();
+        let (unix_days, _) = calc_unix_days_and_secs_of_day(unix_seconds);
+        // This should always be positive now.
+        let ccsds_days = unix_to_ccsds_days(unix_days) as u32;
+        let unix_ms = dt.timestamp_millis();
+        let mut ms_of_day = unix_ms % MS_PER_DAY as i64;
+        if ms_of_day < 0 {
+            ms_of_day = -ms_of_day;
+        }
+        Self {
+            ccsds_days,
+            ms_of_day: ms_of_day as u32,
+            unix_days_seconds: unix_days * SECONDS_PER_DAY as i64,
+            submillis_prec: None,
+        }
+    }
 }
 
 #[cfg(feature = "std")]
 struct ConversionFromNow {
-    ccsds_days: i32,
-    ms_of_day: u64,
-    unix_days_seconds: u64,
-    submillis_prec: Option<SubmillisPrecision>,
+    base: ConversionFromDatetime,
 }
 
 #[cfg(feature = "std")]
@@ -163,8 +205,8 @@ impl ConversionFromNow {
     fn new_generic(mut prec: Option<SubmillisPrecision>) -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
-        let secs_of_day = epoch % SECONDS_PER_DAY as u64;
-        let unix_days_seconds = epoch - secs_of_day;
+        // Both values should now be positive
+        let (unix_days, secs_of_day) = calc_unix_days_and_secs_of_day(epoch as i64);
         if let Some(submilli_prec) = prec {
             match submilli_prec {
                 SubmillisPrecision::Microseconds(_) => {
@@ -181,11 +223,12 @@ impl ConversionFromNow {
             }
         }
         Ok(Self {
-            ms_of_day: secs_of_day * 1000 + now.subsec_millis() as u64,
-            ccsds_days: unix_to_ccsds_days((unix_days_seconds / SECONDS_PER_DAY as u64) as i64)
-                as i32,
-            unix_days_seconds,
-            submillis_prec: prec,
+            base: ConversionFromDatetime {
+                ms_of_day: secs_of_day as u32 * 1000 + now.subsec_millis(),
+                ccsds_days: unix_to_ccsds_days(unix_days) as u32,
+                unix_days_seconds: unix_days * SECONDS_PER_DAY as i64,
+                submillis_prec: prec,
+            },
         })
     }
 }
@@ -296,11 +339,11 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         init_len
     }
 
-    fn setup(&mut self, unix_days_seconds: i64, ms_of_day: u64) {
+    fn setup(&mut self, unix_days_seconds: i64, ms_of_day: u32) {
         self.calc_unix_seconds(unix_days_seconds, ms_of_day);
     }
 
-    fn calc_unix_seconds(&mut self, unix_days_seconds: i64, ms_of_day: u64) {
+    fn calc_unix_seconds(&mut self, unix_days_seconds: i64, ms_of_day: u32) {
         self.unix_seconds = unix_days_seconds;
         let seconds_of_day = (ms_of_day / 1000) as i64;
         if self.unix_seconds < 0 {
@@ -310,10 +353,13 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         }
     }
 
-    fn calc_date_time(&self, ms_since_last_second: u32) -> Option<DateTime<Utc>> {
-        assert!(ms_since_last_second < 1000, "Invalid MS since last second");
-        let ns_since_last_sec = ms_since_last_second * 1e6 as u32;
-        if let LocalResult::Single(val) = Utc.timestamp_opt(self.unix_seconds, ns_since_last_sec) {
+    fn calc_date_time(&self, ns_since_last_second: u32) -> Option<DateTime<Utc>> {
+        assert!(
+            ns_since_last_second < 10_u32.pow(9),
+            "Invalid MS since last second"
+        );
+        if let LocalResult::Single(val) = Utc.timestamp_opt(self.unix_seconds, ns_since_last_second)
+        {
             return Some(val);
         }
         None
@@ -357,24 +403,27 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         conversion_from_now: ConversionFromNow,
     ) -> Result<Self, StdTimestampError>
     where
-        <ProvidesDaysLen::FieldType as TryFrom<i32>>::Error: Debug,
+        <ProvidesDaysLen as ProvidesDaysLength>::FieldType: TryFrom<u32>,
     {
-        let ccsds_days: ProvidesDaysLen::FieldType =
-            conversion_from_now.ccsds_days.try_into().map_err(|_| {
+        let ccsds_days: ProvidesDaysLen::FieldType = conversion_from_now
+            .base
+            .ccsds_days
+            .try_into()
+            .map_err(|_| {
                 StdTimestampError::TimestampError(
-                    CdsError::InvalidCcsdsDays(conversion_from_now.ccsds_days.into()).into(),
+                    CdsError::InvalidCcsdsDays(conversion_from_now.base.ccsds_days.into()).into(),
                 )
             })?;
         let mut provider = Self {
-            pfield: Self::generate_p_field(days_len, conversion_from_now.submillis_prec),
+            pfield: Self::generate_p_field(days_len, conversion_from_now.base.submillis_prec),
             ccsds_days,
-            ms_of_day: conversion_from_now.ms_of_day as u32,
+            ms_of_day: conversion_from_now.base.ms_of_day as u32,
             unix_seconds: 0,
-            submillis_precision: conversion_from_now.submillis_prec,
+            submillis_precision: conversion_from_now.base.submillis_prec,
         };
         provider.setup(
-            conversion_from_now.unix_days_seconds as i64,
-            conversion_from_now.ms_of_day,
+            conversion_from_now.base.unix_days_seconds as i64,
+            conversion_from_now.base.ms_of_day,
         );
         Ok(provider)
     }
@@ -415,26 +464,34 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self) -> Result<(), StdTimestampError>
     where
-        <ProvidesDaysLen::FieldType as TryFrom<i32>>::Error: Debug,
+        <ProvidesDaysLen as ProvidesDaysLength>::FieldType: From<u32>,
     {
         let conversion_from_now = self.generic_conversion_from_now()?;
-        let ccsds_days: ProvidesDaysLen::FieldType =
-            conversion_from_now.ccsds_days.try_into().map_err(|_| {
+        let ccsds_days: ProvidesDaysLen::FieldType = conversion_from_now
+            .base
+            .ccsds_days
+            .try_into()
+            .map_err(|_| {
                 StdTimestampError::TimestampError(
-                    CdsError::InvalidCcsdsDays(conversion_from_now.ccsds_days as i64).into(),
+                    CdsError::InvalidCcsdsDays(conversion_from_now.base.ccsds_days as i64).into(),
                 )
             })?;
         self.ccsds_days = ccsds_days;
-        self.ms_of_day = conversion_from_now.ms_of_day as u32;
+        self.ms_of_day = conversion_from_now.base.ms_of_day as u32;
         self.setup(
-            conversion_from_now.unix_days_seconds as i64,
-            conversion_from_now.ms_of_day,
+            conversion_from_now.base.unix_days_seconds as i64,
+            conversion_from_now.base.ms_of_day,
         );
         Ok(())
     }
 }
 
 impl TimeProvider<DaysLen24Bits> {
+    pub fn new_with_u24_days_from_unix_stamp(unix_seconds: i64) {
+        //let seconds_of_day = unix_seconds % SECONDS_PER_DAY;
+        //let unix_days = (unix_seconds - seconds_of_day) / SECONDS_PER_DAY;
+    }
+
     /// Generate a new timestamp provider with the days field width set to 24 bits
     pub fn new_with_u24_days(ccsds_days: u32, ms_of_day: u32) -> Result<Self, CdsError> {
         if ccsds_days > 2_u32.pow(24) {
@@ -594,6 +651,7 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     );
     (next_ccsds_days, next_ms_of_day, precision)
 }
+
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
@@ -625,6 +683,15 @@ impl Add<Duration> for TimeProvider<DaysLen24Bits> {
     }
 }
 
+impl TryFrom<DateTime<Utc>> for TimeProvider<DaysLen16Bits> {
+    type Error = ();
+
+    fn try_from(dt: DateTime<Utc>) -> Result<Self, Self::Error> {
+        //todo!()
+        //let unix_ms = dt.timestamp_millis();
+        Ok(Self::new_with_u16_days(0, 0))
+    }
+}
 impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<ProvidesDaysLen> {
     fn len_as_bytes(&self) -> usize {
         Self::calc_stamp_len(self.pfield)
@@ -643,7 +710,19 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>> {
-        self.calc_date_time(self.ms_of_day % 1000)
+        let mut ns_since_last_sec = (self.ms_of_day % 1000) * 10_u32.pow(6);
+        if let Some(precision) = self.submillis_precision {
+            match precision {
+                SubmillisPrecision::Microseconds(us) => {
+                    ns_since_last_sec += us as u32 * 1000;
+                }
+                SubmillisPrecision::Picoseconds(ps) => {
+                    ns_since_last_sec += ps / 1000;
+                }
+                _ => (),
+            }
+        }
+        self.calc_date_time(ns_since_last_sec)
     }
 }
 
@@ -710,7 +789,7 @@ mod tests {
     use chrono::{Datelike, Timelike};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
-    use std::format;
+    use std::{format, println};
 
     #[test]
     fn test_time_stamp_zero_args() {
@@ -978,6 +1057,13 @@ mod tests {
         assert_eq!(written, 11);
         let cross_check: u32 = 5e8 as u32;
         assert_eq!(write_buf[7..11], cross_check.to_be_bytes());
+    }
+
+    #[test]
+    fn test() {
+        let negative_unix_seconds = -(SECONDS_PER_DAY as i32) - 12;
+        let test = negative_unix_seconds % SECONDS_PER_DAY as i32;
+        println!("test: {}", test)
     }
 
     #[test]
