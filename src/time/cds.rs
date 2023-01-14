@@ -170,7 +170,7 @@ impl ConversionFromNow {
                     ));
                 }
                 SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds(now.subsec_nanos() * 1000));
+                    prec = Some(SubmillisPrecision::Picoseconds((now.subsec_nanos() % 10_u32.pow(6)) * 1000));
                 }
                 _ => (),
             }

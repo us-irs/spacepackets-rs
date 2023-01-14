@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.4.2] 14.01.2023
+
+## Fixed
+
+- CDS timestamp: Fixed another small logic error for stamp creation from the current
+  time with picosecond precision.
+
 # [v0.4.1] 14.01.2023
 
 ## Fixed
