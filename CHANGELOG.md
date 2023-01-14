@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.4.2] 14.01.2023
+
+## Fixed
+
+- CDS timestamp: Fixed another small logic error for stamp creation from the current
+  time with picosecond precision.
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/8
+
 # [v0.4.1] 14.01.2023
 
 ## Fixed
@@ -15,6 +23,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - CDS timestamp: The conversion function from the current time were buggy
   when specifying picoseconds precision, which could lead to overflow
   multiplications and/or incorrect precision fields.
+  PR: https://egit.irs.uni-stuttgart.de/rust/spacepackets/pulls/7
 
 # [v0.4.0] 10.01.2023
 
