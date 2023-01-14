@@ -264,9 +264,7 @@ impl ConversionFromDatetime {
                     ));
                 }
                 SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds(
-                        (dt.timestamp_subsec_nanos() * 1000),
-                    ));
+                    prec = Some(SubmillisPrecision::Picoseconds((dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000));
                 }
                 _ => (),
             }
@@ -313,7 +311,7 @@ impl ConversionFromNow {
                     ));
                 }
                 SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds(now.subsec_nanos() * 1000));
+                    prec = Some(SubmillisPrecision::Picoseconds((now.subsec_nanos() % 10_u32.pow(6)) * 1000));
                 }
                 _ => (),
             }
@@ -1212,10 +1210,7 @@ mod tests {
         assert_eq!(read_stamp.ms_of_day(), u32::MAX - 1);
     }
 
-    #[test]
-    fn test_time_now() {
-        let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
-        let compare_stamp = Utc::now();
+    fn generic_now_test(timestamp_now: TimeProvider, compare_stamp: DateTime<Utc>) {
         let dt = timestamp_now.date_time().unwrap();
         if compare_stamp.year() > dt.year() {
             assert_eq!(compare_stamp.year() - dt.year(), 1);
@@ -1235,6 +1230,19 @@ mod tests {
         }
         generic_dt_property_equality_check(dt.hour(), compare_stamp.hour(), 0, 23);
         generic_dt_property_equality_check(dt.minute(), compare_stamp.minute(), 0, 59);
+    }
+    #[test]
+    fn test_time_now() {
+        let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
+        let compare_stamp = Utc::now();
+        generic_now_test(timestamp_now, compare_stamp);
+    }
+
+    #[test]
+    fn test_time_now_ps_prec() {
+        let timestamp_now = TimeProvider::from_now_with_u16_days_ps_precision().unwrap();
+        let compare_stamp = Utc::now();
+        generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
@@ -1370,6 +1378,7 @@ mod tests {
         // 250 ms + 500 us
         let subsec_millis = 250;
         let subsec_nanos = subsec_millis * 1000 * 1000 + 500 * 1000;
+        let submilli_nanos = subsec_nanos % 10_u32.pow(6);
         let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
             .unwrap()
             .and_hms_nano_opt(16, 49, 30, subsec_nanos)
@@ -1383,7 +1392,7 @@ mod tests {
         assert!(time_provider.submillis_precision.is_some());
         match time_provider.submillis_precision.unwrap() {
             SubmillisPrecision::Picoseconds(ps) => {
-                assert_eq!(ps, subsec_nanos * 1000);
+                assert_eq!(ps, submilli_nanos * 1000);
             }
             _=> panic!("unexpected precision field")
         }
