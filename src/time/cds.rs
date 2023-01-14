@@ -327,6 +327,7 @@ impl ConversionFromNow {
     }
 }
 
+#[cfg(feature = "std")]
 impl CdsConverter for ConversionFromNow {
     fn submillis_precision(&self) -> Option<SubmillisPrecision> {
         self.submillis_prec
