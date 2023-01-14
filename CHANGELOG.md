@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- CDS timestamp: Added constructor function to create the time provider
+  from `chrono::DateTime<Utc>` and a generic UNIX timestamp (`i64` seconds
+  and subsecond milliseconds).
+
+## Fixed
+
+- CDS timestamp: The conversion function from the current time were buggy
+  when specifying picoseconds precision, which could lead to overflow
+  multiplications and incorrect precision fields.
+
 # [v0.4.0] 10.01.2023
 
 ## Fixed
