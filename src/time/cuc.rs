@@ -565,15 +565,6 @@ impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
         None
     }
 
-    /// Please note that this function only works as intended if the time counter resolution
-    /// is one second.
-    fn unix_stamp(&self) -> UnixTimeStamp {
-        UnixTimeStamp {
-            unix_seconds: self.unix_seconds(),
-            subsecond_millis: None,
-        }
-    }
-
     fn date_time(&self) -> Option<DateTime<Utc>> {
         let unix_seconds = self.unix_seconds();
         let ns = if let Some(fractional_part) = self.fractions {

@@ -56,6 +56,7 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCodes, u8> {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
 pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value
@@ -219,8 +220,8 @@ pub trait CcsdsTimeProvider {
 
     fn unix_seconds(&self) -> i64;
     fn subsecond_millis(&self) -> Option<u16>;
-    fn unix_stamp(&self) -> UnixTimeStamp {
-        UnixTimeStamp {
+    fn unix_stamp(&self) -> UnixTimestamp {
+        UnixTimestamp {
             unix_seconds: self.unix_seconds(),
             subsecond_millis: self.subsecond_millis(),
         }
@@ -234,12 +235,12 @@ pub trait CcsdsTimeProvider {
 /// Also can optionally include subsecond millisecond for greater accuracy.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct UnixTimeStamp {
+pub struct UnixTimestamp {
     pub unix_seconds: i64,
     subsecond_millis: Option<u16>,
 }
 
-impl UnixTimeStamp {
+impl UnixTimestamp {
     pub fn new(unix_seconds: i64) -> Self {
         Self {
             unix_seconds,
@@ -267,7 +268,7 @@ impl UnixTimeStamp {
     pub fn from_now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
-        Ok(UnixTimeStamp {
+        Ok(UnixTimestamp {
             unix_seconds: epoch as i64,
             subsecond_millis: Some(now.subsec_millis() as u16),
         })
@@ -314,17 +315,17 @@ mod tests {
 
     #[test]
     fn basic_unix_stamp_test() {
-        let stamp = UnixTimeStamp::new(-200);
+        let stamp = UnixTimestamp::new(-200);
         assert_eq!(stamp.unix_seconds, -200);
         assert!(stamp.subsecond_millis().is_none());
-        let stamp = UnixTimeStamp::new(250);
+        let stamp = UnixTimestamp::new(250);
         assert_eq!(stamp.unix_seconds, 250);
         assert!(stamp.subsecond_millis().is_none());
     }
 
     #[test]
     fn basic_float_unix_stamp_test() {
-        let stamp = UnixTimeStamp::new_with_subsecond_millis(500, 600).unwrap();
+        let stamp = UnixTimestamp::new_with_subsecond_millis(500, 600).unwrap();
         assert!(stamp.subsecond_millis.is_some());
         assert_eq!(stamp.unix_seconds, 500);
         let subsec_millis = stamp.subsecond_millis().unwrap();

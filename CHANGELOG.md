@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - CDS timestamp: Added constructor function to create the time provider
   from `chrono::DateTime<Utc>` and a generic UNIX timestamp (`i64` seconds
   and subsecond milliseconds).
+- New `UnixTimeStamp` abstraction which contains the unix seconds as an `i64`
+  and an optional subsecond millisecond counter (`u16`)
+- `MAX_DAYS_24_BITS` which contains maximum value which can be supplied
+  to the days field of a CDS time provider with 24 bits days field width.
+
+## Changed
+
+- `CcsdsTimeProvider` trait (breaking):
+  - Add new `unix_stamp` method returning the new `UnixTimeStamp` struct
+  - Add new  `subsecond_millis` method returning counter `Option<u16>`
+  - Default impl for `unix_stamp` which re-uses `subsecond_millis` and
+    existing `unix_seconds` method
+- `TimestampError` (breaking): Add `DateBeforeCcsdsEpoch` error type
+  because new CDS API allow supplying invalid date times before CCSDS epoch.
+  Make `TimestampError` with `#[non_exhaustive]` attribute to prevent
+  future breakages if new error variants are added
 
 # [v0.4.2] 14.01.2023
 

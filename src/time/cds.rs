@@ -167,7 +167,7 @@ pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     submillis_precision: Option<SubmillisPrecision>,
     /// This is not strictly necessary but still cached because it significantly simplifies the
     /// calculation of [`DateTime<Utc>`].
-    unix_stamp: UnixTimeStamp,
+    unix_stamp: UnixTimestamp,
 }
 
 /// Common properties for all CDS time providers.
@@ -1096,7 +1096,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
     }
 
     #[inline]
-    fn unix_stamp(&self) -> UnixTimeStamp {
+    fn unix_stamp(&self) -> UnixTimestamp {
         self.unix_stamp
     }
 
