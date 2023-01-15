@@ -955,8 +955,8 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
                 Some(SubmillisPrecision::Microseconds(us))
             }
             SubmillisPrecision::Picoseconds(mut ps) => {
-                let nanos = duration.subsec_nanos();
-                let submilli_nanos = nanos % 10_u32.pow(6);
+                // 1 ms as ns is 1e6.
+                let submilli_nanos = duration.subsec_nanos() % 10_u32.pow(6);
                 // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
                 // is 1e9. The amount ps can now have is always less than 2e9.
                 ps += submilli_nanos * 1000;
