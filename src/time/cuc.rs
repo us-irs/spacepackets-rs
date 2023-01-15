@@ -4,6 +4,8 @@
 //! The core data structure to do this is the [TimeProviderCcsdsEpoch] struct.
 use super::*;
 use core::fmt::Debug;
+use core::ops::{Add, AddAssign};
+use core::time::Duration;
 
 const MIN_CUC_LEN: usize = 2;
 
@@ -576,6 +578,80 @@ impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
             return Some(res);
         }
         None
+    }
+}
+
+fn get_provider_values_after_duration_addition(
+    provider: &TimeProviderCcsdsEpoch,
+    duration: Duration,
+) -> (u32, Option<FractionalPart>) {
+    let mut new_counter = provider.counter.1;
+    let subsec_nanos = duration.subsec_nanos();
+    let mut increment_counter = |amount: u32| {
+        let mut sum: u64 = 0;
+        let mut counter_inc_handler = |max_val: u64| {
+            sum = new_counter as u64 + amount as u64;
+            if sum >= max_val {
+                new_counter = (sum % max_val) as u32;
+                return;
+            }
+            new_counter = sum as u32;
+        };
+        match provider.counter.0 {
+            1 => counter_inc_handler(u8::MAX as u64),
+            2 => counter_inc_handler(u16::MAX as u64),
+            3 => counter_inc_handler((2_u32.pow(24) - 1) as u64),
+            4 => counter_inc_handler(u32::MAX as u64),
+            _ => {
+                // Should never happen
+                panic!("invalid counter width")
+            }
+        }
+    };
+    let fractional_part = if let Some(fractional_part) = &provider.fractions {
+        let fractional_increment =
+            fractional_part_from_subsec_ns(fractional_part.0, subsec_nanos as u64).unwrap();
+        let mut increment_fractions = |resolution| {
+            let mut new_fractions = fractional_part.1 + fractional_increment.1;
+            let max_fractions = fractional_res_to_div(resolution);
+            if new_fractions > max_fractions {
+                increment_counter(1);
+                new_fractions -= max_fractions;
+            }
+            Some(FractionalPart(resolution, new_fractions))
+        };
+        match fractional_increment.0 {
+            FractionalResolution::Seconds => None,
+            _ => increment_fractions(fractional_increment.0),
+        }
+    } else {
+        None
+    };
+    (new_counter, fractional_part)
+}
+
+impl AddAssign<Duration> for TimeProviderCcsdsEpoch {
+    fn add_assign(&mut self, duration: Duration) {
+        let (new_counter, new_fractional_part) =
+            get_provider_values_after_duration_addition(self, duration);
+        self.counter.1 = new_counter;
+        if self.fractions.is_some() {
+            self.fractions = new_fractional_part;
+        }
+    }
+}
+
+impl Add<Duration> for TimeProviderCcsdsEpoch {
+    type Output = Self;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        let (new_counter, new_fractional_part) =
+            get_provider_values_after_duration_addition(&self, duration);
+        if let Some(fractional_part) = new_fractional_part {
+            // The generated fractional part should always be valid, so its okay to unwrap here.
+            return Self::new_with_fractions(new_counter, fractional_part).unwrap();
+        }
+        Self::new(new_counter)
     }
 }
 
