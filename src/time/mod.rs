@@ -241,15 +241,8 @@ pub struct UnixTimestamp {
 }
 
 impl UnixTimestamp {
-    pub fn new(unix_seconds: i64) -> Self {
-        Self {
-            unix_seconds,
-            subsecond_millis: None,
-        }
-    }
-
     /// Returns none if the subsecond millisecond value is larger than 999.
-    pub fn new_with_subsecond_millis(unix_seconds: i64, subsec_millis: u16) -> Option<Self> {
+    pub fn new(unix_seconds: i64, subsec_millis: u16) -> Option<Self> {
         if subsec_millis > 999 {
             return None;
         }
@@ -257,6 +250,23 @@ impl UnixTimestamp {
             unix_seconds,
             subsecond_millis: Some(subsec_millis),
         })
+    }
+
+    pub const fn const_new(unix_seconds: i64, subsec_millis: u16) -> Self {
+        if subsec_millis > 999 {
+            panic!("subsec milliseconds exceeds 999");
+        }
+        Self {
+            unix_seconds,
+            subsecond_millis: Some(subsec_millis),
+        }
+    }
+
+    pub fn new_only_seconds(unix_seconds: i64) -> Self {
+        Self {
+            unix_seconds,
+            subsecond_millis: None,
+        }
     }
 
     pub fn subsecond_millis(&self) -> Option<u16> {
@@ -281,6 +291,15 @@ impl UnixTimestamp {
             secs += subsec_millis as f64 / 1000.0;
         }
         secs
+    }
+}
+
+impl From<DateTime<Utc>> for UnixTimestamp {
+    fn from(value: DateTime<Utc>) -> Self {
+        Self {
+            unix_seconds: value.timestamp(),
+            subsecond_millis: Some(value.timestamp_subsec_millis() as u16),
+        }
     }
 }
 
@@ -315,17 +334,17 @@ mod tests {
 
     #[test]
     fn basic_unix_stamp_test() {
-        let stamp = UnixTimestamp::new(-200);
+        let stamp = UnixTimestamp::new_only_seconds(-200);
         assert_eq!(stamp.unix_seconds, -200);
         assert!(stamp.subsecond_millis().is_none());
-        let stamp = UnixTimestamp::new(250);
+        let stamp = UnixTimestamp::new_only_seconds(250);
         assert_eq!(stamp.unix_seconds, 250);
         assert!(stamp.subsecond_millis().is_none());
     }
 
     #[test]
     fn basic_float_unix_stamp_test() {
-        let stamp = UnixTimestamp::new_with_subsecond_millis(500, 600).unwrap();
+        let stamp = UnixTimestamp::new(500, 600).unwrap();
         assert!(stamp.subsecond_millis.is_some());
         assert_eq!(stamp.unix_seconds, 500);
         let subsec_millis = stamp.subsecond_millis().unwrap();
