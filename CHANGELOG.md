@@ -10,14 +10,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
-- CDS timestamp: Added constructor function to create the time provider
+- New `UnixTimestamp` abstraction which contains the unix seconds as an `i64`
+  and an optional subsecond millisecond counter (`u16`)
+
+### CDS time module
+
+- Added constructor function to create the time provider
   from `chrono::DateTime<Utc>` and a generic UNIX timestamp (`i64` seconds
   and subsecond milliseconds).
-- New `UnixTimeStamp` abstraction which contains the unix seconds as an `i64`
-  and an optional subsecond millisecond counter (`u16`)
 - `MAX_DAYS_24_BITS` which contains maximum value which can be supplied
   to the days field of a CDS time provider with 24 bits days field width.
-
+- New `CdsTimestamp` trait which encapsulates common fields for all CDS time providers
+- `get_dyn_time_provider_from_bytes`: Requires `alloc` support and returns
+   the correct `TimeProvider` instance wrapped as a boxed trait object
+   `Box<DynCdsTimeProvider>` by checking the length of days field.
+- `from_unix_secs_with_u24_days` and `from_unix_secs_with_u16_days`
 ## Changed
 
 - `CcsdsTimeProvider` trait (breaking):
