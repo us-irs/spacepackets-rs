@@ -8,9 +8,9 @@ use super::*;
 use crate::private::Sealed;
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
+use chrono::Datelike;
 #[cfg(feature = "alloc")]
 use core::any::Any;
-use chrono::Datelike;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
