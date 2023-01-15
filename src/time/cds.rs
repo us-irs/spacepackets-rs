@@ -110,6 +110,11 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// section 3.3 . The width of the days field is configured at compile time via the generic
 /// [ProvidesDaysLength] trait which is implemented by [DaysLen16Bits] and [DaysLen24Bits].
 ///
+/// If you do not want to perform a forward check of the days length field with
+/// [length_of_day_segment_from_pfield] and you have [alloc] support, you can also
+/// use [TimeProvider::from_bytes_dyn] to retrieve the correct instance as a [DynCdsTimeProvider]
+/// trait object.
+///
 /// Custom epochs are not supported yet.
 /// Furthermore, the preamble field (p-field) is explicitly conveyed.
 /// That means it will always be present when writing the time stamp to a raw buffer, and it
