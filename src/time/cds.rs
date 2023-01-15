@@ -114,7 +114,7 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// # Example
 ///
 /// ```
-/// use spacepackets::time::cds::{TimeProvider, DaysLen16Bits};
+/// use spacepackets::time::cds::{TimeProvider, DaysLen16Bits, length_of_day_segment_from_pfield, LengthOfDaySegment};
 /// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, TimeReader, CcsdsTimeProvider};
 ///
 /// let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
@@ -125,7 +125,8 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 ///     assert_eq!(written, 7);
 /// }
 /// {
-///     let read_result = TimeProvider::<DaysLen16Bits>::from_bytes(&raw_stamp);
+///     assert_eq!(length_of_day_segment_from_pfield(raw_stamp[0]), LengthOfDaySegment::Short16Bits);
+///     let read_result = TimeProvider::from_bytes_with_u16_days(&raw_stamp);
 ///     assert!(read_result.is_ok());
 ///     let stamp_deserialized = read_result.unwrap();
 ///     assert_eq!(stamp_deserialized.len_as_bytes(), 7);
@@ -703,7 +704,7 @@ impl TimeProvider<DaysLen24Bits> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
-    fn from_bytes_with_u24_days(buf: &[u8]) -> Result<Self, TimestampError> {
+    pub fn from_bytes_with_u24_days(buf: &[u8]) -> Result<Self, TimestampError> {
         let submillis_precision =
             Self::generic_raw_read_checks(buf, LengthOfDaySegment::Long24Bits)?;
         let mut temp_buf: [u8; 4] = [0; 4];
@@ -787,7 +788,7 @@ impl TimeProvider<DaysLen16Bits> {
         Self::from_now_generic_ps_prec(LengthOfDaySegment::Short16Bits)
     }
 
-    fn from_bytes_with_u16_days(buf: &[u8]) -> Result<Self, TimestampError> {
+    pub fn from_bytes_with_u16_days(buf: &[u8]) -> Result<Self, TimestampError> {
         let submillis_precision =
             Self::generic_raw_read_checks(buf, LengthOfDaySegment::Short16Bits)?;
         let ccsds_days: u16 = u16::from_be_bytes(buf[1..3].try_into().unwrap());
