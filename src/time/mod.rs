@@ -204,6 +204,9 @@ pub trait TimeReader {
 }
 
 /// Trait for generic CCSDS time providers.
+///
+/// The UNIX helper methods and the [date_time] method are not strictly necessary but extremely
+/// practical because they are a very common and simple exchange format for time information.
 pub trait CcsdsTimeProvider {
     fn len_as_bytes(&self) -> usize;
 
@@ -213,8 +216,71 @@ pub trait CcsdsTimeProvider {
     /// in big endian format.
     fn p_field(&self) -> (usize, [u8; 2]);
     fn ccdsd_time_code(&self) -> CcsdsTimeCodes;
+
     fn unix_seconds(&self) -> i64;
+    fn subsecond_millis(&self) -> Option<u16>;
+    fn unix_stamp(&self) -> UnixTimeStamp {
+        UnixTimeStamp {
+            unix_seconds: self.unix_seconds(),
+            subsecond_millis: self.subsecond_millis(),
+        }
+    }
+
     fn date_time(&self) -> Option<DateTime<Utc>>;
+}
+
+/// UNIX timestamp: Elapsed seconds since 01-01-1970 00:00:00.
+///
+/// Also can optionally include subsecond millisecond for greater accuracy.
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct UnixTimeStamp {
+    pub unix_seconds: i64,
+    subsecond_millis: Option<u16>,
+}
+
+impl UnixTimeStamp {
+    pub fn new(unix_seconds: i64) -> Self {
+        Self {
+            unix_seconds,
+            subsecond_millis: None,
+        }
+    }
+
+    /// Returns none if the subsecond millisecond value is larger than 999.
+    pub fn new_with_subsecond_millis(unix_seconds: i64, subsec_millis: u16) -> Option<Self> {
+        if subsec_millis > 999 {
+            return None;
+        }
+        Some(Self {
+            unix_seconds,
+            subsecond_millis: Some(subsec_millis),
+        })
+    }
+
+    pub fn subsecond_millis(&self) -> Option<u16> {
+        self.subsecond_millis
+    }
+
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+    pub fn from_now() -> Result<Self, SystemTimeError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let epoch = now.as_secs();
+        Ok(UnixTimeStamp {
+            unix_seconds: epoch as i64,
+            subsecond_millis: Some(now.subsec_millis() as u16),
+        })
+    }
+
+    #[inline]
+    pub fn unix_seconds_f64(&self) -> f64 {
+        let mut secs = self.unix_seconds as f64;
+        if let Some(subsec_millis) = self.subsecond_millis {
+            secs += subsec_millis as f64 / 1000.0;
+        }
+        secs
+    }
 }
 
 #[cfg(all(test, feature = "std"))]
@@ -244,5 +310,25 @@ mod tests {
         assert_eq!((ccsds_epoch - unix_epoch) % SECONDS_PER_DAY as u64, 0);
         let days_diff = (ccsds_epoch - unix_epoch) / SECONDS_PER_DAY as u64;
         assert_eq!(days_diff, -DAYS_CCSDS_TO_UNIX as u64);
+    }
+
+    #[test]
+    fn basic_unix_stamp_test() {
+        let stamp = UnixTimeStamp::new(-200);
+        assert_eq!(stamp.unix_seconds, -200);
+        assert!(stamp.subsecond_millis().is_none());
+        let stamp = UnixTimeStamp::new(250);
+        assert_eq!(stamp.unix_seconds, 250);
+        assert!(stamp.subsecond_millis().is_none());
+    }
+
+    #[test]
+    fn basic_float_unix_stamp_test() {
+        let stamp = UnixTimeStamp::new_with_subsecond_millis(500, 600).unwrap();
+        assert!(stamp.subsecond_millis.is_some());
+        assert_eq!(stamp.unix_seconds, 500);
+        let subsec_millis = stamp.subsecond_millis().unwrap();
+        assert_eq!(subsec_millis, 600);
+        assert!((500.6 - stamp.unix_seconds_f64()).abs() < 0.0001);
     }
 }
