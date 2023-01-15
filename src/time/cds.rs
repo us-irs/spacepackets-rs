@@ -922,7 +922,6 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
 ) -> (u32, u32, Option<SubmillisPrecision>) {
     let mut next_ccsds_days = time_provider.ccsds_days_as_u32();
     let mut next_ms_of_day = time_provider.ms_of_day;
-    let mut precision = None;
     // Increment CCSDS days by a certain amount while also accounting for overflow.
     let increment_days = |ccsds_days: &mut u32, days_inc: u32| {
         let days_addition: u64 = *ccsds_days as u64 + days_inc as u64;
@@ -942,9 +941,8 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
             increment_days(ccsds_days, 1);
         }
     };
-    if let Some(submillis_prec) = time_provider.submillis_precision {
+    let precision = if let Some(submillis_prec) = time_provider.submillis_precision {
         match submillis_prec {
-            SubmillisPrecision::Absent => {}
             SubmillisPrecision::Microseconds(mut us) => {
                 let micros = duration.subsec_micros();
                 let submilli_micros = (micros % 1000) as u16;
@@ -952,22 +950,28 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
                 if us >= 1000 {
                     let carryover_us = us - 1000;
                     increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                    precision = Some(SubmillisPrecision::Microseconds(carryover_us));
+                    us = carryover_us;
                 }
+                Some(SubmillisPrecision::Microseconds(us))
             }
             SubmillisPrecision::Picoseconds(mut ps) => {
                 let nanos = duration.subsec_nanos();
                 let submilli_nanos = nanos % 10_u32.pow(6);
+                // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
+                // is 1e9. The amount ps can now have is always less than 2e9.
                 ps += submilli_nanos * 1000;
-                if ps >= 10_u32.pow(6) {
+                if ps >= 10_u32.pow(9) {
                     let carry_over_ps = ps - 10_u32.pow(6);
                     increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                    precision = Some(SubmillisPrecision::Picoseconds(carry_over_ps))
+                    ps = carry_over_ps;
                 }
+                Some(SubmillisPrecision::Picoseconds(ps))
             }
-            SubmillisPrecision::Reserved => {}
+            _ => None,
         }
-    }
+    } else {
+        None
+    };
     let full_seconds = duration.as_secs();
     let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
     let ms_of_day = secs_of_day * 1000;
@@ -1747,12 +1751,21 @@ mod tests {
     }
 
     #[test]
-    fn test_creation_from_unix_stamp_0() {
+    fn test_creation_from_unix_stamp_0_u16_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
         let time_provider = TimeProvider::from_unix_secs_with_u16_days(unix_secs, subsec_millis)
             .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, -DAYS_CCSDS_TO_UNIX as u16)
+    }
+
+    #[test]
+    fn test_creation_from_unix_stamp_0_u24_days() {
+        let unix_secs = 0;
+        let subsec_millis = 0;
+        let time_provider = TimeProvider::from_unix_secs_with_u24_days(unix_secs, subsec_millis)
+            .expect("creating provider from unix stamp failed");
+        assert_eq!(time_provider.ccsds_days, (-DAYS_CCSDS_TO_UNIX) as u32)
     }
 
     #[test]
@@ -1890,6 +1903,37 @@ mod tests {
     }
 
     #[test]
+    fn test_addition_with_us_precision_u16_days() {
+        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        provider.set_submillis_precision(SubmillisPrecision::Microseconds(0));
+        let duration = Duration::from_micros(500);
+        provider += duration;
+        assert!(provider.submillis_precision().is_some());
+        let prec = provider.submillis_precision().unwrap();
+        if let SubmillisPrecision::Microseconds(us) = prec {
+            assert_eq!(us, 500);
+        } else {
+            panic!("invalid precision {:?}", prec)
+        }
+    }
+
+    #[test]
+    fn test_addition_with_ps_precision_u16_days() {
+        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        provider.set_submillis_precision(SubmillisPrecision::Picoseconds(0));
+        // 500 us as ns
+        let duration = Duration::from_nanos(500 * 10u32.pow(3) as u64);
+        provider += duration;
+        assert!(provider.submillis_precision().is_some());
+        let prec = provider.submillis_precision().unwrap();
+        if let SubmillisPrecision::Picoseconds(ps) = prec {
+            assert_eq!(ps, 500 * 10_u32.pow(6));
+        } else {
+            panic!("invalid precision {:?}", prec)
+        }
+    }
+
+    #[test]
     fn test_dyn_creation_u16_days_with_precision() {
         let mut stamp = TimeProvider::new_with_u16_days(24, 24);
         stamp.set_submillis_precision(SubmillisPrecision::Microseconds(666));
@@ -1922,9 +1966,6 @@ mod tests {
             panic!("unexpected error {}", e)
         }
     }
-
-    #[test]
-    fn test_dt_u24_days() {}
 
     #[test]
     #[cfg(feature = "serde")]
