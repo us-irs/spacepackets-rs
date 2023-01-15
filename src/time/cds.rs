@@ -123,8 +123,8 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// # Example
 ///
 /// ```
-/// use spacepackets::time::cds::{TimeProvider, DaysLen16Bits, length_of_day_segment_from_pfield, LengthOfDaySegment};
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, TimeReader, CcsdsTimeProvider};
+/// use spacepackets::time::cds::{TimeProvider, length_of_day_segment_from_pfield, LengthOfDaySegment};
+/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
 ///
 /// let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
 /// let mut raw_stamp = [0; 7];
@@ -381,6 +381,30 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 /// by checking the days of length field. It also checks the CCSDS time code for correctness.
 ///
 /// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
+/// This function returns the correct [TimeProvider] instance from a raw byte array
+/// by checking the days of length field. It also checks the CCSDS time code for correctness.
+///
+/// # Example
+///
+/// ```
+/// use spacepackets::time::cds::{TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes};
+/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
+///
+/// let timestamp_now = TimeProvider::new_with_u16_days(24, 24);
+/// let mut raw_stamp = [0; 7];
+/// {
+///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
+///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCodes::Cds as u8);
+///     assert_eq!(written, 7);
+/// }
+/// {
+///     let dyn_provider = get_dyn_time_provider_from_bytes(&raw_stamp).unwrap();
+///     assert_eq!(dyn_provider.len_of_day_seg(), LengthOfDaySegment::Short16Bits);
+///     assert_eq!(dyn_provider.ccsds_days_as_u32(), 24);
+///     assert_eq!(dyn_provider.ms_of_day(), 24);
+///     assert_eq!(dyn_provider.submillis_precision(), None);
+/// }
+/// ```
 #[cfg(feature = "alloc")]
 pub fn get_dyn_time_provider_from_bytes(
     buf: &[u8],
@@ -418,16 +442,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDay
 }
 
 impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
-    /// This function returns the correct [TimeProvider] instance from a raw byte array
-    /// by checking the days of length field. It also checks the CCSDS time code for correctness.
-    ///
-    /// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
-    /// This function also simply calls [`get_dyn_time_provider_from_bytes`].
-    #[cfg(feature = "alloc")]
-    pub fn from_bytes_dyn(buf: &[u8]) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
-        get_dyn_time_provider_from_bytes(buf)
-    }
-
     pub fn set_submillis_precision(&mut self, prec: SubmillisPrecision) {
         self.pfield &= !(0b11);
         if let SubmillisPrecision::Absent = prec {
