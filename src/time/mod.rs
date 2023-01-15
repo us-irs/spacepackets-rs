@@ -292,6 +292,13 @@ impl UnixTimestamp {
         }
         secs
     }
+
+    pub fn as_date_time(&self) -> LocalResult<DateTime<Utc>> {
+        Utc.timestamp_opt(
+            self.unix_seconds,
+            self.subsecond_millis.unwrap_or(0) as u32 * 10_u32.pow(6),
+        )
+    }
 }
 
 impl From<DateTime<Utc>> for UnixTimestamp {
