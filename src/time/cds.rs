@@ -395,11 +395,7 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 
 /// This function returns the correct [TimeProvider] instance from a raw byte array
-/// by checking the days of length field. It also checks the CCSDS time code for correctness.
-///
-/// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
-/// This function returns the correct [TimeProvider] instance from a raw byte array
-/// by checking the days of length field. It also checks the CCSDS time code for correctness.
+/// by checking the length of days field. It also checks the CCSDS time code for correctness.
 ///
 /// # Example
 ///
