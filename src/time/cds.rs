@@ -11,6 +11,7 @@ use core::fmt::Debug;
 use core::ops::Add;
 use core::time::Duration;
 use delegate::delegate;
+use std::ops::AddAssign;
 
 /// Base value for the preamble field for a time field parser to determine the time field type.
 pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
@@ -352,8 +353,8 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 
-/// This function returns the correct [TimeProvider] instance by checking the days of length
-/// field. It also checks the CCSDS time code for correctness.
+/// This function returns the correct [TimeProvider] instance from a raw byte array
+/// by checking the days of length field. It also checks the CCSDS time code for correctness.
 ///
 /// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
 #[cfg(feature = "alloc")]
@@ -362,10 +363,7 @@ pub fn get_dyn_time_provider_from_bytes(
 ) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
     let time_code = ccsds_time_code_from_p_field(buf[0]);
     if let Err(e) = time_code {
-        return Err(TimestampError::InvalidTimeCode(
-            CcsdsTimeCodes::Cds,
-            e,
-        ));
+        return Err(TimestampError::InvalidTimeCode(CcsdsTimeCodes::Cds, e));
     }
     let time_code = time_code.unwrap();
     if time_code != CcsdsTimeCodes::Cds {
@@ -847,7 +845,7 @@ impl TimeProvider<DaysLen16Bits> {
 }
 
 fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
-    time_provider: TimeProvider<T>,
+    time_provider: &TimeProvider<T>,
     max_days_val: u32,
     duration: Duration,
 ) -> (u32, u32, Option<SubmillisPrecision>) {
@@ -856,9 +854,9 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     let mut precision = None;
     // Increment CCSDS days by a certain amount while also accounting for overflow.
     let increment_days = |ccsds_days: &mut u32, days_inc: u32| {
-        let days_addition = *ccsds_days + days_inc;
-        if days_addition >= (max_days_val - 1) {
-            *ccsds_days = days_addition - max_days_val;
+        let days_addition: u64 = *ccsds_days as u64 + days_inc as u64;
+        if days_addition > max_days_val as u64 {
+            *ccsds_days = (days_addition - max_days_val as u64) as u32;
         } else {
             *ccsds_days += days_inc;
         }
@@ -866,9 +864,9 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     // Increment MS of day by a certain amount while also accounting for overflow, where
     // the new value exceeds the MS of a day.
     let increment_ms_of_day = |ms_of_day: &mut u32, ms_inc: u32, ccsds_days: &mut u32| {
-        let ms_addition = *ms_of_day + ms_inc;
-        if ms_addition >= MS_PER_DAY {
-            *ms_of_day = ms_addition - MS_PER_DAY;
+        *ms_of_day += ms_inc;
+        if *ms_of_day >= MS_PER_DAY {
+            *ms_of_day -= MS_PER_DAY;
             // Re-use existing closure to always amount for overflow.
             increment_days(ccsds_days, 1);
         }
@@ -877,7 +875,7 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
         match submillis_prec {
             SubmillisPrecision::Absent => {}
             SubmillisPrecision::Microseconds(mut us) => {
-                let micros = duration.as_micros();
+                let micros = duration.subsec_micros();
                 let submilli_micros = (micros % 1000) as u16;
                 us += submilli_micros;
                 if us >= 1000 {
@@ -886,16 +884,26 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
                     precision = Some(SubmillisPrecision::Microseconds(carryover_us));
                 }
             }
-            SubmillisPrecision::Picoseconds(_ps) => {}
+            SubmillisPrecision::Picoseconds(mut ps) => {
+                let nanos = duration.subsec_nanos();
+                let submilli_nanos = nanos % 10_u32.pow(6);
+                ps += submilli_nanos * 1000;
+                if ps >= 10_u32.pow(6) {
+                    let carry_over_ps = ps - 10_u32.pow(6);
+                    increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                    precision = Some(SubmillisPrecision::Picoseconds(carry_over_ps))
+                }
+            }
             SubmillisPrecision::Reserved => {}
         }
     }
-    let full_ms = duration.as_millis();
-    let ms_of_day = (full_ms % MS_PER_DAY as u128) as u32;
+    let full_seconds = duration.as_secs();
+    let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
+    let ms_of_day = secs_of_day * 1000;
     increment_ms_of_day(&mut next_ms_of_day, ms_of_day, &mut next_ccsds_days);
     increment_days(
         &mut next_ccsds_days,
-        (full_ms as u32 - ms_of_day) / MS_PER_DAY,
+        (full_seconds as u32 - secs_of_day) / SECONDS_PER_DAY,
     );
     (next_ccsds_days, next_ms_of_day, precision)
 }
@@ -908,7 +916,7 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
 
     fn add(self, duration: Duration) -> Self::Output {
         let (next_ccsds_days, next_ms_of_day, precision) =
-            add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
+            add_for_max_ccsds_days_val(&self, u16::MAX as u32, duration);
         let mut provider = Self::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
         if let Some(prec) = precision {
             provider.set_submillis_precision(prec);
@@ -925,12 +933,38 @@ impl Add<Duration> for TimeProvider<DaysLen24Bits> {
 
     fn add(self, duration: Duration) -> Self::Output {
         let (next_ccsds_days, next_ms_of_day, precision) =
-            add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
+            add_for_max_ccsds_days_val(&self, MAX_DAYS_24_BITS, duration);
         let mut provider = Self::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
         if let Some(prec) = precision {
             provider.set_submillis_precision(prec);
         }
         provider
+    }
+}
+
+/// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
+/// when they overflow, because addition needs to be infallible. The user needs to check for a
+/// days overflow when this is a possibility and might be a problem.
+impl AddAssign<Duration> for TimeProvider<DaysLen16Bits> {
+    fn add_assign(&mut self, duration: Duration) {
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
+        self.ccsds_days = next_ccsds_days as u16;
+        self.ms_of_day = next_ms_of_day;
+        self.submillis_precision = precision;
+    }
+}
+
+/// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
+/// when they overflow, because addition needs to be infallible. The user needs to check for a
+/// days overflow when this is a possibility and might be a problem.
+impl AddAssign<Duration> for TimeProvider<DaysLen24Bits> {
+    fn add_assign(&mut self, duration: Duration) {
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
+        self.ccsds_days = next_ccsds_days;
+        self.ms_of_day = next_ms_of_day;
+        self.submillis_precision = precision;
     }
 }
 
@@ -1399,7 +1433,7 @@ mod tests {
     }
 
     #[test]
-    fn test_creation_from_dt() {
+    fn test_creation_from_dt_u16_days() {
         let subsec_millis = 250;
         let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
             .unwrap()
@@ -1416,6 +1450,29 @@ mod tests {
         );
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
         let time_provider_2: TimeProvider<DaysLen16Bits> =
+            datetime_utc.try_into().expect("conversion failed");
+        // Test the TryInto trait impl
+        assert_eq!(time_provider, time_provider_2);
+    }
+
+    #[test]
+    fn test_creation_from_dt_u24_days() {
+        let subsec_millis = 250;
+        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
+            .unwrap()
+            .and_hms_milli_opt(16, 49, 30, subsec_millis)
+            .unwrap();
+        let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
+        let time_provider = TimeProvider::from_dt_with_u24_days(&datetime_utc).unwrap();
+        // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
+        // Leap years need to be accounted for as well.
+        assert_eq!(time_provider.ccsds_days, 23754);
+        assert_eq!(
+            time_provider.ms_of_day,
+            30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
+        );
+        assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
+        let time_provider_2: TimeProvider<DaysLen24Bits> =
             datetime_utc.try_into().expect("conversion failed");
         // Test the TryInto trait impl
         assert_eq!(time_provider, time_provider_2);
@@ -1564,6 +1621,45 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_addition_u16_days_day_increment() {
+        let mut provider = TimeProvider::new_with_u16_days(0, MS_PER_DAY - 5 * 1000);
+        let seconds_offset = Duration::from_secs(10);
+        assert_eq!(provider.ccsds_days, 0);
+        assert_eq!(provider.ms_of_day, MS_PER_DAY - 5 * 1000);
+        provider += seconds_offset;
+        assert_eq!(provider.ccsds_days, 1);
+        assert_eq!(provider.ms_of_day, 5000);
+    }
+
+    #[test]
+    fn test_addition_u16_days() {
+        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let seconds_offset = Duration::from_secs(5);
+        assert_eq!(provider.ccsds_days, 0);
+        assert_eq!(provider.ms_of_day, 0);
+        provider += seconds_offset;
+        assert_eq!(provider.ms_of_day, 5000);
+        // Add one day and test Add operator
+        let provider2 = provider + Duration::from_secs(60 * 60 * 24);
+        assert_eq!(provider2.ccsds_days, 1);
+        assert_eq!(provider2.ms_of_day, 5000);
+    }
+
+    #[test]
+    fn test_addition_u24_days() {
+        let mut provider = TimeProvider::new_with_u24_days(u16::MAX as u32, 0).unwrap();
+        let seconds_offset = Duration::from_secs(5);
+        assert_eq!(provider.ccsds_days, u16::MAX as u32);
+        assert_eq!(provider.ms_of_day, 0);
+        provider += seconds_offset;
+        assert_eq!(provider.ms_of_day, 5000);
+        // Add one day and test Add operator
+        let provider2 = provider + Duration::from_secs(60 * 60 * 24);
+        assert_eq!(provider2.ccsds_days, u16::MAX as u32 + 1);
+        assert_eq!(provider2.ms_of_day, 5000);
     }
 
     #[test]
