@@ -7,6 +7,7 @@ use crate::private::Sealed;
 #[cfg(feature = "alloc")]
 use alloc::boxed::Box;
 use chrono::Datelike;
+use core::any::Any;
 use core::fmt::Debug;
 use core::ops::Add;
 use core::time::Duration;
@@ -147,11 +148,22 @@ pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     unix_seconds: i64,
 }
 
-/// Private trait which serves as an abstraction for different converters.
-trait CdsConverter {
+/// Common properties for all CDS time providers.
+///
+/// Also exists to encapsulate properties used by private converters.
+pub trait CdsCommon {
     fn submillis_precision(&self) -> Option<SubmillisPrecision>;
     fn ms_of_day(&self) -> u32;
-    fn ccsds_days(&self) -> u32;
+    fn ccsds_days_as_u32(&self) -> u32;
+}
+
+/// Generic properties for all CDS time providers.
+pub trait CdsTimeStamp: CdsCommon {
+    fn len_of_day_seg(&self) -> LengthOfDaySegment;
+}
+
+/// Private trait which serves as an abstraction for different converters.
+trait CdsConverter: CdsCommon {
     fn unix_days_seconds(&self) -> i64;
 }
 
@@ -185,7 +197,7 @@ impl ConversionFromUnix {
     }
 }
 
-impl CdsConverter for ConversionFromUnix {
+impl CdsCommon for ConversionFromUnix {
     fn submillis_precision(&self) -> Option<SubmillisPrecision> {
         None
     }
@@ -194,22 +206,23 @@ impl CdsConverter for ConversionFromUnix {
         self.ms_of_day
     }
 
-    fn ccsds_days(&self) -> u32 {
+    fn ccsds_days_as_u32(&self) -> u32 {
         self.ccsds_days
     }
+}
 
+impl CdsConverter for ConversionFromUnix {
     fn unix_days_seconds(&self) -> i64 {
         self.unix_days_seconds
     }
 }
-
 /// Helper struct which generates fields for the CDS time provider from a datetime.
 struct ConversionFromDatetime {
     unix_conversion: ConversionFromUnix,
     submillis_prec: Option<SubmillisPrecision>,
 }
 
-impl CdsConverter for ConversionFromDatetime {
+impl CdsCommon for ConversionFromDatetime {
     fn submillis_precision(&self) -> Option<SubmillisPrecision> {
         self.submillis_prec
     }
@@ -217,10 +230,13 @@ impl CdsConverter for ConversionFromDatetime {
     delegate! {
         to self.unix_conversion {
             fn ms_of_day(&self) -> u32;
-            fn ccsds_days(&self) -> u32;
-            fn unix_days_seconds(&self) -> i64;
+            fn ccsds_days_as_u32(&self) -> u32;
         }
     }
+}
+
+impl CdsConverter for ConversionFromDatetime {
+    delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
 }
 
 #[inline]
@@ -332,22 +348,25 @@ impl ConversionFromNow {
 }
 
 #[cfg(feature = "std")]
-impl CdsConverter for ConversionFromNow {
+impl CdsCommon for ConversionFromNow {
     fn submillis_precision(&self) -> Option<SubmillisPrecision> {
         self.submillis_prec
     }
-
     delegate! {
         to self.unix_conversion {
             fn ms_of_day(&self) -> u32;
-            fn ccsds_days(&self) -> u32;
-            fn unix_days_seconds(&self) -> i64;
+            fn ccsds_days_as_u32(&self) -> u32;
         }
     }
 }
 
+#[cfg(feature = "std")]
+impl CdsConverter for ConversionFromNow {
+    delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
+}
+
 #[cfg(feature = "alloc")]
-pub trait DynCdsTimeProvider: CcsdsTimeProvider + TimeWriter {}
+pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimeStamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
@@ -379,7 +398,31 @@ pub fn get_dyn_time_provider_from_bytes(
     }
 }
 
+impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDaysLen> {
+    fn submillis_precision(&self) -> Option<SubmillisPrecision> {
+        self.submillis_precision
+    }
+
+    fn ms_of_day(&self) -> u32 {
+        self.ms_of_day
+    }
+
+    fn ccsds_days_as_u32(&self) -> u32 {
+        self.ccsds_days.into()
+    }
+}
+
 impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
+    /// This function returns the correct [TimeProvider] instance from a raw byte array
+    /// by checking the days of length field. It also checks the CCSDS time code for correctness.
+    ///
+    /// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
+    /// This function also simply calls [`get_dyn_time_provider_from_bytes`].
+    #[cfg(feature = "alloc")]
+    pub fn from_bytes_dyn(buf: &[u8]) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
+        get_dyn_time_provider_from_bytes(buf)
+    }
+
     pub fn set_submillis_precision(&mut self, prec: SubmillisPrecision) {
         self.pfield &= !(0b11);
         if let SubmillisPrecision::Absent = prec {
@@ -405,18 +448,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
 
     pub fn ccsds_days(&self) -> ProvidesDaysLen::FieldType {
         self.ccsds_days
-    }
-
-    fn ccsds_days_as_u32(&self) -> u32 {
-        self.ccsds_days.into()
-    }
-
-    pub fn submillis_precision(&self) -> Option<SubmillisPrecision> {
-        self.submillis_precision
-    }
-
-    pub fn ms_of_day(&self) -> u32 {
-        self.ms_of_day
     }
 
     fn generic_raw_read_checks(
@@ -603,8 +634,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         converter: C,
     ) -> Result<Self, TimestampError> {
         let ccsds_days: ProvidesDaysLen::FieldType =
-            converter.ccsds_days().try_into().map_err(|_| {
-                TimestampError::CdsError(CdsError::InvalidCcsdsDays(converter.ccsds_days().into()))
+            converter.ccsds_days_as_u32().try_into().map_err(|_| {
+                TimestampError::CdsError(CdsError::InvalidCcsdsDays(
+                    converter.ccsds_days_as_u32().into(),
+                ))
             })?;
         let mut provider = Self {
             pfield: Self::generate_p_field(days_len, converter.submillis_precision()),
@@ -906,6 +939,18 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
         (full_seconds as u32 - secs_of_day) / SECONDS_PER_DAY,
     );
     (next_ccsds_days, next_ms_of_day, precision)
+}
+
+impl CdsTimeStamp for TimeProvider<DaysLen16Bits> {
+    fn len_of_day_seg(&self) -> LengthOfDaySegment {
+        LengthOfDaySegment::Short16Bits
+    }
+}
+
+impl CdsTimeStamp for TimeProvider<DaysLen24Bits> {
+    fn len_of_day_seg(&self) -> LengthOfDaySegment {
+        LengthOfDaySegment::Long24Bits
+    }
 }
 
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
@@ -1443,7 +1488,7 @@ mod tests {
         let time_provider = TimeProvider::from_dt_with_u16_days(&datetime_utc).unwrap();
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
-        assert_eq!(time_provider.ccsds_days, 23754);
+        assert_eq!(time_provider.ccsds_days(), 23754);
         assert_eq!(
             time_provider.ms_of_day,
             30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
@@ -1660,6 +1705,46 @@ mod tests {
         let provider2 = provider + Duration::from_secs(60 * 60 * 24);
         assert_eq!(provider2.ccsds_days, u16::MAX as u32 + 1);
         assert_eq!(provider2.ms_of_day, 5000);
+    }
+
+    #[test]
+    fn test_dyn_creation_u24_days() {
+        let stamp = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 24).unwrap();
+        let mut buf: [u8; 32] = [0; 32];
+        stamp.write_to_bytes(&mut buf).unwrap();
+        let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
+        assert!(dyn_provider.is_ok());
+        let dyn_provider = dyn_provider.unwrap();
+        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(dyn_provider.ccsds_days_as_u32(), u16::MAX as u32 + 1);
+        assert_eq!(dyn_provider.ms_of_day(), 24);
+        assert_eq!(dyn_provider.submillis_precision(), None);
+        assert_eq!(
+            dyn_provider.len_of_day_seg(),
+            LengthOfDaySegment::Long24Bits
+        );
+    }
+
+    #[test]
+    fn test_dyn_creation_u16_days_with_precision() {
+        let mut stamp = TimeProvider::new_with_u16_days(24, 24);
+        stamp.set_submillis_precision(SubmillisPrecision::Microseconds(666));
+        let mut buf: [u8; 32] = [0; 32];
+        stamp.write_to_bytes(&mut buf).unwrap();
+        let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
+        assert!(dyn_provider.is_ok());
+        let dyn_provider = dyn_provider.unwrap();
+        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(dyn_provider.ccsds_days_as_u32(), 24);
+        assert_eq!(dyn_provider.ms_of_day(), 24);
+        assert_eq!(
+            dyn_provider.len_of_day_seg(),
+            LengthOfDaySegment::Short16Bits
+        );
+        assert!(dyn_provider.submillis_precision().is_some());
+        if let SubmillisPrecision::Microseconds(us) = dyn_provider.submillis_precision().unwrap() {
+            assert_eq!(us, 666);
+        }
     }
 
     #[test]
