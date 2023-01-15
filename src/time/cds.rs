@@ -4,6 +4,8 @@
 //! The core data structure to do this is the [cds::TimeProvider] struct.
 use super::*;
 use crate::private::Sealed;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 use chrono::Datelike;
 use core::fmt::Debug;
 use core::ops::Add;
@@ -340,6 +342,42 @@ impl CdsConverter for ConversionFromNow {
             fn ccsds_days(&self) -> u32;
             fn unix_days_seconds(&self) -> i64;
         }
+    }
+}
+
+#[cfg(feature = "alloc")]
+pub trait DynCdsTimeProvider: CcsdsTimeProvider + TimeWriter {}
+#[cfg(feature = "alloc")]
+impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
+#[cfg(feature = "alloc")]
+impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
+
+/// This function returns the correct [TimeProvider] instance by checking the days of length
+/// field. It also checks the CCSDS time code for correctness.
+///
+/// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
+#[cfg(feature = "alloc")]
+pub fn get_dyn_time_provider_from_bytes(
+    buf: &[u8],
+) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
+    let time_code = ccsds_time_code_from_p_field(buf[0]);
+    if let Err(e) = time_code {
+        return Err(TimestampError::InvalidTimeCode(
+            CcsdsTimeCodes::Cds,
+            e,
+        ));
+    }
+    let time_code = time_code.unwrap();
+    if time_code != CcsdsTimeCodes::Cds {
+        return Err(TimestampError::InvalidTimeCode(
+            CcsdsTimeCodes::Cds,
+            time_code as u8,
+        ));
+    }
+    if length_of_day_segment_from_pfield(buf[0]) == LengthOfDaySegment::Short16Bits {
+        Ok(Box::new(TimeProvider::from_bytes_with_u16_days(buf)?))
+    } else {
+        Ok(Box::new(TimeProvider::from_bytes_with_u24_days(buf)?))
     }
 }
 
