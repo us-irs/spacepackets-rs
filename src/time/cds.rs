@@ -1968,6 +1968,21 @@ mod tests {
     }
 
     #[test]
+    fn test_from_dt_invalid_time() {
+        // Date before CCSDS epoch
+        let naivedatetime_utc = NaiveDate::from_ymd_opt(1957, 12, 31)
+            .unwrap()
+            .and_hms_milli_opt(23, 59, 59, 999)
+            .unwrap();
+        let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
+        let time_provider = TimeProvider::from_dt_with_u24_days(&datetime_utc);
+        assert!(time_provider.is_err());
+        if let TimestampError::DateBeforeCcsdsEpoch(dt) = time_provider.unwrap_err() {
+            assert_eq!(dt, datetime_utc);
+        }
+    }
+
+    #[test]
     #[cfg(feature = "serde")]
     fn test_serialization() {
         let stamp_now = TimeProvider::from_now_with_u16_days().expect("Error retrieving time");
