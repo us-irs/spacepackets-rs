@@ -180,7 +180,7 @@ pub trait CdsCommon {
 }
 
 /// Generic properties for all CDS time providers.
-pub trait CdsTimeStamp: CdsCommon {
+pub trait CdsTimestamp: CdsCommon {
     fn len_of_day_seg(&self) -> LengthOfDaySegment;
 }
 
@@ -388,7 +388,7 @@ impl CdsConverter for ConversionFromNow {
 }
 
 #[cfg(feature = "alloc")]
-pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimeStamp + TimeWriter + Any {}
+pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
@@ -983,13 +983,13 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     (next_ccsds_days, next_ms_of_day, precision)
 }
 
-impl CdsTimeStamp for TimeProvider<DaysLen16Bits> {
+impl CdsTimestamp for TimeProvider<DaysLen16Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Short16Bits
     }
 }
 
-impl CdsTimeStamp for TimeProvider<DaysLen24Bits> {
+impl CdsTimestamp for TimeProvider<DaysLen24Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Long24Bits
     }
