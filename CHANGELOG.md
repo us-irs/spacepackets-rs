@@ -16,24 +16,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### CDS time module
 
+- Implement `Add<Duration>` and `AddAssign<Duration>` for time providers, which allows
+  easily adding offsets to the providers.
+- Implement `TryFrom<DateTime<Utc>>` for time providers.
+- `get_dyn_time_provider_from_bytes`: Requires `alloc` support and returns
+  the correct `TimeProvider` instance wrapped as a boxed trait object
+  `Box<DynCdsTimeProvider>` by checking the length of days field.
 - Added constructor function to create the time provider
   from `chrono::DateTime<Utc>` and a generic UNIX timestamp (`i64` seconds
   and subsecond milliseconds).
 - `MAX_DAYS_24_BITS` which contains maximum value which can be supplied
   to the days field of a CDS time provider with 24 bits days field width.
 - New `CdsTimestamp` trait which encapsulates common fields for all CDS time providers.
-- `get_dyn_time_provider_from_bytes`: Requires `alloc` support and returns
-   the correct `TimeProvider` instance wrapped as a boxed trait object
-   `Box<DynCdsTimeProvider>` by checking the length of days field.
 - `from_unix_secs_with_u24_days` and `from_unix_secs_with_u16_days` which create
    the time provider from a `UnixTimestamp` reference.
 - `from_dt_with_u16_days`, `from_dt_with_u24_days` and their `..._us_precision` and
    `..._ps_precision` variants which allow to create time providers from
    a `chrono::DateTime<Utc>`.
 - Add `from_bytes_with_u24_days` and `from_bytes_with_u16_days` associated methods
-- Implement `Add<Duration>` and `AddAssign<Duration>` for time providers, which allows
-  easily adding offsets to the providers.
-- Implement `TryFrom<DateTime<Utc>>` for time providers.
 
 ## Changed
 
