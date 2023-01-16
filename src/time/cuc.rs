@@ -42,12 +42,14 @@ impl TryFrom<u8> for FractionalResolution {
 /// Please note that this function will panic if the fractional value is not smaller than
 /// the maximum number of fractions allowed for the particular resolution.
 /// (e.g. passing 270 when the resolution only allows 255 values).
+#[inline]
 pub fn convert_fractional_part_to_ns(fractional_part: FractionalPart) -> u64 {
     let div = fractional_res_to_div(fractional_part.0);
     assert!(fractional_part.1 < div);
     10_u64.pow(9) * fractional_part.1 as u64 / div as u64
 }
 
+#[inline(always)]
 pub const fn fractional_res_to_div(res: FractionalResolution) -> u32 {
     2_u32.pow(8 * res as u32) - 1
 }
@@ -351,6 +353,11 @@ impl TimeProviderCcsdsEpoch {
         pfield & 0b11
     }
 
+    #[inline]
+    fn unix_seconds(&self) -> i64 {
+        ccsds_epoch_to_unix_epoch(self.counter.1 as u64) as i64
+    }
+
     /// This returns the length of the individual components of the CUC timestamp in addition
     /// to the total size.
     ///
@@ -543,10 +550,19 @@ impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
         CcsdsTimeCodes::CucCcsdsEpoch
     }
 
-    /// Please note that this function only works as intended if the time counter resolution
-    /// is one second.
     fn unix_seconds(&self) -> i64 {
-        ccsds_epoch_to_unix_epoch(self.counter.1 as u64) as i64
+        self.unix_seconds()
+    }
+
+    fn subsecond_millis(&self) -> Option<u16> {
+        if let Some(fractions) = self.fractions {
+            if fractions.0 == FractionalResolution::Seconds {
+                return None;
+            }
+            // Rounding down here is the correct approach.
+            return Some((convert_fractional_part_to_ns(fractions) / 10_u32.pow(6) as u64) as u16);
+        }
+        None
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>> {

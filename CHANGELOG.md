@@ -8,6 +8,49 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- New `UnixTimestamp` abstraction which contains the unix seconds as an `i64`
+  and an optional subsecond millisecond counter (`u16`)
+- `MS_PER_DAY` constant.
+
+### CDS time module
+
+- Implement `Add<Duration>` and `AddAssign<Duration>` for time providers, which allows
+  easily adding offsets to the providers.
+- Implement `TryFrom<DateTime<Utc>>` for time providers.
+- `get_dyn_time_provider_from_bytes`: Requires `alloc` support and returns
+  the correct `TimeProvider` instance wrapped as a boxed trait object
+  `Box<DynCdsTimeProvider>` by checking the length of days field.
+- Added constructor function to create the time provider
+  from `chrono::DateTime<Utc>` and a generic UNIX timestamp (`i64` seconds
+  and subsecond milliseconds).
+- `MAX_DAYS_24_BITS` which contains maximum value which can be supplied
+  to the days field of a CDS time provider with 24 bits days field width.
+- New `CdsTimestamp` trait which encapsulates common fields for all CDS time providers.
+- `from_unix_secs_with_u24_days` and `from_unix_secs_with_u16_days` which create
+   the time provider from a `UnixTimestamp` reference.
+- `from_dt_with_u16_days`, `from_dt_with_u24_days` and their `..._us_precision` and
+   `..._ps_precision` variants which allow to create time providers from
+   a `chrono::DateTime<Utc>`.
+- Add `from_bytes_with_u24_days` and `from_bytes_with_u16_days` associated methods
+
+## Changed
+
+- (breaking): Renamed `from_now_with_u24_days_and_us_prec` to `from_now_with_u24_days_us_precision`.
+  Also did the same for the `u16` variant.
+- (breaking): Renamed `from_now_with_u24_days_and_ps_prec` to `from_now_with_u24_days_ps_precision`.
+  Also did the same for the `u16` variant.
+- `CcsdsTimeProvider` trait (breaking):
+  - Add new `unix_stamp` method returning the new `UnixTimeStamp` struct.
+  - Add new  `subsecond_millis` method returning counter `Option<u16>`.
+  - Default impl for `unix_stamp` which re-uses `subsecond_millis` and
+    existing `unix_seconds` method.
+- `TimestampError` (breaking): Add `DateBeforeCcsdsEpoch` error type
+  because new CDS API allow supplying invalid date times before CCSDS epoch.
+  Make `TimestampError` with `#[non_exhaustive]` attribute to prevent
+  future breakages if new error variants are added.
+
 # [v0.4.2] 14.01.2023
 
 ## Fixed
