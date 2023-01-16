@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- `PusTm` and `PusTmSecondaryHeader`: Timestamp is optional now, which translates to a timestamp of size 0.
+- (breaking): `PusTmSecondaryHeader`: Renamed `time_stamp` field to `timestamp` for consistency.
+
+## Added
+
+- `PusTmSecondaryHeader`: New `new_simple_no_timestamp` API to create secondary header without timestamp.
+
 # [v0.4.2] 14.01.2023
 
 ## Fixed
