@@ -8,8 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+The timestamp of `PusTm` is now optional. See Added and Changed section for details.
+
 ## Added
 
+- `PusTmSecondaryHeader`: New `new_simple_no_timestamp` API to create secondary header without
+  timestamp.
+- `PusTm`: Add `new_simple_no_timestamp` method to create TM without timestamp
 - New `UnixTimestamp` abstraction which contains the unix seconds as an `i64`
   and an optional subsecond millisecond counter (`u16`)
 - `MS_PER_DAY` constant.
@@ -37,6 +42,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- (breaking) `PusTmSecondaryHeader`: Timestamp is optional now, which translates to a
+  timestamp of size 0.
+- (breaking): `PusTm`: Renamed `time_stamp` method to `timestamp`, also returns
+  `Optional<&'src_data [u8]>` now.
+- (breaking): `PusTmSecondaryHeader`: Renamed `time_stamp` field to `timestamp` for consistency.
 - (breaking): Renamed `from_now_with_u24_days_and_us_prec` to `from_now_with_u24_days_us_precision`.
   Also did the same for the `u16` variant.
 - (breaking): Renamed `from_now_with_u24_days_and_ps_prec` to `from_now_with_u24_days_ps_precision`.
