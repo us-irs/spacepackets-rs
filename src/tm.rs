@@ -48,7 +48,7 @@ pub mod zc {
 
     pub struct PusTmSecHeader<'slice> {
         pub(crate) zc_header: PusTmSecHeaderWithoutTimestamp,
-        pub(crate) timestamp: &'slice [u8],
+        pub(crate) timestamp: Option<&'slice [u8]>,
     }
 
     impl TryFrom<crate::tm::PusTmSecondaryHeader<'_>> for PusTmSecHeaderWithoutTimestamp {
@@ -115,20 +115,17 @@ pub struct PusTmSecondaryHeader<'stamp> {
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub time_stamp: &'stamp [u8],
+    pub timestamp: Option<&'stamp [u8]>,
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
-    pub fn new_simple(service: u8, subservice: u8, time_stamp: &'stamp [u8]) -> Self {
-        PusTmSecondaryHeader {
-            pus_version: PusVersion::PusC,
-            sc_time_ref_status: 0,
-            service,
-            subservice,
-            msg_counter: 0,
-            dest_id: 0,
-            time_stamp,
-        }
+    pub fn new_simple(service: u8, subservice: u8, timestamp: &'stamp [u8]) -> Self {
+        Self::new(service, subservice, 0, 0, Some(timestamp))
+    }
+
+    /// Like [new_simple] but without a timestamp.
+    pub fn new_simple_no_timestamp(service: u8, subservice: u8) -> Self {
+        Self::new(service, subservice, 0, 0, None)
     }
 
     pub fn new(
@@ -136,7 +133,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         subservice: u8,
         msg_counter: u16,
         dest_id: u16,
-        time_stamp: &'stamp [u8],
+        timestamp: Option<&'stamp [u8]>,
     ) -> Self {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
@@ -145,7 +142,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             subservice,
             msg_counter,
             dest_id,
-            time_stamp,
+            timestamp,
         }
     }
 }
@@ -187,7 +184,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
             subservice: sec_header.zc_header.subservice(),
             msg_counter: sec_header.zc_header.msg_counter(),
             dest_id: sec_header.zc_header.dest_id(),
-            time_stamp: sec_header.timestamp,
+            timestamp: sec_header.timestamp,
         })
     }
 }
@@ -257,15 +254,17 @@ impl<'src_data> PusTm<'src_data> {
 
     pub fn len_packed(&self) -> usize {
         let mut length = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-        length += self.sec_header.time_stamp.len();
+        if let Some(timestamp) = self.sec_header.timestamp {
+            length += timestamp.len();
+        }
         if let Some(src_data) = self.source_data {
             length += src_data.len();
         }
         length
     }
 
-    pub fn time_stamp(&self) -> &'src_data [u8] {
-        self.sec_header.time_stamp
+    pub fn timestamp(&self) -> Option<&'src_data [u8]> {
+        self.sec_header.timestamp
     }
 
     pub fn source_data(&self) -> Option<&'src_data [u8]> {
@@ -304,7 +303,9 @@ impl<'src_data> PusTm<'src_data> {
         digest.update(sph_zc.as_bytes());
         let pus_tc_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         digest.update(pus_tc_header.as_bytes());
-        digest.update(self.sec_header.time_stamp);
+        if let Some(stamp) = self.sec_header.timestamp {
+            digest.update(stamp);
+        }
         if let Some(src_data) = self.source_data {
             digest.update(src_data);
         }
@@ -337,9 +338,11 @@ impl<'src_data> PusTm<'src_data> {
             .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
             .ok_or(ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
-        let timestamp_len = self.sec_header.time_stamp.len();
-        slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(self.sec_header.time_stamp);
-        curr_idx += timestamp_len;
+        if let Some(timestamp) = self.sec_header.timestamp {
+            let timestamp_len = timestamp.len();
+            slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
+            curr_idx += timestamp_len;
+        }
         if let Some(src_data) = self.source_data {
             slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
             curr_idx += src_data.len();
@@ -361,8 +364,10 @@ impl<'src_data> PusTm<'src_data> {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-        let mut appended_len =
-            PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.time_stamp.len();
+        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
+        if let Some(timestamp) = self.sec_header.timestamp {
+            appended_len += timestamp.len();
+        }
         if let Some(src_data) = self.source_data {
             appended_len += src_data.len();
         };
@@ -374,8 +379,10 @@ impl<'src_data> PusTm<'src_data> {
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(sec_header.as_bytes());
         ser_len += sec_header.as_bytes().len();
-        vec.extend_from_slice(self.sec_header.time_stamp);
-        ser_len += self.sec_header.time_stamp.len();
+        if let Some(timestamp) = self.sec_header.timestamp {
+            ser_len += timestamp.len();
+            vec.extend_from_slice(timestamp);
+        }
         if let Some(src_data) = self.source_data {
             vec.extend_from_slice(src_data);
             ser_len += src_data.len();
@@ -414,9 +421,13 @@ impl<'src_data> PusTm<'src_data> {
         )
         .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
+        let mut timestamp = None;
+        if timestamp_len > 0 {
+            timestamp = Some(&slice[current_idx..current_idx + timestamp_len]);
+        }
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
-            timestamp: &slice[current_idx..current_idx + timestamp_len],
+            timestamp,
         };
         current_idx += timestamp_len;
         let raw_data = &slice[0..total_len];
@@ -473,33 +484,33 @@ mod tests {
     use crate::ecss::PusVersion::PusC;
     use crate::SpHeader;
 
-    fn base_ping_reply_full_ctor(time_stamp: &[u8]) -> PusTm {
+    fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTm {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &time_stamp);
+        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &timestamp);
         PusTm::new(&mut sph, tc_header, None, true)
     }
 
-    fn base_hk_reply<'a>(time_stamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
+    fn base_hk_reply<'a>(timestamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &time_stamp);
+        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &timestamp);
         PusTm::new(&mut sph, tc_header, Some(src_data), true)
     }
 
-    fn dummy_time_stamp() -> &'static [u8] {
+    fn dummy_timestamp() -> &'static [u8] {
         return &[0, 1, 2, 3, 4, 5, 6];
     }
 
     #[test]
     fn test_basic() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
-        verify_ping_reply(&pus_tm, false, 22, dummy_time_stamp());
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        verify_ping_reply(&pus_tm, false, 22, dummy_timestamp());
     }
 
     #[test]
     fn test_serialization_no_source_data() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(&timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -511,7 +522,7 @@ mod tests {
     #[test]
     fn test_serialization_with_source_data() {
         let src_data = [1, 2, 3];
-        let hk_reply = base_hk_reply(dummy_time_stamp(), &src_data);
+        let hk_reply = base_hk_reply(dummy_timestamp(), &src_data);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = hk_reply
             .write_to_bytes(&mut buf)
@@ -524,8 +535,8 @@ mod tests {
 
     #[test]
     fn test_setters() {
-        let time_stamp = dummy_time_stamp();
-        let mut pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let timestamp = dummy_timestamp();
+        let mut pus_tm = base_ping_reply_full_ctor(&timestamp);
         pus_tm.set_sc_time_ref_status(0b1010);
         pus_tm.set_dest_id(0x7fff);
         pus_tm.set_msg_counter(0x1f1f);
@@ -538,8 +549,8 @@ mod tests {
 
     #[test]
     fn test_deserialization_no_source_data() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(&timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -547,13 +558,13 @@ mod tests {
         assert_eq!(ser_len, 22);
         let (tm_deserialized, size) = PusTm::from_bytes(&buf, 7).expect("Deserialization failed");
         assert_eq!(ser_len, size);
-        verify_ping_reply(&tm_deserialized, false, 22, dummy_time_stamp());
+        verify_ping_reply(&tm_deserialized, false, 22, dummy_timestamp());
     }
 
     #[test]
     fn test_manual_field_update() {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_time_stamp());
+        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_timestamp());
         let mut tm = PusTm::new(&mut sph, tc_header, None, false);
         tm.calc_crc_on_serialization = false;
         assert_eq!(tm.data_len(), 0x00);
@@ -573,8 +584,8 @@ mod tests {
 
     #[test]
     fn test_target_buf_too_small() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(&timestamp);
         let mut buf: [u8; 16] = [0; 16];
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
@@ -597,8 +608,8 @@ mod tests {
     #[test]
     #[cfg(feature = "alloc")]
     fn test_append_to_vec() {
-        let time_stamp = dummy_time_stamp();
-        let pus_tm = base_ping_reply_full_ctor(&time_stamp);
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(&timestamp);
         let mut vec = Vec::new();
         let res = pus_tm.append_to_vec(&mut vec);
         assert!(res.is_ok());
@@ -610,7 +621,7 @@ mod tests {
     #[cfg(feature = "alloc")]
     fn test_append_to_vec_with_src_data() {
         let src_data = [1, 2, 3];
-        let hk_reply = base_hk_reply(dummy_time_stamp(), &src_data);
+        let hk_reply = base_hk_reply(dummy_timestamp(), &src_data);
         let mut vec = Vec::new();
         vec.push(4);
         let res = hk_reply.append_to_vec(&mut vec);
@@ -639,7 +650,7 @@ mod tests {
         assert_eq!(buf[11], 0x00);
         assert_eq!(buf[12], 0x00);
         // Timestamp
-        assert_eq!(&buf[13..20], dummy_time_stamp());
+        assert_eq!(&buf[13..20], dummy_timestamp());
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&buf[0..20]);
         let crc16 = digest.finalize();
@@ -651,14 +662,14 @@ mod tests {
         tm: &PusTm,
         has_user_data: bool,
         exp_full_len: usize,
-        exp_time_stamp: &[u8],
+        exp_timestamp: &[u8],
     ) {
         assert!(tm.is_tm());
         assert_eq!(PusPacket::service(tm), 17);
         assert_eq!(PusPacket::subservice(tm), 2);
         assert!(tm.sec_header_flag());
         assert_eq!(tm.len_packed(), exp_full_len);
-        assert_eq!(tm.time_stamp(), exp_time_stamp);
+        assert_eq!(tm.timestamp().unwrap(), exp_timestamp);
         if has_user_data {
             assert!(!tm.user_data().is_none());
         }
