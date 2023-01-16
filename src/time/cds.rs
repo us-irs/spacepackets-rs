@@ -180,7 +180,7 @@ pub trait CdsCommon {
 }
 
 /// Generic properties for all CDS time providers.
-pub trait CdsTimeStamp: CdsCommon {
+pub trait CdsTimestamp: CdsCommon {
     fn len_of_day_seg(&self) -> LengthOfDaySegment;
 }
 
@@ -388,18 +388,14 @@ impl CdsConverter for ConversionFromNow {
 }
 
 #[cfg(feature = "alloc")]
-pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimeStamp + TimeWriter + Any {}
+pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 
 /// This function returns the correct [TimeProvider] instance from a raw byte array
-/// by checking the days of length field. It also checks the CCSDS time code for correctness.
-///
-/// The time provider instance is returned as a [DynCdsTimeProvider] trait object.
-/// This function returns the correct [TimeProvider] instance from a raw byte array
-/// by checking the days of length field. It also checks the CCSDS time code for correctness.
+/// by checking the length of days field. It also checks the CCSDS time code for correctness.
 ///
 /// # Example
 ///
@@ -638,11 +634,13 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     }
 
     fn from_unix_generic(
-        unix_seconds: i64,
-        subsec_millis: u32,
+        unix_stamp: &UnixTimestamp,
         days_len: LengthOfDaySegment,
     ) -> Result<Self, TimestampError> {
-        let conv_from_dt = ConversionFromUnix::new(unix_seconds, subsec_millis)?;
+        let conv_from_dt = ConversionFromUnix::new(
+            unix_stamp.unix_seconds,
+            unix_stamp.subsecond_millis.unwrap_or(0) as u32,
+        )?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
@@ -763,10 +761,9 @@ impl TimeProvider<DaysLen24Bits> {
     /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
     /// the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u24_days(
-        unix_seconds: i64,
-        subsec_millis: u32,
+        unix_stamp: &UnixTimestamp,
     ) -> Result<Self, TimestampError> {
-        Self::from_unix_generic(unix_seconds, subsec_millis, LengthOfDaySegment::Long24Bits)
+        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Long24Bits)
     }
 
     /// Create a provider from a [`DateTime<Utc>`] struct.
@@ -849,10 +846,9 @@ impl TimeProvider<DaysLen16Bits> {
     /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
     /// the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u16_days(
-        unix_seconds: i64,
-        subsec_millis: u32,
+        unix_stamp: &UnixTimestamp,
     ) -> Result<Self, TimestampError> {
-        Self::from_unix_generic(unix_seconds, subsec_millis, LengthOfDaySegment::Short16Bits)
+        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Short16Bits)
     }
 
     /// Create a provider from a [`DateTime<Utc>`] struct.
@@ -988,13 +984,13 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     (next_ccsds_days, next_ms_of_day, precision)
 }
 
-impl CdsTimeStamp for TimeProvider<DaysLen16Bits> {
+impl CdsTimestamp for TimeProvider<DaysLen16Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Short16Bits
     }
 }
 
-impl CdsTimeStamp for TimeProvider<DaysLen24Bits> {
+impl CdsTimestamp for TimeProvider<DaysLen24Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Long24Bits
     }
@@ -1759,8 +1755,11 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u16_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(unix_secs, subsec_millis)
-            .expect("creating provider from unix stamp failed");
+        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
+            unix_secs,
+            subsec_millis,
+        ))
+        .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, -DAYS_CCSDS_TO_UNIX as u16)
     }
 
@@ -1768,8 +1767,11 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u24_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u24_days(unix_secs, subsec_millis)
-            .expect("creating provider from unix stamp failed");
+        let time_provider = TimeProvider::from_unix_secs_with_u24_days(&UnixTimestamp::const_new(
+            unix_secs,
+            subsec_millis,
+        ))
+        .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, (-DAYS_CCSDS_TO_UNIX) as u32)
     }
 
@@ -1781,9 +1783,8 @@ mod tests {
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
             .unwrap();
         let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
-        let time_provider =
-            TimeProvider::from_unix_secs_with_u16_days(datetime_utc.timestamp(), subsec_millis)
-                .expect("creating provider from unix stamp failed");
+        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&datetime_utc.into())
+            .expect("creating provider from unix stamp failed");
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
@@ -1799,8 +1800,11 @@ mod tests {
     fn test_creation_0_ccsds_days() {
         let unix_secs = DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(unix_secs, subsec_millis)
-            .expect("creating provider from unix stamp failed");
+        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
+            unix_secs,
+            subsec_millis,
+        ))
+        .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, 0)
     }
 
@@ -1808,7 +1812,10 @@ mod tests {
     fn test_invalid_creation_from_unix_stamp_days_too_large() {
         let invalid_unix_secs: i64 = (u16::MAX as i64 + 1) * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        match TimeProvider::from_unix_secs_with_u16_days(invalid_unix_secs as i64, subsec_millis) {
+        match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
+            invalid_unix_secs as i64,
+            subsec_millis,
+        )) {
             Ok(_) => {
                 panic!("creation should not succeed")
             }
@@ -1831,7 +1838,10 @@ mod tests {
         // precisely 31-12-1957 23:59:55
         let unix_secs = DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32 - 5;
         let subsec_millis = 0;
-        match TimeProvider::from_unix_secs_with_u16_days(unix_secs as i64, subsec_millis) {
+        match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
+            unix_secs as i64,
+            subsec_millis,
+        )) {
             Ok(_) => {
                 panic!("creation should not succeed")
             }
