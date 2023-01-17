@@ -170,12 +170,12 @@ pub const fn ccsds_to_unix_days(ccsds_days: i64) -> i64 {
 
 /// Similar to [unix_to_ccsds_days] but converts the epoch instead, which is the number of elpased
 /// seconds since the CCSDS and UNIX epoch times.
-pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: u64) -> u64 {
-    (unix_epoch as i64 - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)) as u64
+pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: i64) -> i64 {
+    unix_epoch - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }
 
-pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: u64) -> u64 {
-    (ccsds_epoch as i64 + (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)) as u64
+pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: i64) -> i64 {
+    ccsds_epoch + (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }
 
 #[cfg(feature = "std")]
@@ -332,7 +332,7 @@ mod tests {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
         let unix_epoch = now.as_secs();
-        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs());
+        let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs() as i64) as u64;
         assert!(ccsds_epoch > unix_epoch);
         assert_eq!((ccsds_epoch - unix_epoch) % SECONDS_PER_DAY as u64, 0);
         let days_diff = (ccsds_epoch - unix_epoch) / SECONDS_PER_DAY as u64;
