@@ -18,6 +18,8 @@ The timestamp of `PusTm` is now optional. See Added and Changed section for deta
 - New `UnixTimestamp` abstraction which contains the unix seconds as an `i64`
   and an optional subsecond millisecond counter (`u16`)
 - `MS_PER_DAY` constant.
+- CUC: Added `from_date_time` and `from_unix_stamp` constructors for time provider.
+- CUC: Add `Add<Duration>` and `AddAssign<Duration>` impl for time provider.
 
 ### CDS time module
 
@@ -42,6 +44,9 @@ The timestamp of `PusTm` is now optional. See Added and Changed section for deta
 
 ## Changed
 
+
+- (breaking) `unix_epoch_to_ccsds_epoch`: Expect and return `i64` instead of `u64` now.
+- (breaking) `ccsds_epoch_to_unix_epoch`: Expect and return `i64` instead of `u64` now.
 - (breaking) `PusTmSecondaryHeader`: Timestamp is optional now, which translates to a
   timestamp of size 0.
 - (breaking): `PusTm`: Renamed `time_stamp` method to `timestamp`, also returns
