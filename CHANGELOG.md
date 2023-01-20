@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.0] 2023-01-20
+
 The timestamp of `PusTm` is now optional. See Added and Changed section for details.
 
 ## Added
