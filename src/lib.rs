@@ -13,7 +13,7 @@
 //!    [CCSDS 301.0-B-4 3.2](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
 //!  - CDS (CCSDS Day Segmented Time Code) implementation according to
 //!    [CCSDS 301.0-B-4 3.3](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
-//!  - Some helper types to support ASCII timecodes ad specified in
+//!  - Some helper types to support ASCII timecodes as specified in
 //!    [CCSDS 301.0-B-4 3.5](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
 //!
 //! ## Features
