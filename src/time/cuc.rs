@@ -234,6 +234,7 @@ impl TimeProviderCcsdsEpoch {
     /// The counter width will always be set to 4 bytes because the normal CCSDS epoch will overflow
     /// when using less than that.
     #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now(fraction_resolution: FractionalResolution) -> Result<Self, StdTimestampError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let ccsds_epoch = unix_epoch_to_ccsds_epoch(now.as_secs() as i64);
@@ -249,6 +250,7 @@ impl TimeProviderCcsdsEpoch {
     /// Updates the current time stamp from the current time. The fractional field width remains
     /// the same and will be updated accordingly.
     #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         self.counter.1 = unix_epoch_to_ccsds_epoch(now.as_secs() as i64) as u32;

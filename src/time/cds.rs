@@ -388,10 +388,13 @@ impl CdsConverter for ConversionFromNow {
 }
 
 #[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 
 /// This function returns the correct [TimeProvider] instance from a raw byte array
@@ -419,6 +422,7 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 /// }
 /// ```
 #[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub fn get_dyn_time_provider_from_bytes(
     buf: &[u8],
 ) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
@@ -753,17 +757,11 @@ impl TimeProvider<DaysLen24Bits> {
         Self::generic_new(LengthOfDaySegment::Long24Bits, ccsds_days, ms_of_day)
     }
 
-    /// Create a provider from a generic UNIX timestamp (seconds since 01-01-1970 00:00:00).
-    ///
-    /// ## Errors
-    ///
-    /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (24 bits).
-    pub fn from_unix_secs_with_u24_days(
-        unix_stamp: &UnixTimestamp,
-    ) -> Result<Self, TimestampError> {
-        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Long24Bits)
+    /// Generate a time stamp from the current time using the system clock.
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+    pub fn from_now_with_u24_days() -> Result<Self, StdTimestampError> {
+        Self::from_now_generic(LengthOfDaySegment::Long24Bits)
     }
 
     /// Create a provider from a [`DateTime<Utc>`] struct.
@@ -777,6 +775,19 @@ impl TimeProvider<DaysLen24Bits> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Long24Bits)
     }
 
+    /// Create a provider from a generic UNIX timestamp (seconds since 01-01-1970 00:00:00).
+    ///
+    /// ## Errors
+    ///
+    /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
+    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
+    /// the CCSDS days value exceeds the allowed bit width (24 bits).
+    pub fn from_unix_secs_with_u24_days(
+        unix_stamp: &UnixTimestamp,
+    ) -> Result<Self, TimestampError> {
+        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Long24Bits)
+    }
+
     /// Like [Self::from_dt_with_u24_days] but with microsecond sub-millisecond precision.
     pub fn from_dt_with_u24_days_us_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic_us_prec(dt, LengthOfDaySegment::Long24Bits)
@@ -785,13 +796,6 @@ impl TimeProvider<DaysLen24Bits> {
     /// Like [Self::from_dt_with_u24_days] but with picoseconds sub-millisecond precision.
     pub fn from_dt_with_u24_days_ps_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Long24Bits)
-    }
-
-    /// Generate a time stamp from the current time using the system clock.
-    #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-    pub fn from_now_with_u24_days() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic(LengthOfDaySegment::Long24Bits)
     }
 
     /// Like [Self::from_now_with_u24_days] but with microsecond sub-millisecond precision.
@@ -838,6 +842,22 @@ impl TimeProvider<DaysLen16Bits> {
         Self::generic_new(LengthOfDaySegment::Short16Bits, ccsds_days, ms_of_day).unwrap()
     }
 
+    /// Create a provider from a [`DateTime<Utc>`] struct.
+    ///
+    /// This function will return a [TimestampError::DateBeforeCcsdsEpoch] or a
+    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
+    /// the CCSDS days value exceeds the allowed bit width (16 bits).
+    pub fn from_dt_with_u16_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+        Self::from_dt_generic(dt, LengthOfDaySegment::Short16Bits)
+    }
+
+    /// Generate a time stamp from the current time using the system clock.
+    #[cfg(feature = "std")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+    pub fn from_now_with_u16_days() -> Result<Self, StdTimestampError> {
+        Self::from_now_generic(LengthOfDaySegment::Short16Bits)
+    }
+
     /// Create a provider from a generic UNIX timestamp (seconds since 01-01-1970 00:00:00).
     ///
     /// ## Errors
@@ -851,15 +871,6 @@ impl TimeProvider<DaysLen16Bits> {
         Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Short16Bits)
     }
 
-    /// Create a provider from a [`DateTime<Utc>`] struct.
-    ///
-    /// This function will return a [TimestampError::DateBeforeCcsdsEpoch] or a
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (16 bits).
-    pub fn from_dt_with_u16_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
-        Self::from_dt_generic(dt, LengthOfDaySegment::Short16Bits)
-    }
-
     /// Like [Self::from_dt_with_u16_days] but with microsecond sub-millisecond precision.
     pub fn from_dt_with_u16_days_us_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic_us_prec(dt, LengthOfDaySegment::Short16Bits)
@@ -868,13 +879,6 @@ impl TimeProvider<DaysLen16Bits> {
     /// Like [Self::from_dt_with_u16_days] but with picoseconds sub-millisecond precision.
     pub fn from_dt_with_u16_days_ps_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Short16Bits)
-    }
-
-    /// Generate a time stamp from the current time using the system clock.
-    #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-    pub fn from_now_with_u16_days() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic(LengthOfDaySegment::Short16Bits)
     }
 
     /// Like [Self::from_now_with_u16_days] but with microsecond sub-millisecond precision.
