@@ -123,7 +123,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         Self::new(service, subservice, 0, 0, Some(timestamp))
     }
 
-    /// Like [new_simple] but without a timestamp.
+    /// Like [Self::new_simple] but without a timestamp.
     pub fn new_simple_no_timestamp(service: u8, subservice: u8) -> Self {
         Self::new(service, subservice, 0, 0, None)
     }

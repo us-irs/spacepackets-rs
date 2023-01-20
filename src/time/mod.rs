@@ -206,7 +206,7 @@ pub trait TimeReader {
 
 /// Trait for generic CCSDS time providers.
 ///
-/// The UNIX helper methods and the [date_time] method are not strictly necessary but extremely
+/// The UNIX helper methods and the [Self::date_time] method are not strictly necessary but extremely
 /// practical because they are a very common and simple exchange format for time information.
 pub trait CcsdsTimeProvider {
     fn len_as_bytes(&self) -> usize;
