@@ -3,6 +3,8 @@ use crate::{ByteConversionError, SizeMissmatch};
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use core::cmp::Ordering;
 use core::fmt::{Display, Formatter};
+use core::ops::{Add, AddAssign};
+use core::time::Duration;
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
@@ -358,6 +360,48 @@ impl Ord for UnixTimestamp {
     }
 }
 
+fn get_new_stamp_after_addition(
+    current_stamp: &UnixTimestamp,
+    duration: Duration,
+) -> UnixTimestamp {
+    let mut new_subsec_millis =
+        current_stamp.subsecond_millis().unwrap_or(0) + duration.subsec_millis() as u16;
+    let mut new_unix_seconds = current_stamp.unix_seconds;
+    let mut increment_seconds = |value: u64| {
+        if new_unix_seconds < 0 {
+            new_unix_seconds = new_unix_seconds
+                .checked_sub_unsigned(value)
+                .expect("new unix seconds would exceed i64::MIN");
+        } else {
+            new_unix_seconds = new_unix_seconds
+                .checked_add_unsigned(value)
+                .expect("new unix seconds would exceed i64::MAX");
+        }
+    };
+    if new_subsec_millis >= 1000 {
+        new_subsec_millis -= 1000;
+        increment_seconds(1);
+    }
+    increment_seconds(duration.as_secs());
+    UnixTimestamp::const_new(new_unix_seconds, new_subsec_millis)
+}
+
+/// Please note that this operation will panic if the unix seconds after subtraction (for stamps
+/// before the unix epoch) exceeds [i64::MIN] or exceeds [i64::MAX] after addition.
+impl AddAssign<Duration> for UnixTimestamp {
+    fn add_assign(&mut self, duration: Duration) {
+        *self = get_new_stamp_after_addition(self, duration);
+    }
+}
+
+impl Add<Duration> for UnixTimestamp {
+    type Output = Self;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        get_new_stamp_after_addition(&self, duration)
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
@@ -460,5 +504,28 @@ mod tests {
         assert!(stamp0 >= stamp1);
         assert!(!(stamp0 < stamp1));
         assert!(!(stamp0 > stamp1));
+    }
+
+    #[test]
+    fn test_addition() {
+        let mut stamp0 = UnixTimestamp::new_only_seconds(1);
+        stamp0 += Duration::from_secs(5);
+        assert_eq!(stamp0.unix_seconds, 6);
+        assert!(stamp0.subsecond_millis().is_none());
+        let stamp1 = stamp0 + Duration::from_millis(500);
+        assert_eq!(stamp1.unix_seconds, 6);
+        assert!(stamp1.subsecond_millis().is_some());
+        assert_eq!(stamp1.subsecond_millis().unwrap(), 500);
+    }
+
+    #[test]
+    fn test_addition_spillover() {
+        let mut stamp0 = UnixTimestamp::new(1, 900).unwrap();
+        stamp0 += Duration::from_millis(100);
+        assert_eq!(stamp0.unix_seconds, 2);
+        assert!(stamp0.subsecond_millis().is_none());
+        stamp0 += Duration::from_millis(1100);
+        assert_eq!(stamp0.unix_seconds, 3);
+        assert_eq!(stamp0.subsecond_millis().unwrap(), 100);
     }
 }

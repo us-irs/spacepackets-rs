@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
     `cds::TimeProvider<DaysLen24Bits>` and vice-versa.
 - `time::UnixTimestamp`
   - Add `Ord` and `PartialOrd` implementations.
+  - Add `Add<Duration>` and `AddAssign<Duration>` implementations.
 
 # [v0.5.0] 2023-01-20
 
