@@ -1038,6 +1038,20 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
     }
 }
 
+impl Add<Duration> for &TimeProvider<DaysLen16Bits> {
+    type Output = TimeProvider<DaysLen16Bits>;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
+        let mut provider = Self::Output::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
+        if let Some(prec) = precision {
+            provider.set_submillis_precision(prec);
+        }
+        provider
+    }
+}
+
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
@@ -1048,6 +1062,20 @@ impl Add<Duration> for TimeProvider<DaysLen24Bits> {
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(&self, MAX_DAYS_24_BITS, duration);
         let mut provider = Self::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
+        if let Some(prec) = precision {
+            provider.set_submillis_precision(prec);
+        }
+        provider
+    }
+}
+
+impl Add<Duration> for &TimeProvider<DaysLen24Bits> {
+    type Output = TimeProvider<DaysLen24Bits>;
+    fn add(self, duration: Duration) -> Self::Output {
+        let (next_ccsds_days, next_ms_of_day, precision) =
+            add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
+        let mut provider =
+            Self::Output::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
         if let Some(prec) = precision {
             provider.set_submillis_precision(prec);
         }

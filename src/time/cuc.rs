@@ -696,6 +696,20 @@ impl Add<Duration> for TimeProviderCcsdsEpoch {
     }
 }
 
+impl Add<Duration> for &TimeProviderCcsdsEpoch {
+    type Output = TimeProviderCcsdsEpoch;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        let (new_counter, new_fractional_part) =
+            get_provider_values_after_duration_addition(self, duration);
+        if let Some(fractional_part) = new_fractional_part {
+            // The generated fractional part should always be valid, so its okay to unwrap here.
+            return Self::Output::new_with_fractions(new_counter, fractional_part).unwrap();
+        }
+        Self::Output::new(new_counter)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
