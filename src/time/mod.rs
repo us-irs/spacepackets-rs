@@ -402,6 +402,14 @@ impl Add<Duration> for UnixTimestamp {
     }
 }
 
+impl Add<Duration> for &UnixTimestamp {
+    type Output = UnixTimestamp;
+
+    fn add(self, duration: Duration) -> Self::Output {
+        get_new_stamp_after_addition(self, duration)
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
