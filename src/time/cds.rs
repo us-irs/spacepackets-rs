@@ -11,10 +11,10 @@ use alloc::boxed::Box;
 use chrono::Datelike;
 #[cfg(feature = "alloc")]
 use core::any::Any;
+use core::cmp::Ordering;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
-use core::cmp::Ordering;
 use delegate::delegate;
 
 /// Base value for the preamble field for a time field parser to determine the time field type.
