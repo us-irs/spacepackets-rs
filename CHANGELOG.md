@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `time::cds::TimeProvider`
+  - Add `Ord` and `PartialOrd`, use custom `PartialEq` impl to account for precision correctly.
+  - Add `precision_as_ns` function which converts microsecond and picosecond precision values
+    into nanoseconds.
+  - Add conversion trait to convert `cds::TimeProvider<DaysLen16Bits>` into
+    `cds::TimeProvider<DaysLen24Bits>` and vice-versa.
+- `time::UnixTimestamp`
+  - Add `Ord` and `PartialOrd` implementations.
+
 # [v0.5.0] 2023-01-20
 
 The timestamp of `PusTm` is now optional. See Added and Changed section for details.

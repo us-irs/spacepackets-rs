@@ -2,6 +2,7 @@
 use crate::{ByteConversionError, SizeMissmatch};
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use core::fmt::{Display, Formatter};
+use core::cmp::Ordering;
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
@@ -232,7 +233,8 @@ pub trait CcsdsTimeProvider {
 
 /// UNIX timestamp: Elapsed seconds since 01-01-1970 00:00:00.
 ///
-/// Also can optionally include subsecond millisecond for greater accuracy.
+/// Also can optionally include subsecond millisecond for greater accuracy. Please note that a
+/// subsecond millisecond value of 0 gets converted to [None].
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UnixTimestamp {
@@ -241,24 +243,28 @@ pub struct UnixTimestamp {
 }
 
 impl UnixTimestamp {
-    /// Returns none if the subsecond millisecond value is larger than 999.
+    /// Returns none if the subsecond millisecond value is larger than 999. 0 is converted to
+    /// a [None] value.
     pub fn new(unix_seconds: i64, subsec_millis: u16) -> Option<Self> {
         if subsec_millis > 999 {
             return None;
         }
-        Some(Self {
-            unix_seconds,
-            subsecond_millis: Some(subsec_millis),
-        })
+        Some(Self::const_new(unix_seconds, subsec_millis))
     }
 
+    /// Like [Self::new] but const. Panics if the subsecond value is larger than 999.
     pub const fn const_new(unix_seconds: i64, subsec_millis: u16) -> Self {
         if subsec_millis > 999 {
             panic!("subsec milliseconds exceeds 999");
         }
+        let subsecond_millis = if subsec_millis == 0 {
+            None
+        } else {
+            Some(subsec_millis)
+        };
         Self {
             unix_seconds,
-            subsecond_millis: Some(subsec_millis),
+            subsecond_millis,
         }
     }
 
@@ -310,6 +316,48 @@ impl From<DateTime<Utc>> for UnixTimestamp {
     }
 }
 
+impl PartialOrd for UnixTimestamp {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self == other {
+            return Some(Ordering::Equal);
+        }
+        match self.unix_seconds.cmp(&other.unix_seconds) {
+            Ordering::Less => return Some(Ordering::Less),
+            Ordering::Greater => return Some(Ordering::Greater),
+            _ => (),
+        }
+
+        match self
+            .subsecond_millis()
+            .unwrap_or(0)
+            .cmp(&other.subsecond_millis().unwrap_or(0))
+        {
+            Ordering::Less => {
+                return if self.unix_seconds < 0 {
+                    Some(Ordering::Greater)
+                } else {
+                    Some(Ordering::Less)
+                }
+            }
+            Ordering::Greater => {
+                return if self.unix_seconds < 0 {
+                    Some(Ordering::Less)
+                } else {
+                    Some(Ordering::Greater)
+                }
+            }
+            Ordering::Equal => (),
+        }
+        Some(Ordering::Equal)
+    }
+}
+
+impl Ord for UnixTimestamp {
+    fn cmp(&self, other: &Self) -> Ordering {
+        PartialOrd::partial_cmp(self, other).unwrap()
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
@@ -357,5 +405,60 @@ mod tests {
         let subsec_millis = stamp.subsecond_millis().unwrap();
         assert_eq!(subsec_millis, 600);
         assert!((500.6 - stamp.unix_seconds_f64()).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_ord_larger() {
+        let stamp0 = UnixTimestamp::new_only_seconds(5);
+        let stamp1 = UnixTimestamp::new(5, 500).unwrap();
+        let stamp2 = UnixTimestamp::new_only_seconds(6);
+        assert!(stamp1 > stamp0);
+        assert!(stamp2 > stamp0);
+        assert!(stamp2 > stamp1);
+    }
+
+    #[test]
+    fn test_ord_smaller() {
+        let stamp0 = UnixTimestamp::new_only_seconds(5);
+        let stamp1 = UnixTimestamp::new(5, 500).unwrap();
+        let stamp2 = UnixTimestamp::new_only_seconds(6);
+        assert!(stamp0 < stamp1);
+        assert!(stamp0 < stamp2);
+        assert!(stamp1 < stamp2);
+    }
+
+    #[test]
+    fn test_ord_larger_neg_numbers() {
+        let stamp0 = UnixTimestamp::new_only_seconds(-5);
+        let stamp1 = UnixTimestamp::new(-5, 500).unwrap();
+        let stamp2 = UnixTimestamp::new_only_seconds(-6);
+        assert!(stamp0 > stamp1);
+        assert!(stamp0 > stamp2);
+        assert!(stamp1 > stamp2);
+        assert!(stamp1 >= stamp2);
+        assert!(stamp0 >= stamp1);
+    }
+
+    #[test]
+    fn test_ord_smaller_neg_numbers() {
+        let stamp0 = UnixTimestamp::new_only_seconds(-5);
+        let stamp1 = UnixTimestamp::new(-5, 500).unwrap();
+        let stamp2 = UnixTimestamp::new_only_seconds(-6);
+        assert!(stamp2 < stamp1);
+        assert!(stamp2 < stamp0);
+        assert!(stamp1 < stamp0);
+        assert!(stamp1 <= stamp0);
+        assert!(stamp2 <= stamp1);
+    }
+
+    #[test]
+    fn test_eq() {
+        let stamp0 = UnixTimestamp::new(5, 0).unwrap();
+        let stamp1 = UnixTimestamp::new_only_seconds(5);
+        assert_eq!(stamp0, stamp1);
+        assert!(stamp0 <= stamp1);
+        assert!(stamp0 >= stamp1);
+        assert!(!(stamp0 < stamp1));
+        assert!(!(stamp0 > stamp1));
     }
 }

@@ -14,6 +14,7 @@ use core::any::Any;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
+use core::cmp::Ordering;
 use delegate::delegate;
 
 /// Base value for the preamble field for a time field parser to determine the time field type.
@@ -158,7 +159,7 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// let timestamp_in_5_minutes = timestamp_now + offset;
 /// assert_eq!(timestamp_in_5_minutes.unix_seconds(), former_unix_seconds + 5 * 60);
 /// ```
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     pfield: u8,
@@ -459,6 +460,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDay
 }
 
 impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
+    /// Please note that a precision value of 0 will be converted to [None] (no precision).
     pub fn set_submillis_precision(&mut self, prec: SubmillisPrecision) {
         self.pfield &= !(0b11);
         if let SubmillisPrecision::Absent = prec {
@@ -484,6 +486,25 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
 
     pub fn ccsds_days(&self) -> ProvidesDaysLen::FieldType {
         self.ccsds_days
+    }
+
+    /// Maps the submillisecond precision to a nanosecond value. This will reduce precision when
+    /// using picosecond resolution, but significantly simplifies comparison of timestamps.
+    pub fn precision_as_ns(&self) -> Option<u32> {
+        if let Some(prec) = self.submillis_precision {
+            match prec {
+                SubmillisPrecision::Microseconds(us) => {
+                    return Some(us as u32 * 1000);
+                }
+                SubmillisPrecision::Picoseconds(ps) => {
+                    return Some(ps / 1000);
+                }
+                _ => {
+                    return None;
+                }
+            }
+        }
+        None
     }
 
     fn generic_raw_read_checks(
@@ -1174,6 +1195,75 @@ impl TimeWriter for TimeProvider<DaysLen24Bits> {
             }
         }
         Ok(self.len_as_bytes())
+    }
+}
+
+impl<DaysLenProvider: ProvidesDaysLength> PartialEq for TimeProvider<DaysLenProvider> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.ccsds_days == other.ccsds_days
+            && self.ms_of_day == other.ms_of_day
+            && self.precision_as_ns().unwrap_or(0) == other.precision_as_ns().unwrap_or(0)
+        {
+            return true;
+        }
+        false
+    }
+}
+
+impl<DaysLenProvider: ProvidesDaysLength> PartialOrd for TimeProvider<DaysLenProvider> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self == other {
+            return Some(Ordering::Equal);
+        }
+        match self.ccsds_days_as_u32().cmp(&other.ccsds_days_as_u32()) {
+            Ordering::Less => return Some(Ordering::Less),
+            Ordering::Greater => return Some(Ordering::Greater),
+            _ => (),
+        }
+        match self.ms_of_day().cmp(&other.ms_of_day()) {
+            Ordering::Less => return Some(Ordering::Less),
+            Ordering::Greater => return Some(Ordering::Greater),
+            _ => (),
+        }
+        match self
+            .precision_as_ns()
+            .unwrap_or(0)
+            .cmp(&other.precision_as_ns().unwrap_or(0))
+        {
+            Ordering::Less => return Some(Ordering::Less),
+            Ordering::Greater => return Some(Ordering::Greater),
+            _ => (),
+        }
+        Some(Ordering::Equal)
+    }
+}
+
+impl<DaysLenProvider: ProvidesDaysLength + Eq> Ord for TimeProvider<DaysLenProvider> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        PartialOrd::partial_cmp(self, other).unwrap()
+    }
+}
+
+impl From<TimeProvider<DaysLen16Bits>> for TimeProvider<DaysLen24Bits> {
+    fn from(value: TimeProvider<DaysLen16Bits>) -> Self {
+        // This function only fails if the days value exceeds 24 bits, which is not possible here,
+        // so it is okay to unwrap.
+        Self::new_with_u24_days(value.ccsds_days_as_u32(), value.ms_of_day()).unwrap()
+    }
+}
+
+/// This conversion can fail if the days value exceeds 16 bits.
+impl TryFrom<TimeProvider<DaysLen24Bits>> for TimeProvider<DaysLen16Bits> {
+    type Error = CdsError;
+    fn try_from(value: TimeProvider<DaysLen24Bits>) -> Result<Self, CdsError> {
+        let ccsds_days = value.ccsds_days_as_u32();
+        if ccsds_days > u16::MAX as u32 {
+            return Err(CdsError::InvalidCcsdsDays(ccsds_days as i64));
+        }
+        Ok(Self::new_with_u16_days(
+            ccsds_days as u16,
+            value.ms_of_day(),
+        ))
     }
 }
 
@@ -2064,6 +2154,43 @@ mod tests {
         if let TimestampError::DateBeforeCcsdsEpoch(dt) = time_provider.unwrap_err() {
             assert_eq!(dt, datetime_utc);
         }
+    }
+
+    #[test]
+    fn test_eq() {
+        let stamp0 = TimeProvider::new_with_u16_days(0, 0);
+        let mut buf: [u8; 7] = [0; 7];
+        stamp0.write_to_bytes(&mut buf).unwrap();
+        let stamp1 = TimeProvider::from_bytes_with_u16_days(&buf).unwrap();
+        assert_eq!(stamp0, stamp1);
+        assert!(!(stamp0 < stamp1));
+        assert!(!(stamp1 > stamp0));
+    }
+
+    #[test]
+    fn test_ord() {
+        let stamp0 = TimeProvider::new_with_u24_days(0, 0).unwrap();
+        let stamp1 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
+        let mut stamp2 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
+        stamp2.set_submillis_precision(SubmillisPrecision::Microseconds(500));
+        let stamp3 = TimeProvider::new_with_u24_days(1, 0).unwrap();
+        assert!(stamp1 > stamp0);
+        assert!(stamp2 > stamp0);
+        assert!(stamp2 > stamp1);
+        assert!(stamp3 > stamp0);
+        assert!(stamp3 > stamp1);
+        assert!(stamp3 > stamp2);
+    }
+
+    #[test]
+    fn test_conversion() {
+        let mut stamp_small = TimeProvider::new_with_u16_days(u16::MAX, 500);
+        let stamp_larger: TimeProvider<DaysLen24Bits> = stamp_small.into();
+        assert_eq!(stamp_larger.ccsds_days_as_u32(), u16::MAX as u32);
+        assert_eq!(stamp_larger.ms_of_day(), 500);
+        stamp_small = stamp_larger.try_into().unwrap();
+        assert_eq!(stamp_small.ccsds_days_as_u32(), u16::MAX as u32);
+        assert_eq!(stamp_small.ms_of_day(), 500);
     }
 
     #[test]
