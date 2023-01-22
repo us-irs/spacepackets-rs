@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.1] 2023-01-22
+
 ## Added
 
 - `time::cds::TimeProvider`
