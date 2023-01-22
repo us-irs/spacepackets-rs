@@ -205,8 +205,8 @@ impl PusTcSecondaryHeader {
     }
 }
 
-/// This class models a PUS telecommand. It is the primary data structure to generate the raw byte
-/// representation of a PUS telecommand or to deserialize from one from raw bytes.
+/// This class models the PUS C telecommand packet. It is the primary data structure to generate the
+/// raw byte representation of a PUS telecommand or to deserialize from one from raw bytes.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
 /// [serde] feature is used, which allows to send around TC packets in a raw byte format using a

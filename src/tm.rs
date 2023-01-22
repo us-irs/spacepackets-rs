@@ -189,9 +189,8 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
     }
 }
 
-/// This class models a PUS telemetry and which can also be used. It is the primary data
-/// structure to generate the raw byte representation of PUS telemetry or to
-/// deserialize from one from raw bytes.
+/// This class models the PUS C telemetry packet. It is the primary data structure to generate the
+/// raw byte representation of PUS telemetry or to deserialize from one from raw bytes.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the [serde]
 /// feature is used which allows to send around TM packets in a raw byte format using a serde
