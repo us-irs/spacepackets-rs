@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Fixed
 
-- `time::cds::TimeProvider`: Fixed a big where subsecond milliseconds were not accounted for
+- `time::cds::TimeProvider`: Fixed a bug where subsecond milliseconds were not accounted for
   when the provider has no submillisecond precision.
 
 # [v0.5.0] 2023-01-20
