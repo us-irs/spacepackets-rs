@@ -134,8 +134,8 @@ pub struct FractionalPart(FractionalResolution, u32);
 /// It has the capability to generate and read timestamps as specified in the CCSDS 301.0-B-4
 /// section 3.2 . The preamble field only has one byte, which allows a time code representation
 /// through the year 2094. The time is represented as a simple binary counter starting from the
-/// fixed CCSDS epoch (1958-01-01 00:00:00). It is possible to provide subsecond accuracy using the
-/// fractional field with various available [resolutions][FractionalResolution].
+/// fixed CCSDS epoch (1958-01-01T00:00:00+00:00). It is possible to provide subsecond accuracy
+/// using the fractional field with various available [resolutions][FractionalResolution].
 ///
 /// Having a preamble field of one byte limits the width of the counter
 /// type (generally seconds) to 4 bytes and the width of the fractions type to 3 bytes. This limits

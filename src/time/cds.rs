@@ -790,19 +790,19 @@ impl TimeProvider<DaysLen24Bits> {
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_dt_with_u24_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Long24Bits)
     }
 
-    /// Create a provider from a generic UNIX timestamp (seconds since 01-01-1970 00:00:00).
+    /// Create a provider from a generic UNIX timestamp (seconds since 1970-01-01T00:00:00+00:00).
     ///
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u24_days(
         unix_stamp: &UnixTimestamp,
     ) -> Result<Self, TimestampError> {
@@ -879,13 +879,13 @@ impl TimeProvider<DaysLen16Bits> {
         Self::from_now_generic(LengthOfDaySegment::Short16Bits)
     }
 
-    /// Create a provider from a generic UNIX timestamp (seconds since 01-01-1970 00:00:00).
+    /// Create a provider from a generic UNIX timestamp (seconds since 1970-01-01T00:00:00+00:00).
     ///
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u16_days(
         unix_stamp: &UnixTimestamp,
     ) -> Result<Self, TimestampError> {
