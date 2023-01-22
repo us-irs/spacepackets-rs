@@ -382,7 +382,12 @@ fn get_new_stamp_after_addition(
         new_subsec_millis -= 1000;
         increment_seconds(1);
     }
-    increment_seconds(duration.as_secs().try_into().expect("duration seconds exceeds u32::MAX"));
+    increment_seconds(
+        duration
+            .as_secs()
+            .try_into()
+            .expect("duration seconds exceeds u32::MAX"),
+    );
     UnixTimestamp::const_new(new_unix_seconds, new_subsec_millis)
 }
 
