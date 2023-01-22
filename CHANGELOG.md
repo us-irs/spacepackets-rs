@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.1] 2023-01-22
+
 ## Added
 
 - `time::cds::TimeProvider`
@@ -19,6 +21,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `time::UnixTimestamp`
   - Add `Ord` and `PartialOrd` implementations.
   - Add `Add<Duration>` and `AddAssign<Duration>` implementations.
+
+## Fixed
+
+- `time::cds::TimeProvider`: Fixed a bug where subsecond milliseconds were not accounted for
+  when the provider has no submillisecond precision.
 
 # [v0.5.0] 2023-01-20
 

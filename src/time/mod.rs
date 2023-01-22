@@ -157,16 +157,16 @@ pub fn seconds_since_epoch() -> f64 {
 
 /// Convert UNIX days to CCSDS days
 ///
-///  - CCSDS epoch: 1958 January 1
-///  - UNIX Epoch: 1970 January 1
+///  - CCSDS epoch: 1958-01-01T00:00:00+00:00
+///  - UNIX Epoch: 1970-01-01T00:00:00+00:00
 pub const fn unix_to_ccsds_days(unix_days: i64) -> i64 {
     unix_days - DAYS_CCSDS_TO_UNIX as i64
 }
 
 /// Convert CCSDS days to UNIX days
 ///
-///  - CCSDS epoch: 1958 January 1
-///  - UNIX Epoch: 1970 January 1
+///  - CCSDS epoch: 1958-01-01T00:00:00+00:00
+///  - UNIX Epoch: 1970-01-01T00:00:00+00:00
 pub const fn ccsds_to_unix_days(ccsds_days: i64) -> i64 {
     ccsds_days + DAYS_CCSDS_TO_UNIX as i64
 }
@@ -233,7 +233,7 @@ pub trait CcsdsTimeProvider {
     fn date_time(&self) -> Option<DateTime<Utc>>;
 }
 
-/// UNIX timestamp: Elapsed seconds since 01-01-1970 00:00:00.
+/// UNIX timestamp: Elapsed seconds since 1970-01-01T00:00:00+00:00.
 ///
 /// Also can optionally include subsecond millisecond for greater accuracy. Please note that a
 /// subsecond millisecond value of 0 gets converted to [None].
@@ -537,6 +537,14 @@ mod tests {
         assert_eq!(stamp1.unix_seconds, 6);
         assert!(stamp1.subsecond_millis().is_some());
         assert_eq!(stamp1.subsecond_millis().unwrap(), 500);
+    }
+
+    #[test]
+    fn test_addition_on_ref() {
+        let stamp0 = &UnixTimestamp::new(20, 500).unwrap();
+        let stamp1 = stamp0 + Duration::from_millis(2500);
+        assert_eq!(stamp1.unix_seconds, 23);
+        assert!(stamp1.subsecond_millis().is_none());
     }
 
     #[test]
