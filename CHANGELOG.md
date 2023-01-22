@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   - Add `Ord` and `PartialOrd` implementations.
   - Add `Add<Duration>` and `AddAssign<Duration>` implementations.
 
+## Fixed
+
+- `time::cds::TimeProvider`: Fixed a big where subsecond milliseconds were not accounted for
+  when the provider has no submillisecond precision.
+
 # [v0.5.0] 2023-01-20
 
 The timestamp of `PusTm` is now optional. See Added and Changed section for details.

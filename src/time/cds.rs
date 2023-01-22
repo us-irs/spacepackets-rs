@@ -996,8 +996,10 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
             _ => None,
         }
     } else {
+        increment_ms_of_day(&mut next_ms_of_day, duration.subsec_millis(), &mut next_ccsds_days);
         None
     };
+    // The subsecond millisecond were already handled.
     let full_seconds = duration.as_secs();
     let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
     let ms_of_day = secs_of_day * 1000;
@@ -2100,6 +2102,16 @@ mod tests {
         } else {
             panic!("invalid precision {:?}", prec)
         }
+    }
+
+    #[test]
+    fn test_addition_on_ref() {
+        // This test case also tests the case where there is no submillis precision but subsecond
+        // milliseconds.
+        let provider_ref = &TimeProvider::new_with_u16_days(2, 500);
+        let new_stamp = provider_ref + Duration::from_millis(2 * 24 * 60 * 60 * 1000 + 500);
+        assert_eq!(new_stamp.ccsds_days_as_u32(), 4);
+        assert_eq!(new_stamp.ms_of_day, 1000);
     }
 
     fn check_ps_and_carryover(prec: SubmillisPrecision, ms_of_day: u32, val: u32) {
