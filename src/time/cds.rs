@@ -996,7 +996,11 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
             _ => None,
         }
     } else {
-        increment_ms_of_day(&mut next_ms_of_day, duration.subsec_millis(), &mut next_ccsds_days);
+        increment_ms_of_day(
+            &mut next_ms_of_day,
+            duration.subsec_millis(),
+            &mut next_ccsds_days,
+        );
         None
     };
     // The subsecond millisecond were already handled.

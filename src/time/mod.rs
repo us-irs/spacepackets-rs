@@ -382,7 +382,12 @@ fn get_new_stamp_after_addition(
         new_subsec_millis -= 1000;
         increment_seconds(1);
     }
-    increment_seconds(duration.as_secs().try_into().expect("duration seconds exceeds u32::MAX"));
+    increment_seconds(
+        duration
+            .as_secs()
+            .try_into()
+            .expect("duration seconds exceeds u32::MAX"),
+    );
     UnixTimestamp::const_new(new_unix_seconds, new_subsec_millis)
 }
 
@@ -532,6 +537,14 @@ mod tests {
         assert_eq!(stamp1.unix_seconds, 6);
         assert!(stamp1.subsecond_millis().is_some());
         assert_eq!(stamp1.subsecond_millis().unwrap(), 500);
+    }
+
+    #[test]
+    fn test_addition_on_ref() {
+        let stamp0 = &UnixTimestamp::new(20, 500).unwrap();
+        let stamp1 = stamp0 + Duration::from_millis(2500);
+        assert_eq!(stamp1.unix_seconds, 23);
+        assert!(stamp1.subsecond_millis().is_none());
     }
 
     #[test]
