@@ -367,14 +367,14 @@ fn get_new_stamp_after_addition(
     let mut new_subsec_millis =
         current_stamp.subsecond_millis().unwrap_or(0) + duration.subsec_millis() as u16;
     let mut new_unix_seconds = current_stamp.unix_seconds;
-    let mut increment_seconds = |value: u64| {
+    let mut increment_seconds = |value: u32| {
         if new_unix_seconds < 0 {
             new_unix_seconds = new_unix_seconds
-                .checked_sub_unsigned(value)
+                .checked_sub(value.into())
                 .expect("new unix seconds would exceed i64::MIN");
         } else {
             new_unix_seconds = new_unix_seconds
-                .checked_add_unsigned(value)
+                .checked_add(value.into())
                 .expect("new unix seconds would exceed i64::MAX");
         }
     };
@@ -382,18 +382,26 @@ fn get_new_stamp_after_addition(
         new_subsec_millis -= 1000;
         increment_seconds(1);
     }
-    increment_seconds(duration.as_secs());
+    increment_seconds(duration.as_secs().try_into().expect("duration seconds exceeds u32::MAX"));
     UnixTimestamp::const_new(new_unix_seconds, new_subsec_millis)
 }
 
-/// Please note that this operation will panic if the unix seconds after subtraction (for stamps
-/// before the unix epoch) exceeds [i64::MIN] or exceeds [i64::MAX] after addition.
+/// Please note that this operation will panic on the following conditions:
+///
+/// - Unix seconds after subtraction for stamps before the unix epoch exceeds [i64::MIN].
+/// - Unix seconds after addition  exceeds [i64::MAX].
+/// - Seconds from duration to add exceeds [u32::MAX].
 impl AddAssign<Duration> for UnixTimestamp {
     fn add_assign(&mut self, duration: Duration) {
         *self = get_new_stamp_after_addition(self, duration);
     }
 }
 
+/// Please note that this operation will panic for the following conditions:
+///
+/// - Unix seconds after subtraction for stamps before the unix epoch exceeds [i64::MIN].
+/// - Unix seconds after addition  exceeds [i64::MAX].
+/// - Unix seconds exceeds [u32::MAX].
 impl Add<Duration> for UnixTimestamp {
     type Output = Self;
 
