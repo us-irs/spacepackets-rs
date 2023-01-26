@@ -1,6 +1,6 @@
 [package]
 name = "spacepackets"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 rust-version = "1.60"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
@@ -15,7 +15,7 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 [dependencies]
 zerocopy = "0.6"
 crc = "3"
-delegate = "0.8"
+delegate = ">=0.8, <0.10"
 
 [dependencies.serde]
 version = "1"
