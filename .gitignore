@@ -1,0 +1,7 @@
+# Rust
+/target
+/Cargo.lock
+
+# CLion
+/.idea/*
+!/.idea/runConfigurations

@@ -213,7 +213,7 @@ impl PusTcSecondaryHeader {
 /// serde provider like [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTc<'app_data> {
     sp_header: SpHeader,
@@ -437,6 +437,14 @@ impl<'app_data> PusTc<'app_data> {
 
     pub fn raw(&self) -> Option<&'app_data [u8]> {
         self.raw_data
+    }
+}
+
+impl PartialEq for PusTc<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.sp_header == other.sp_header
+            && self.sec_header == other.sec_header
+            && self.app_data == other.app_data
     }
 }
 
@@ -735,5 +743,21 @@ mod tests {
         let slice = slice.as_ref();
         assert_eq!(slice[11], 0xee);
         assert_eq!(slice[12], 0x63);
+    }
+
+    #[test]
+    fn partial_eq_pus_tc() {
+        // new vs new simple
+        let pus_tc_1 = base_ping_tc_simple_ctor();
+        let pus_tc_2 = base_ping_tc_full_ctor();
+        assert_eq!(pus_tc_1, pus_tc_2);
+    }
+
+    #[test]
+    fn partial_eq_serialized_vs_derialized() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut buf = [0; 32];
+        let size = pus_tc.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(pus_tc, PusTc::from_bytes(&buf).unwrap().0);
     }
 }
