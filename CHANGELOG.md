@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Fixed
 
-- Correct manual implementation of Trait `PartialEq` for `PusTc`. The previous auto-derivation was
-  incorrect because it also compared fields unrelated to the raw byte representation.
+- Correct implementation of Trait `PartialEq` for `PusTc` and `PusTm`. The previous auto-derivation
+  were incorrect because they also compared fields unrelated to the raw byte representation.
 
 # [v0.5.1] 2023-01-22
 
