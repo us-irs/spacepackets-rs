@@ -84,13 +84,12 @@ impl Display for CdsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             CdsError::InvalidCcsdsDays(days) => {
-                write!(f, "invalid ccsds days {}", days)
+                write!(f, "invalid ccsds days {days}")
             }
             CdsError::InvalidCtorForDaysOfLenInPreamble(length_of_day) => {
                 write!(
                     f,
-                    "wrong constructor for length of day {:?} detected in preamble",
-                    length_of_day
+                    "wrong constructor for length of day {length_of_day:?} detected in preamble",
                 )
             }
         }

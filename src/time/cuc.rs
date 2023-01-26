@@ -103,16 +103,16 @@ impl Display for CucError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             CucError::InvalidCounterWidth(w) => {
-                write!(f, "invalid cuc counter byte width {}", w)
+                write!(f, "invalid cuc counter byte width {w}")
             }
             CucError::InvalidFractionResolution(w) => {
-                write!(f, "invalid cuc fractional part byte width {:?}", w)
+                write!(f, "invalid cuc fractional part byte width {w:?}")
             }
             CucError::InvalidCounter(w, c) => {
-                write!(f, "invalid cuc counter {} for width {}", c, w)
+                write!(f, "invalid cuc counter {c} for width {w}")
             }
             CucError::InvalidFractions(w, c) => {
-                write!(f, "invalid cuc fractional part {} for width {:?}", c, w)
+                write!(f, "invalid cuc fractional part {c} for width {w:?}")
             }
         }
     }

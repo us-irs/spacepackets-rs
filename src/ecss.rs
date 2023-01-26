@@ -122,16 +122,15 @@ impl Display for PusError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             PusError::VersionNotSupported(v) => {
-                write!(f, "PUS version {:?} not supported", v)
+                write!(f, "PUS version {v:?} not supported")
             }
             PusError::IncorrectCrc(crc) => {
-                write!(f, "crc16 {:#04x} is incorrect", crc)
+                write!(f, "crc16 {crc:#04x} is incorrect")
             }
             PusError::RawDataTooShort(size) => {
                 write!(
                     f,
-                    "deserialization error, provided raw data with size {} too short",
-                    size
+                    "deserialization error, provided raw data with size {size} too short"
                 )
             }
             PusError::NoRawData => {
@@ -141,7 +140,7 @@ impl Display for PusError {
                 write!(f, "crc16 was not calculated")
             }
             PusError::ByteConversionError(e) => {
-                write!(f, "low level byte conversion error: {}", e)
+                write!(f, "low level byte conversion error: {e}")
             }
         }
     }

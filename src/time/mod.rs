@@ -111,21 +111,20 @@ impl Display for TimestampError {
             TimestampError::InvalidTimeCode(time_code, raw_val) => {
                 write!(
                     f,
-                    "invalid raw time code value {} for time code {:?}",
-                    raw_val, time_code
+                    "invalid raw time code value {raw_val} for time code {time_code:?}"
                 )
             }
             TimestampError::CdsError(e) => {
-                write!(f, "cds error {}", e)
+                write!(f, "cds error {e}")
             }
             TimestampError::CucError(e) => {
-                write!(f, "cuc error {}", e)
+                write!(f, "cuc error {e}")
             }
             TimestampError::ByteConversionError(e) => {
-                write!(f, "byte conversion error {}", e)
+                write!(f, "byte conversion error {e}")
             }
             TimestampError::DateBeforeCcsdsEpoch(e) => {
-                write!(f, "datetime with date before ccsds epoch: {}", e)
+                write!(f, "datetime with date before ccsds epoch: {e}")
             }
             TimestampError::CustomEpochNotSupported => {
                 write!(f, "custom epochs are not supported")
