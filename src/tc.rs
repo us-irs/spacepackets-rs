@@ -442,7 +442,9 @@ impl<'app_data> PusTc<'app_data> {
 
 impl PartialEq for PusTc<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.sp_header == other.sp_header && self.sec_header == other.sec_header && self.app_data == other.app_data
+        self.sp_header == other.sp_header
+            && self.sec_header == other.sec_header
+            && self.app_data == other.app_data
     }
 }
 
