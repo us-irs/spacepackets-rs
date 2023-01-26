@@ -213,21 +213,27 @@ impl PusTcSecondaryHeader {
 /// serde provider like [postcard](https://docs.rs/postcard/latest/postcard/).
 ///
 /// There is no spare bytes support yet.
+///
+/// # Lifetimes
+///
+/// * `'raw_data` - If the TC is not constructed from a raw slice, this will be the life time of
+///    a buffer where the user provided application data will be serialized into. If it
+///    is, this is the lifetime of the raw byte slice it is constructed from.
 #[derive(Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PusTc<'app_data> {
+pub struct PusTc<'raw_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
     /// If this is set to false, a manual call to [PusTc::calc_own_crc16] or
     /// [PusTc::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
     #[cfg_attr(feature = "serde", serde(skip))]
-    raw_data: Option<&'app_data [u8]>,
-    app_data: Option<&'app_data [u8]>,
+    raw_data: Option<&'raw_data [u8]>,
+    app_data: Option<&'raw_data [u8]>,
     crc16: Option<u16>,
 }
 
-impl<'app_data> PusTc<'app_data> {
+impl<'raw_data> PusTc<'raw_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
@@ -243,7 +249,7 @@ impl<'app_data> PusTc<'app_data> {
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
-        app_data: Option<&'app_data [u8]>,
+        app_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tc);
@@ -268,7 +274,7 @@ impl<'app_data> PusTc<'app_data> {
         sph: &mut SpHeader,
         service: u8,
         subservice: u8,
-        app_data: Option<&'app_data [u8]>,
+        app_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         Self::new(
@@ -405,7 +411,7 @@ impl<'app_data> PusTc<'app_data> {
 
     /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet.
-    pub fn from_bytes(slice: &'app_data [u8]) -> Result<(Self, usize), PusError> {
+    pub fn from_bytes(slice: &'raw_data [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(PusError::RawDataTooShort(raw_data_len));
@@ -435,7 +441,14 @@ impl<'app_data> PusTc<'app_data> {
         Ok((pus_tc, total_len))
     }
 
-    pub fn raw(&self) -> Option<&'app_data [u8]> {
+    #[deprecated(since = "0.5.2", note = "use raw_bytes() instead")]
+    pub fn raw(&self) -> Option<&'raw_data [u8]> {
+        self.raw_bytes()
+    }
+
+    /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
+    /// constructed from. Otherwise, [None] will be returned.
+    pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
         self.raw_data
     }
 }

@@ -200,23 +200,24 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 ///
 /// # Lifetimes
 ///
-/// * `'src_data` - Life time of a buffer where the user provided time stamp and source data will
-///    be serialized into.
+/// * `'raw_data` - If the TM is not constructed from a raw slice, this will be the life time of
+///    a buffer where the user provided time stamp and source data will be serialized into. If it
+///    is, this is the lifetime of the raw byte slice it is constructed from.
 #[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PusTm<'src_data> {
+pub struct PusTm<'raw_data> {
     pub sp_header: SpHeader,
-    pub sec_header: PusTmSecondaryHeader<'src_data>,
+    pub sec_header: PusTmSecondaryHeader<'raw_data>,
     /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
     /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
     #[cfg_attr(feature = "serde", serde(skip))]
-    raw_data: Option<&'src_data [u8]>,
-    source_data: Option<&'src_data [u8]>,
+    raw_data: Option<&'raw_data [u8]>,
+    source_data: Option<&'raw_data [u8]>,
     crc16: Option<u16>,
 }
 
-impl<'src_data> PusTm<'src_data> {
+impl<'raw_data> PusTm<'raw_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
@@ -231,8 +232,8 @@ impl<'src_data> PusTm<'src_data> {
     ///     the correct value to this field manually
     pub fn new(
         sp_header: &mut SpHeader,
-        sec_header: PusTmSecondaryHeader<'src_data>,
-        source_data: Option<&'src_data [u8]>,
+        sec_header: PusTmSecondaryHeader<'raw_data>,
+        source_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tm);
@@ -262,11 +263,11 @@ impl<'src_data> PusTm<'src_data> {
         length
     }
 
-    pub fn timestamp(&self) -> Option<&'src_data [u8]> {
+    pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
         self.sec_header.timestamp
     }
 
-    pub fn source_data(&self) -> Option<&'src_data [u8]> {
+    pub fn source_data(&self) -> Option<&'raw_data [u8]> {
         self.source_data
     }
 
@@ -401,7 +402,7 @@ impl<'src_data> PusTm<'src_data> {
     /// the instance and the found byte length of the packet. The timestamp length needs to be
     /// known beforehand.
     pub fn from_bytes(
-        slice: &'src_data [u8],
+        slice: &'raw_data [u8],
         timestamp_len: usize,
     ) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
@@ -440,6 +441,17 @@ impl<'src_data> PusTm<'src_data> {
         };
         verify_crc16_from_raw(raw_data, pus_tm.crc16.expect("CRC16 invalid"))?;
         Ok((pus_tm, total_len))
+    }
+
+    #[deprecated(since = "0.5.2", note = "use raw_bytes() instead")]
+    pub fn raw(&self) -> Option<&'raw_data [u8]> {
+        self.raw_bytes()
+    }
+
+    /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
+    /// constructed from. Otherwise, [None] will be returned.
+    pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
+        self.raw_data
     }
 }
 
