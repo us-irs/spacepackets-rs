@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- Added `.gitignore`.
+
+## Fixed
+
+- Correct implementation of Trait `PartialEq` for `PusTc`.
+
 # [v0.5.1] 2023-01-22
 
 ## Added
