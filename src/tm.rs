@@ -202,7 +202,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 ///
 /// * `'src_data` - Life time of a buffer where the user provided time stamp and source data will
 ///    be serialized into.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTm<'src_data> {
     pub sp_header: SpHeader,
@@ -443,6 +443,14 @@ impl<'src_data> PusTm<'src_data> {
     }
 }
 
+impl PartialEq for PusTm<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.sp_header == other.sp_header
+            && self.sec_header == other.sec_header
+            && self.source_data == other.source_data
+    }
+}
+
 //noinspection RsTraitImplementation
 impl CcsdsPacket for PusTm<'_> {
     ccsds_impl!();
@@ -485,8 +493,8 @@ mod tests {
 
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTm {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, &timestamp);
-        PusTm::new(&mut sph, tc_header, None, true)
+        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, &timestamp);
+        PusTm::new(&mut sph, tm_header, None, true)
     }
 
     fn base_hk_reply<'a>(timestamp: &'a [u8], src_data: &'a [u8]) -> PusTm<'a> {
@@ -679,5 +687,21 @@ mod tests {
         assert_eq!(tm.dest_id(), 0x0000);
         assert_eq!(tm.msg_counter(), 0x0000);
         assert_eq!(tm.sc_time_ref_status(), 0b0000);
+    }
+
+    #[test]
+    fn partial_eq_pus_tc() {
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
+        assert_eq!(pus_tm, pus_tm);
+    }
+
+    #[test]
+    fn partial_eq_serialized_vs_derialized() {
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
+        let mut buf = [0; 32];
+        let size = pus_tm.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(pus_tm, PusTm::from_bytes(&buf, timestamp.len()).unwrap().0);
     }
 }
