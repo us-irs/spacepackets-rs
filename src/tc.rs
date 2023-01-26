@@ -757,7 +757,7 @@ mod tests {
     fn partial_eq_serialized_vs_derialized() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut buf = [0; 32];
-        let size = pus_tc.write_to_bytes(&mut buf).unwrap();
+        pus_tc.write_to_bytes(&mut buf).unwrap();
         assert_eq!(pus_tc, PusTc::from_bytes(&buf).unwrap().0);
     }
 }

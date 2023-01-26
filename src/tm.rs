@@ -690,10 +690,11 @@ mod tests {
     }
 
     #[test]
-    fn partial_eq_pus_tc() {
+    fn partial_eq_pus_tm() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(timestamp);
-        assert_eq!(pus_tm, pus_tm);
+        let pus_tm_1 = base_ping_reply_full_ctor(timestamp);
+        let pus_tm_2 = base_ping_reply_full_ctor(timestamp);
+        assert_eq!(pus_tm_1, pus_tm_2);
     }
 
     #[test]
@@ -701,7 +702,7 @@ mod tests {
         let timestamp = dummy_timestamp();
         let pus_tm = base_ping_reply_full_ctor(timestamp);
         let mut buf = [0; 32];
-        let size = pus_tm.write_to_bytes(&mut buf).unwrap();
+        pus_tm.write_to_bytes(&mut buf).unwrap();
         assert_eq!(pus_tm, PusTm::from_bytes(&buf, timestamp.len()).unwrap().0);
     }
 }
