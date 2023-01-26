@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Correct implementation of Trait `PartialEq` for `PusTc` and `PusTm`. The previous auto-derivation
   were incorrect because they also compared fields unrelated to the raw byte representation.
 
+## Changed
+
+- Renamed `PusTc` `raw` method to `raw_bytes` and add better docs to avoid confusion.
+  Deprecate `raw` to avoid breaking change.
+- Added `raw_bytes` method to `PusTm`.
+
 # [v0.5.1] 2023-01-22
 
 ## Added
