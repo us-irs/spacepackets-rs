@@ -443,11 +443,6 @@ impl<'raw_data> PusTm<'raw_data> {
         Ok((pus_tm, total_len))
     }
 
-    #[deprecated(since = "0.5.2", note = "use raw_bytes() instead")]
-    pub fn raw(&self) -> Option<&'raw_data [u8]> {
-        self.raw_bytes()
-    }
-
     /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
     /// constructed from. Otherwise, [None] will be returned.
     pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
