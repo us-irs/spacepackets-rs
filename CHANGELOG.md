@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Fixed
 
-- Correct implementation of Trait `PartialEq` for `PusTc`.
+- Correct implementation of Trait `PartialEq` for `PusTc` and `PusTm`.
 
 # [v0.5.1] 2023-01-22
 
