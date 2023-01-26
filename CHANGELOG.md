@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.2] 2023-01-26
+
 ## Added
 
 - Added `.gitignore`.
