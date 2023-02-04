@@ -1,7 +1,7 @@
 //! PUS Service 11 Scheduling
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

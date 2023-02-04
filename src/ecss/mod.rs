@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::error::Error;
 
-pub mod scheduling;
 pub mod event;
-pub mod verification;
 pub mod hk;
+pub mod scheduling;
+pub mod verification;
 
 pub type CrcType = u16;
 
@@ -68,7 +68,7 @@ pub enum PusServiceId {
     /// Service 22
     PositionBasedScheduling = 22,
     /// Service 23
-    FileManagement = 23
+    FileManagement = 23,
 }
 
 /// All PUS versions. Only PUS C is supported by this library.
