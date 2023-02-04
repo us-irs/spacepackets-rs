@@ -7,12 +7,15 @@ use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::error::Error;
 
 pub mod scheduling;
+pub mod event;
+pub mod verification;
 
 pub type CrcType = u16;
 
@@ -20,21 +23,51 @@ pub type CrcType = u16;
 pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+#[non_exhaustive]
 pub enum PusServiceId {
     /// Service 1
     Verification = 1,
+    /// Service 2
+    DeviceAccess = 2,
     /// Service 3
     Housekeeping = 3,
+    /// Service 4
+    ParameterStatistics = 4,
     /// Service 5
     Event = 5,
+    /// Service 6
+    MemoryManagement = 6,
     /// Service 8
     Action = 8,
+    /// Service 9
+    TimeManagement = 9,
     /// Service 11
     Scheduling = 11,
+    /// Service 12
+    OnBoardMonitoring = 12,
+    /// Service 13
+    LargePacketTransfer = 13,
+    /// Service 14
+    RealTimeForwardingControl = 14,
+    /// Service 15
+    StorageAndRetrival = 15,
     /// Service 17
     Test = 17,
+    /// Service 18
+    OpsAndProcedures = 18,
+    /// Service 19
+    EventAction = 19,
+    /// Service 20
+    Parameter = 20,
+    /// Service 21
+    RequestSequencing = 21,
+    /// Service 22
+    PositionBasedScheduling = 22,
+    /// Service 23
+    FileManagement = 23
 }
 
 /// All PUS versions. Only PUS C is supported by this library.

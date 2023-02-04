@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `num_enum` dependency to avoid boilerplate code for primtive to enum conversions, for example
+  for the PUS subservices.
+- `ecss.event` module containing a `Subservice` enum.
+- `ecss.verification` module containing a `Subservice` enum.
+- `ecss.scheduling` module containing a `Subservice` enum and some other helper enumerations.
+
+## Changed
+
+- Added missing Service IDs to `ecss.PusServiceId` and marked in `#[non_exhaustive]`.
+
 # [v0.5.2] 2023-01-26
 
 ## Added

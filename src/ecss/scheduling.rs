@@ -1,9 +1,11 @@
 //! PUS Service 11 Scheduling
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
 pub enum Subservice {
     // Core subservices
     TcEnableScheduling = 1,
@@ -73,7 +75,7 @@ pub enum TimeWindowType {
 
 #[cfg(test)]
 mod tests {
-    use crate::ecss::scheduling::SchedStatus;
+    use super::*;
 
     #[test]
     fn test_bool_conv_0() {
@@ -87,5 +89,17 @@ mod tests {
         let enabled = false;
         let status: SchedStatus = enabled.into();
         assert_eq!(status, SchedStatus::Disabled)
+    }
+
+    #[test]
+    fn test_conv_into_u8() {
+        let subservice: u8 = Subservice::TcCreateScheduleGroup.into();
+        assert_eq!(subservice, 22);
+    }
+
+    #[test]
+    fn test_conv_from_u8() {
+        let subservice: Subservice = 22u8.try_into().unwrap();
+        assert_eq!(subservice, Subservice::TcCreateScheduleGroup);
     }
 }
