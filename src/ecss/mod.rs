@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::error::Error;
 
+pub mod scheduling;
+
 pub type CrcType = u16;
 
 /// CRC algorithm used by the PUS standard.
@@ -29,6 +31,8 @@ pub enum PusServiceId {
     Event = 5,
     /// Service 8
     Action = 8,
+    /// Service 11
+    Scheduling = 11,
     /// Service 17
     Test = 17,
 }
