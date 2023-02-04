@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `ecss.event` module containing a `Subservice` enum.
 - `ecss.verification` module containing a `Subservice` enum.
 - `ecss.scheduling` module containing a `Subservice` enum and some other helper enumerations.
+- `ecss.hk` module containing a `Subservice` enum.
 
 ## Changed
 

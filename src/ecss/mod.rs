@@ -16,6 +16,7 @@ use std::error::Error;
 pub mod scheduling;
 pub mod event;
 pub mod verification;
+pub mod hk;
 
 pub type CrcType = u16;
 
