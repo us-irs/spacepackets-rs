@@ -577,15 +577,14 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     }
 
     #[inline]
-    fn calc_unix_seconds(&mut self, unix_days_seconds: i64, ms_of_day: u32) {
-        self.unix_stamp.unix_seconds = unix_days_seconds;
-        self.unix_stamp.subsecond_millis = Some((ms_of_day % 1000) as u16);
+    fn calc_unix_seconds(&mut self, mut unix_days_seconds: i64, ms_of_day: u32) {
         let seconds_of_day = (ms_of_day / 1000) as i64;
-        if self.unix_stamp.unix_seconds < 0 {
-            self.unix_stamp.unix_seconds -= seconds_of_day;
+        if unix_days_seconds < 0 {
+            unix_days_seconds -= seconds_of_day;
         } else {
-            self.unix_stamp.unix_seconds += seconds_of_day;
+            unix_days_seconds += seconds_of_day;
         }
+        self.unix_stamp = UnixTimestamp::const_new(unix_days_seconds, (ms_of_day % 1000) as u16);
     }
 
     fn calc_date_time(&self, ns_since_last_second: u32) -> Option<DateTime<Utc>> {
@@ -1319,12 +1318,9 @@ mod tests {
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
         );
         let subsecond_millis = unix_stamp.subsecond_millis;
-        assert!(subsecond_millis.is_some());
-
-        assert_eq!(subsecond_millis.unwrap(), 0);
+        assert!(subsecond_millis.is_none());
         assert_eq!(time_stamper.submillis_precision(), None);
-        assert!(time_stamper.subsecond_millis().is_some());
-        assert_eq!(time_stamper.subsecond_millis().unwrap(), 0);
+        assert!(time_stamper.subsecond_millis().is_none());
         assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
         assert_eq!(
             time_stamper.p_field(),
