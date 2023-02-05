@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.3] 2023-02-05
+
 ## Added
 
 - `num_enum` dependency to avoid boilerplate code for primtive to enum conversions, for example
