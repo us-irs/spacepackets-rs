@@ -223,10 +223,10 @@ pub trait CcsdsTimeProvider {
     fn unix_seconds(&self) -> i64;
     fn subsecond_millis(&self) -> Option<u16>;
     fn unix_stamp(&self) -> UnixTimestamp {
-        UnixTimestamp {
-            unix_seconds: self.unix_seconds(),
-            subsecond_millis: self.subsecond_millis(),
+        if self.subsecond_millis().is_none() {
+            return UnixTimestamp::new_only_seconds(self.unix_seconds());
         }
+        UnixTimestamp::const_new(self.unix_seconds(), self.subsecond_millis().unwrap())
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>>;
