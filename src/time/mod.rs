@@ -285,10 +285,7 @@ impl UnixTimestamp {
     pub fn from_now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
-        Ok(UnixTimestamp {
-            unix_seconds: epoch as i64,
-            subsecond_millis: Some(now.subsec_millis() as u16),
-        })
+        Ok(Self::const_new(epoch as i64, now.subsec_millis() as u16))
     }
 
     #[inline]
@@ -310,10 +307,7 @@ impl UnixTimestamp {
 
 impl From<DateTime<Utc>> for UnixTimestamp {
     fn from(value: DateTime<Utc>) -> Self {
-        Self {
-            unix_seconds: value.timestamp(),
-            subsecond_millis: Some(value.timestamp_subsec_millis() as u16),
-        }
+        Self::const_new(value.timestamp(), value.timestamp_subsec_millis() as u16)
     }
 }
 

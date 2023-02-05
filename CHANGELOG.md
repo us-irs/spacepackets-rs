@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Added missing Service IDs to `ecss.PusServiceId` and marked in `#[non_exhaustive]`.
 
+## Fixed
+
+- `time.UnixTimestamp`: All constructors and `From` conversions now use the `new` constructor,
+  which should cause a correct conversion of 0 subsecond milliseconds to a `None` value.
+
 # [v0.5.2] 2023-01-26
 
 ## Added
