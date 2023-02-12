@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.5.4] 2023-02-12
+
 ## Added
 
 - `Clone` trait requirement for `time::cds::ProvidesDaysLen` trait.
