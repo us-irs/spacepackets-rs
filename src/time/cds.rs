@@ -24,7 +24,7 @@ pub const MAX_DAYS_24_BITS: u32 = 2_u32.pow(24) - 1;
 
 /// Generic trait implemented by token structs to specify the length of day field at type
 /// level. This trait is only meant to be implemented in this crate and therefore sealed.
-pub trait ProvidesDaysLength: Sealed {
+pub trait ProvidesDaysLength: Sealed + Clone {
     type FieldType: Debug
         + Copy
         + Clone
@@ -38,7 +38,7 @@ pub trait ProvidesDaysLength: Sealed {
 }
 
 /// Type level token to be used as a generic parameter to [TimeProvider].
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct DaysLen16Bits {}
 
 impl Sealed for DaysLen16Bits {}
@@ -47,7 +47,7 @@ impl ProvidesDaysLength for DaysLen16Bits {
 }
 
 /// Type level token to be used as a generic parameter to [TimeProvider].
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct DaysLen24Bits {}
 impl Sealed for DaysLen24Bits {}
 impl ProvidesDaysLength for DaysLen24Bits {
