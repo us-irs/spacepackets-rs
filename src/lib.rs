@@ -68,6 +68,7 @@ use std::error::Error;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod cfdp;
 pub mod ecss;
 pub mod tc;
 pub mod time;
