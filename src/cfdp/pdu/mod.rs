@@ -255,7 +255,7 @@ impl PduHeader {
         let file_flag = LargeFileFlag::try_from(buf[0] & 0b1).unwrap();
         let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
         let seg_ctrl = SegmentationControl::try_from((buf[3] >> 7) & 0b1).unwrap();
-        let expected_len_entity_ids = ((buf[3] >> 4) & 0b111) as usize;
+        let expected_len_entity_ids = (((buf[3] >> 4) & 0b111) + 1) as usize;
         if (expected_len_entity_ids != 1)
             && (expected_len_entity_ids != 2)
             && (expected_len_entity_ids != 4)
@@ -264,7 +264,7 @@ impl PduHeader {
             return Err(PduError::InvalidEntityLen(expected_len_entity_ids as u8));
         }
         let seg_metadata_flag = SegmentMetadataFlag::try_from((buf[3] >> 3) & 0b1).unwrap();
-        let expected_len_seq_num = (buf[3] & 0b111) as usize;
+        let expected_len_seq_num = ((buf[3] & 0b111) + 1) as usize;
         if (expected_len_seq_num != 1)
             && (expected_len_seq_num != 2)
             && (expected_len_seq_num != 4)
