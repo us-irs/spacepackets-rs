@@ -60,8 +60,10 @@ extern crate alloc;
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
-use core::fmt::{Display, Formatter};
+use core::fmt::{Debug, Display, Formatter};
 use delegate::delegate;
+#[cfg(not(feature = "std"))]
+use num_traits::Unsigned;
 #[cfg(feature = "std")]
 use std::error::Error;
 
@@ -73,6 +75,7 @@ pub mod ecss;
 pub mod tc;
 pub mod time;
 pub mod tm;
+pub mod util;
 
 mod private {
     pub trait Sealed {}

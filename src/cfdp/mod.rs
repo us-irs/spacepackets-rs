@@ -2,6 +2,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod pdu;
+
 pub const CFDP_VERSION_2_NAME: &str = "CCSDS 727.0-B-5";
 pub const CFDP_VERSION_2: u8 = 0b001;
 

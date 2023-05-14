@@ -3,7 +3,7 @@
 //!
 //! You can find the PUS telecommand definitions in the [crate::tc] module and ithe PUS telemetry definitions
 //! inside the [crate::tm] module.
-use crate::{ByteConversionError, CcsdsPacket, SizeMissmatch};
+use crate::{ByteConversionError, CcsdsPacket};
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use crc::{Crc, CRC_16_IBM_3740};
@@ -291,6 +291,7 @@ macro_rules! sp_header_impls {
     }
 }
 
+use crate::util::{GenericUnsignedByteField, ToBeBytes, UnsignedEnum};
 pub(crate) use ccsds_impl;
 pub(crate) use sp_header_impls;
 
@@ -298,66 +299,17 @@ pub(crate) use sp_header_impls;
 /// and an unsigned value. The trait makes no assumptions about the actual type of the unsigned
 /// value and only requires implementors to implement a function which writes the enumeration into
 /// a raw byte format.
-pub trait EcssEnumeration {
+pub trait EcssEnumeration: UnsignedEnum {
     /// Packet Format Code, which denotes the number of bits of the enumeration
     fn pfc(&self) -> u8;
-    fn byte_width(&self) -> usize {
-        (self.pfc() / 8) as usize
-    }
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
 }
 
 pub trait EcssEnumerationExt: EcssEnumeration + Debug + Copy + Clone + PartialEq + Eq {}
 
-pub trait ToBeBytes {
-    type ByteArray: AsRef<[u8]>;
-    fn to_be_bytes(&self) -> Self::ByteArray;
-}
-
-impl ToBeBytes for () {
-    type ByteArray = [u8; 0];
-
-    fn to_be_bytes(&self) -> Self::ByteArray {
-        []
-    }
-}
-
-impl ToBeBytes for u8 {
-    type ByteArray = [u8; 1];
-
-    fn to_be_bytes(&self) -> Self::ByteArray {
-        u8::to_be_bytes(*self)
-    }
-}
-
-impl ToBeBytes for u16 {
-    type ByteArray = [u8; 2];
-
-    fn to_be_bytes(&self) -> Self::ByteArray {
-        u16::to_be_bytes(*self)
-    }
-}
-
-impl ToBeBytes for u32 {
-    type ByteArray = [u8; 4];
-
-    fn to_be_bytes(&self) -> Self::ByteArray {
-        u32::to_be_bytes(*self)
-    }
-}
-
-impl ToBeBytes for u64 {
-    type ByteArray = [u8; 8];
-
-    fn to_be_bytes(&self) -> Self::ByteArray {
-        u64::to_be_bytes(*self)
-    }
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct GenericEcssEnumWrapper<TYPE> {
-    val: TYPE,
+    field: GenericUnsignedByteField<TYPE>,
 }
 
 impl<TYPE> GenericEcssEnumWrapper<TYPE> {
@@ -366,24 +318,25 @@ impl<TYPE> GenericEcssEnumWrapper<TYPE> {
     }
 
     pub fn new(val: TYPE) -> Self {
-        Self { val }
+        Self {
+            field: GenericUnsignedByteField::new(val),
+        }
+    }
+}
+
+impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
+    fn len(&self) -> usize {
+        (self.pfc() / 8) as usize
+    }
+
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+        self.field.write_to_be_bytes(buf)
     }
 }
 
 impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     fn pfc(&self) -> u8 {
         size_of::<TYPE>() as u8 * 8_u8
-    }
-
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
-        if buf.len() < self.byte_width() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: self.byte_width(),
-            }));
-        }
-        buf[0..self.byte_width()].copy_from_slice(self.val.to_be_bytes().as_ref());
-        Ok(())
     }
 }
 
@@ -399,7 +352,7 @@ pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 
 #[cfg(test)]
 mod tests {
-    use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, EcssEnumeration};
+    use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, UnsignedEnum};
     use crate::ByteConversionError;
 
     #[test]

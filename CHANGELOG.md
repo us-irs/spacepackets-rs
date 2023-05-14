@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- Added new `util` module which contains the following (new) helper modules:
+  - `UnsignedEnum` trait as an abstraction for unsigned byte fields with variable lengths. It is
+    not tied to the ECSS PFC value like the `EcssEnumeration` trait.
+  - `UnsignedByteField` as a type-erased helper.
+  - `UnsignedU8`, `UnsignedU16`, `UnsignedU32` and `UnsignedU64` as helper types implementing
+    `UnsignedEnum`
+- Initial CFDP support: Added PDU packet implementation.
+
+## Changed
+ 
+- The `EcssEnumeration` now requires the `UnsignedEnum` trait and only adds the `pfc` method to it.
+- Renamed `byte_width` usages to `len` (part of new `UnsignedEnum` trait)
+
 # [v0.5.4] 2023-02-12
 
 ## Added
