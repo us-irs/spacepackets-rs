@@ -129,8 +129,8 @@ impl UnsignedByteField {
     pub fn new_from_be_bytes(width: usize, buf: &[u8]) -> Result<Self, UnsignedByteFieldError> {
         if width > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
                 expected: width,
+                found: buf.len(),
             })
             .into());
         }
@@ -301,6 +301,7 @@ pub mod tests {
         UnsignedByteField, UnsignedByteFieldError, UnsignedEnum, UnsignedU16, UnsignedU32,
         UnsignedU64, UnsignedU8,
     };
+    use crate::ByteConversionError;
     use std::format;
 
     #[test]
@@ -552,5 +553,71 @@ pub mod tests {
         let u64 = UnsignedByteField::new_from_be_bytes(8, &buf).expect("construction failed");
         assert_eq!(u64.width, 8);
         assert_eq!(u64.value, 0x0102030405060708);
+    }
+
+    #[test]
+    fn type_u16_target_buf_too_small() {
+        let u16 = UnsignedU16::new(500);
+        let mut buf: [u8; 1] = [0; 1];
+        let res = u16.write_to_be_bytes(&mut buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        match err {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                assert_eq!(missmatch.found, 1);
+                assert_eq!(missmatch.expected, 2);
+            }
+            _ => {
+                panic!("invalid exception")
+            }
+        }
+    }
+
+    #[test]
+    fn type_erased_u16_target_buf_too_small() {
+        let u16 = UnsignedByteField::new(2, 500);
+        let mut buf: [u8; 1] = [0; 1];
+        let res = u16.write_to_be_bytes(&mut buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        match err {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                assert_eq!(missmatch.found, 1);
+                assert_eq!(missmatch.expected, 2);
+            }
+            _ => {
+                panic!("invalid exception {}", err)
+            }
+        }
+        let u16 = UnsignedByteField::new_from_be_bytes(2, &buf);
+        assert!(u16.is_err());
+        let err = u16.unwrap_err();
+        if let UnsignedByteFieldError::ByteConversionError(
+            ByteConversionError::FromSliceTooSmall(missmatch),
+        ) = err
+        {
+            assert_eq!(missmatch.expected, 2);
+            assert_eq!(missmatch.found, 1);
+        } else {
+            panic!("unexpected exception {}", err);
+        }
+    }
+
+    #[test]
+    fn type_u32_target_buf_too_small() {
+        let u16 = UnsignedU32::new(500);
+        let mut buf: [u8; 3] = [0; 3];
+        let res = u16.write_to_be_bytes(&mut buf);
+        assert!(res.is_err());
+        let err = res.unwrap_err();
+        match err {
+            ByteConversionError::ToSliceTooSmall(missmatch) => {
+                assert_eq!(missmatch.found, 3);
+                assert_eq!(missmatch.expected, 4);
+            }
+            _ => {
+                panic!("invalid exception")
+            }
+        }
     }
 }
