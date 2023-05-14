@@ -36,3 +36,91 @@ pub enum CrcFlag {
     NoCrc = 0,
     WithCrc = 1,
 }
+
+/// Always 0 and ignores for File Directive PDUs (CCSDS 727.0-B-5 P.75)
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum SegmentMetadataFlag {
+    NotPresent = 0,
+    Present = 1,
+}
+
+/// Always 0 and ignores for File Directive PDUs (CCSDS 727.0-B-5 P.75)
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum SegmentationControl {
+    NoRecordBoundaryPreservation = 0,
+    WithRecordBoundaryPreservation = 1,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum FaultHandlerCode {
+    NoticeOfCancellation = 0b0001,
+    NoticeOfSuspension = 0b0010,
+    IgnoreError = 0b0011,
+    AbandonTransaction = 0b0100,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum LenInBytes {
+    ZeroOrNone = 0,
+    OneByte = 1,
+    TwoBytes = 2,
+    ThreeBytes = 4,
+    FourBytes = 8,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum ConditionCode {
+    /// This is not an error condition for which a faulty handler override can be specified
+    NoError = 0b0000,
+    PositiveAckLimitReached = 0b0001,
+    KeepAliveLimitReached = 0b0010,
+    InvalidTransmissionMode = 0b0011,
+    FilestoreRejection = 0b0100,
+    FileChecksumFailure = 0b0101,
+    FileSizeError = 0b0110,
+    NakLimitReached = 0b0111,
+    InactivityDetected = 0b1000,
+    CheckLimitReached = 0b1001,
+    UnsupportedChecksumType = 0b1011,
+    /// Not an actual fault condition for which fault handler overrides can be specified
+    SuspendRequestReceived = 0b1110,
+    /// Not an actual fault condition for which fault handler overrides can be specified
+    CancelRequestReceived = 0b1111,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum LargeFileFlag {
+    /// 32 bit maximum file size and FSS size
+    Normal = 0,
+    /// 64 bit maximum file size and FSS size
+    Large = 1,
+}
+
+/// Checksum types according to the SANA Checksum Types registry
+/// https://sanaregistry.org/r/checksum_identifiers/
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum ChecksumType {
+    /// Modular legacy checksum
+    Modular = 0,
+    Crc32Proximity1 = 1,
+    Crc32C = 2,
+    /// Polynomial: 0x4C11DB7. Preferred checksum for now.
+    Crc32 = 3,
+    NullChecksum = 15,
+}
+
+pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
