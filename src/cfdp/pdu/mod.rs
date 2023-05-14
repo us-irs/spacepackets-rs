@@ -69,28 +69,48 @@ impl From<ByteConversionError> for PduError {
 pub struct CommonPduConfig {
     source_entity_id: UnsignedByteField,
     dest_entity_id: UnsignedByteField,
-    transaction_seq_num: UnsignedByteField,
-    trans_mode: TransmissionMode,
-    file_flag: LargeFileFlag,
-    crc_flag: CrcFlag,
-    direction: Direction,
+    pub transaction_seq_num: UnsignedByteField,
+    pub trans_mode: TransmissionMode,
+    pub file_flag: LargeFileFlag,
+    pub crc_flag: CrcFlag,
+    pub direction: Direction,
 }
 
+// TODO: Build might be applicable here..
 impl CommonPduConfig {
     pub fn new(
-        source_id: UnsignedByteField,
-        dest_id: UnsignedByteField,
-        transaction_seq_num: UnsignedByteField,
+        source_id: impl Into<UnsignedByteField>,
+        dest_id: impl Into<UnsignedByteField>,
+        transaction_seq_num: impl Into<UnsignedByteField>,
         trans_mode: TransmissionMode,
         file_flag: LargeFileFlag,
         crc_flag: CrcFlag,
         direction: Direction,
     ) -> Result<Self, PduError> {
+        let source_id = source_id.into();
+        let dest_id = dest_id.into();
+        let transaction_seq_num = transaction_seq_num.into();
         if source_id.len() != dest_id.len() {
             return Err(PduError::SourceDestIdLenMissmatch((
                 source_id.len(),
                 dest_id.len(),
             )));
+        }
+        if source_id.len() != 1
+            && source_id.len() != 2
+            && source_id.len() != 4
+            && source_id.len() != 8
+        {
+            return Err(PduError::InvalidEntityLen(source_id.len() as u8));
+        }
+        if transaction_seq_num.len() != 1
+            && transaction_seq_num.len() != 2
+            && transaction_seq_num.len() != 4
+            && transaction_seq_num.len() != 8
+        {
+            return Err(PduError::InvalidTransactionSeqNumLen(
+                transaction_seq_num.len() as u8,
+            ));
         }
         Ok(Self {
             source_entity_id: source_id,
@@ -102,7 +122,34 @@ impl CommonPduConfig {
             direction,
         })
     }
+
+    pub fn new_with_defaults(
+        source_id: impl Into<UnsignedByteField>,
+        dest_id: impl Into<UnsignedByteField>,
+        transaction_seq_num: impl Into<UnsignedByteField>,
+    ) -> Result<Self, PduError> {
+        Self::new(
+            source_id,
+            dest_id,
+            transaction_seq_num,
+            TransmissionMode::Acknowledged,
+            LargeFileFlag::Normal,
+            CrcFlag::NoCrc,
+            Direction::TowardsReceiver,
+        )
+    }
+
+    pub fn source_id(&self) -> UnsignedByteField {
+        self.source_entity_id
+    }
+
+    pub fn dest_id(&self) -> UnsignedByteField {
+        self.dest_entity_id
+    }
 }
+
+const MIN_HEADER_LEN: usize = 4;
+
 /// Abstraction for the PDU header common to all CFDP PDUs
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -132,7 +179,7 @@ impl PduHeader {
 
     pub fn new_no_file_data(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         PduHeader {
-            pdu_type: PduType::FileData,
+            pdu_type: PduType::FileDirective,
             pdu_conf,
             seg_metadata_flag: SegmentMetadataFlag::NotPresent,
             seg_ctrl: SegmentationControl::NoRecordBoundaryPreservation,
@@ -148,11 +195,13 @@ impl PduHeader {
             )));
         }
         if buf.len()
-            < 4 + self.pdu_conf.source_entity_id.len() + self.pdu_conf.transaction_seq_num.len()
+            < MIN_HEADER_LEN
+                + self.pdu_conf.source_entity_id.len()
+                + self.pdu_conf.transaction_seq_num.len()
         {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: 4,
+                expected: MIN_HEADER_LEN,
             })
             .into());
         }
@@ -167,9 +216,10 @@ impl PduHeader {
         buf[current_idx..current_idx + 2].copy_from_slice(&self.pdu_datafield_len.to_be_bytes());
         current_idx += 2;
         buf[current_idx] = ((self.seg_ctrl as u8) << 7)
-            | ((self.pdu_conf.source_entity_id.len() as u8) << 4)
+            | (((self.pdu_conf.source_entity_id.len() - 1) as u8) << 4)
             | ((self.seg_metadata_flag as u8) << 3)
-            | (self.pdu_conf.transaction_seq_num.len() as u8);
+            | ((self.pdu_conf.transaction_seq_num.len() - 1) as u8);
+        current_idx += 1;
         self.pdu_conf.source_entity_id.write_to_be_bytes(
             &mut buf[current_idx..current_idx + self.pdu_conf.source_entity_id.len()],
         )?;
@@ -185,19 +235,19 @@ impl PduHeader {
     }
 
     pub fn from_be_bytes(buf: &[u8]) -> Result<Self, PduError> {
-        if buf.len() < 4 {
+        if buf.len() < MIN_HEADER_LEN {
             return Err(PduError::ByteConversionError(
                 ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                     found: buf.len(),
-                    expected: 4,
+                    expected: MIN_HEADER_LEN,
                 }),
             ));
         }
-        let cfdp_version_raw = buf[0] >> 5 & 0b111;
+        let cfdp_version_raw = (buf[0] >> 5) & 0b111;
         if cfdp_version_raw != CFDP_VERSION_2 {
             return Err(PduError::CfdpVersionMissmatch(cfdp_version_raw));
         }
-        // Conversion for 1 bit value always works
+        // unwrap for single bit fields: This operation will always succeed.
         let pdu_type = PduType::try_from((buf[0] >> 4) & 0b1).unwrap();
         let direction = Direction::try_from((buf[0] >> 3) & 0b1).unwrap();
         let trans_mode = TransmissionMode::try_from((buf[0] >> 2) & 0b1).unwrap();
@@ -232,6 +282,8 @@ impl PduHeader {
             .into());
         }
         let mut current_idx = 4;
+        // It is okay to unwrap here because we checked the validity of the expected length and of
+        // the remaining buffer length.
         let source_id =
             UnsignedByteField::new_from_be_bytes(expected_len_entity_ids, &buf[current_idx..])
                 .unwrap();
@@ -267,5 +319,77 @@ impl PduHeader {
 
     pub fn common_pdu_conf(&self) -> &CommonPduConfig {
         &self.pdu_conf
+    }
+
+    pub fn seg_metadata_flag(&self) -> SegmentMetadataFlag {
+        self.seg_metadata_flag
+    }
+    pub fn seg_ctrl(&self) -> SegmentationControl {
+        self.seg_ctrl
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
+    use crate::cfdp::{
+        Direction, PduType, SegmentMetadataFlag, SegmentationControl, CFDP_VERSION_2,
+    };
+    use crate::util::UnsignedU8;
+
+    #[test]
+    fn test_basic_state() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        assert_eq!(pdu_header.pdu_type(), PduType::FileDirective);
+        let common_conf_ref = pdu_header.common_pdu_conf();
+        assert_eq!(*common_conf_ref, common_pdu_cfg);
+        // These should be 0 and ignored for non-filedata PDUs
+        assert_eq!(
+            pdu_header.seg_metadata_flag(),
+            SegmentMetadataFlag::NotPresent
+        );
+        assert_eq!(
+            pdu_header.seg_ctrl(),
+            SegmentationControl::NoRecordBoundaryPreservation
+        );
+    }
+
+    #[test]
+    fn test_serialization() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
+        // File directive
+        assert_eq!((buf[0] >> 4) & 1, 0);
+        // Towards receiver
+        assert_eq!((buf[0] >> 3) & 1, 0);
+        // Acknowledged
+        assert_eq!((buf[0] >> 2) & 1, 0);
+        // No CRC
+        assert_eq!((buf[0] >> 1) & 1, 0);
+        // Regular file size
+        assert_eq!(buf[0] & 1, 0);
+        let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
+        assert_eq!(pdu_datafield_len, 5);
+        // No record boundary preservation
+        assert_eq!((buf[3] >> 7) & 1, 0);
+        // Entity ID length raw value is actual number of octets - 1 => 0
+        assert_eq!((buf[3] >> 4) & 0b111, 0);
+        // No segment metadata
+        assert_eq!((buf[3] >> 3) & 0b1, 0);
+        // Transaction Sequence ID length raw value is actual number of octets - 1 => 0
+        assert_eq!(buf[3] & 0b111, 0);
     }
 }
