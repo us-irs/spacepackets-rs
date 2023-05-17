@@ -164,9 +164,9 @@ pub struct PduHeader {
 impl PduHeader {
     pub fn new_for_file_data(
         pdu_conf: CommonPduConfig,
+        pdu_datafield_len: u16,
         seg_metadata_flag: SegmentMetadataFlag,
         seg_ctrl: SegmentationControl,
-        pdu_datafield_len: u16,
     ) -> Self {
         PduHeader {
             pdu_type: PduType::FileData,
@@ -187,7 +187,7 @@ impl PduHeader {
         }
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), PduError> {
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         if self.pdu_conf.source_entity_id.len() != self.pdu_conf.dest_entity_id.len() {
             return Err(PduError::SourceDestIdLenMissmatch((
                 self.pdu_conf.source_entity_id.len(),
@@ -231,7 +231,8 @@ impl PduHeader {
         self.pdu_conf.dest_entity_id.write_to_be_bytes(
             &mut buf[current_idx..current_idx + self.pdu_conf.dest_entity_id.len()],
         )?;
-        Ok(())
+        current_idx += self.pdu_conf.dest_entity_id.len();
+        Ok(current_idx)
     }
 
     pub fn from_be_bytes(buf: &[u8]) -> Result<Self, PduError> {
@@ -333,9 +334,11 @@ impl PduHeader {
 mod tests {
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
     use crate::cfdp::{
-        Direction, PduType, SegmentMetadataFlag, SegmentationControl, CFDP_VERSION_2,
+        CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
+        TransmissionMode, CFDP_VERSION_2,
     };
-    use crate::util::UnsignedU8;
+    use crate::util::{UnsignedU16, UnsignedU8};
+    use std::format;
 
     #[test]
     fn test_basic_state() {
@@ -360,7 +363,27 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization() {
+    fn test_state() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        assert_eq!(pdu_header.pdu_type, PduType::FileDirective);
+        assert_eq!(pdu_header.pdu_datafield_len, 5);
+        assert_eq!(
+            pdu_header.seg_ctrl,
+            SegmentationControl::NoRecordBoundaryPreservation
+        );
+        assert_eq!(
+            pdu_header.seg_metadata_flag,
+            SegmentMetadataFlag::NotPresent
+        );
+    }
+
+    #[test]
+    fn test_serialization_1() {
         let src_id = UnsignedU8::new(1);
         let dest_id = UnsignedU8::new(2);
         let transaction_id = UnsignedU8::new(3);
@@ -370,6 +393,8 @@ mod tests {
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_be_bytes(&mut buf);
         assert!(res.is_ok());
+        // 4 byte fixed header plus three bytes src, dest ID and transaction ID
+        assert_eq!(res.unwrap(), 7);
         assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
         // File directive
         assert_eq!((buf[0] >> 4) & 1, 0);
@@ -391,5 +416,60 @@ mod tests {
         assert_eq!((buf[3] >> 3) & 0b1, 0);
         // Transaction Sequence ID length raw value is actual number of octets - 1 => 0
         assert_eq!(buf[3] & 0b111, 0);
+        assert_eq!(buf[4], 1);
+        assert_eq!(buf[5], 3);
+        assert_eq!(buf[6], 2);
     }
+
+    #[test]
+    fn test_serialization_2() {
+        let src_id = UnsignedU16::new(0x0001);
+        let dest_id = UnsignedU16::new(0x0203);
+        let transaction_id = UnsignedU16::new(0x0405);
+        let mut common_pdu_cfg =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+                .expect("common config creation failed");
+        common_pdu_cfg.crc_flag = CrcFlag::WithCrc;
+        common_pdu_cfg.direction = Direction::TowardsSender;
+        common_pdu_cfg.trans_mode = TransmissionMode::Unacknowledged;
+        common_pdu_cfg.file_flag = LargeFileFlag::Large;
+        let pdu_header = PduHeader::new_for_file_data(
+            common_pdu_cfg,
+            5,
+            SegmentMetadataFlag::Present,
+            SegmentationControl::WithRecordBoundaryPreservation,
+        );
+        let mut buf: [u8; 16] = [0; 16];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok(), "{}", format!("Result {res:?} not okay"));
+        // 4 byte fixed header, 6 bytes additional fields
+        assert_eq!(res.unwrap(), 10);
+        assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
+        // File directive
+        assert_eq!((buf[0] >> 4) & 1, 1);
+        // Towards sender
+        assert_eq!((buf[0] >> 3) & 1, 1);
+        // Unacknowledged
+        assert_eq!((buf[0] >> 2) & 1, 1);
+        // With CRC
+        assert_eq!((buf[0] >> 1) & 1, 1);
+        // Large file size
+        assert_eq!(buf[0] & 1, 1);
+        let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
+        assert_eq!(pdu_datafield_len, 5);
+        // With record boundary preservation
+        assert_eq!((buf[3] >> 7) & 1, 1);
+        // Entity ID length raw value is actual number of octets - 1 => 1
+        assert_eq!((buf[3] >> 4) & 0b111, 1);
+        // With segment metadata
+        assert_eq!((buf[3] >> 3) & 0b1, 1);
+        // Transaction Sequence ID length raw value is actual number of octets - 1 => 1
+        assert_eq!(buf[3] & 0b111, 1);
+        assert_eq!(u16::from_be_bytes(buf[4..6].try_into().unwrap()), 0x0001);
+        assert_eq!(u16::from_be_bytes(buf[6..8].try_into().unwrap()), 0x0405);
+        assert_eq!(u16::from_be_bytes(buf[8..10].try_into().unwrap()), 0x0203);
+    }
+
+    #[test]
+    fn test_deserialization_1() {}
 }
