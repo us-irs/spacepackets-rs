@@ -76,7 +76,7 @@ pub struct CommonPduConfig {
     pub direction: Direction,
 }
 
-// TODO: Build might be applicable here..
+// TODO: Builder pattern might be applicable here..
 impl CommonPduConfig {
     pub fn new(
         source_id: impl Into<UnsignedByteField>,
@@ -148,7 +148,7 @@ impl CommonPduConfig {
     }
 }
 
-const MIN_HEADER_LEN: usize = 4;
+const FIXED_HEADER_LEN: usize = 4;
 
 /// Abstraction for the PDU header common to all CFDP PDUs
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -195,13 +195,13 @@ impl PduHeader {
             )));
         }
         if buf.len()
-            < MIN_HEADER_LEN
+            < FIXED_HEADER_LEN
                 + self.pdu_conf.source_entity_id.len()
                 + self.pdu_conf.transaction_seq_num.len()
         {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: MIN_HEADER_LEN,
+                expected: FIXED_HEADER_LEN,
             })
             .into());
         }
@@ -235,12 +235,12 @@ impl PduHeader {
         Ok(current_idx)
     }
 
-    pub fn from_be_bytes(buf: &[u8]) -> Result<Self, PduError> {
-        if buf.len() < MIN_HEADER_LEN {
+    pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
+        if buf.len() < FIXED_HEADER_LEN {
             return Err(PduError::ByteConversionError(
                 ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                     found: buf.len(),
-                    expected: MIN_HEADER_LEN,
+                    expected: FIXED_HEADER_LEN,
                 }),
             ));
         }
@@ -296,6 +296,7 @@ impl PduHeader {
         let dest_id =
             UnsignedByteField::new_from_be_bytes(expected_len_entity_ids, &buf[current_idx..])
                 .unwrap();
+        current_idx += expected_len_entity_ids;
         let common_pdu_conf = CommonPduConfig::new(
             source_id,
             dest_id,
@@ -306,13 +307,16 @@ impl PduHeader {
             direction,
         )
         .unwrap();
-        Ok(PduHeader {
-            pdu_type,
-            pdu_conf: common_pdu_conf,
-            seg_metadata_flag,
-            seg_ctrl,
-            pdu_datafield_len,
-        })
+        Ok((
+            PduHeader {
+                pdu_type,
+                pdu_conf: common_pdu_conf,
+                seg_metadata_flag,
+                seg_ctrl,
+                pdu_datafield_len,
+            },
+            current_idx,
+        ))
     }
     pub fn pdu_type(&self) -> PduType {
         self.pdu_type
@@ -332,12 +336,13 @@ impl PduHeader {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
+    use crate::cfdp::pdu::{CommonPduConfig, PduError, PduHeader, FIXED_HEADER_LEN};
     use crate::cfdp::{
         CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
         TransmissionMode, CFDP_VERSION_2,
     };
     use crate::util::{UnsignedU16, UnsignedU8};
+    use crate::ByteConversionError;
     use std::format;
 
     #[test]
@@ -360,26 +365,7 @@ mod tests {
             pdu_header.seg_ctrl(),
             SegmentationControl::NoRecordBoundaryPreservation
         );
-    }
-
-    #[test]
-    fn test_state() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
-            .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
-        assert_eq!(pdu_header.pdu_type, PduType::FileDirective);
         assert_eq!(pdu_header.pdu_datafield_len, 5);
-        assert_eq!(
-            pdu_header.seg_ctrl,
-            SegmentationControl::NoRecordBoundaryPreservation
-        );
-        assert_eq!(
-            pdu_header.seg_metadata_flag,
-            SegmentMetadataFlag::NotPresent
-        );
     }
 
     #[test]
@@ -419,6 +405,24 @@ mod tests {
         assert_eq!(buf[4], 1);
         assert_eq!(buf[5], 3);
         assert_eq!(buf[6], 2);
+    }
+
+    #[test]
+    fn test_deserialization_1() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        let deser_res = PduHeader::from_be_bytes(&buf);
+        assert!(deser_res.is_ok());
+        let (header_read_back, read_size) = deser_res.unwrap();
+        assert_eq!(read_size, 7);
+        assert_eq!(header_read_back, pdu_header);
     }
 
     #[test]
@@ -471,5 +475,91 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialization_1() {}
+    fn test_deserialization_2() {
+        let src_id = UnsignedU16::new(0x0001);
+        let dest_id = UnsignedU16::new(0x0203);
+        let transaction_id = UnsignedU16::new(0x0405);
+        let mut common_pdu_cfg =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+                .expect("common config creation failed");
+        common_pdu_cfg.crc_flag = CrcFlag::WithCrc;
+        common_pdu_cfg.direction = Direction::TowardsSender;
+        common_pdu_cfg.trans_mode = TransmissionMode::Unacknowledged;
+        common_pdu_cfg.file_flag = LargeFileFlag::Large;
+        let pdu_header = PduHeader::new_for_file_data(
+            common_pdu_cfg,
+            5,
+            SegmentMetadataFlag::Present,
+            SegmentationControl::WithRecordBoundaryPreservation,
+        );
+        let mut buf: [u8; 16] = [0; 16];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        let deser_res = PduHeader::from_be_bytes(&buf);
+        assert!(deser_res.is_ok());
+        let (header_read_back, read_size) = deser_res.unwrap();
+        assert_eq!(read_size, 10);
+        assert_eq!(header_read_back, pdu_header);
+    }
+
+    #[test]
+    fn test_invalid_raw_version() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        buf[0] &= !0b1110_0000;
+        buf[0] |= (CFDP_VERSION_2 + 1) << 5;
+        let res = PduHeader::from_be_bytes(&buf);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        if let PduError::CfdpVersionMissmatch(raw_version) = error {
+            assert_eq!(raw_version, CFDP_VERSION_2 + 1);
+        } else {
+            panic!("invalid exception: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_buf_too_small_1() {
+        let buf: [u8; 3] = [0; 3];
+        let res = PduHeader::from_be_bytes(&buf);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
+            error
+        {
+            assert_eq!(missmatch.found, 3);
+            assert_eq!(missmatch.expected, FIXED_HEADER_LEN);
+        } else {
+            panic!("invalid exception: {}", error);
+        }
+    }
+
+    #[test]
+    fn test_buf_too_small_2() {
+        let src_id = UnsignedU8::new(1);
+        let dest_id = UnsignedU8::new(2);
+        let transaction_id = UnsignedU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        let header = PduHeader::from_be_bytes(&buf[0..6]);
+        assert!(header.is_err());
+        let error = header.unwrap_err();
+        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
+            error
+        {
+            assert_eq!(missmatch.found, 6);
+            assert_eq!(missmatch.expected, 7);
+        }
+    }
 }
