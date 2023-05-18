@@ -21,6 +21,9 @@ pub enum TlvType {
     EntityId = 0x06,
 }
 
+/// Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
+///
+/// This is just a thin wrapper around a length-value (LV) object, which add the [TlvType].
 pub struct Tlv<'a> {
     tlv_type: TlvType,
     lv: Lv<'a>,
@@ -37,15 +40,38 @@ impl<'a> Tlv<'a> {
         })
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        generic_len_check_data_serialization(buf, self.value(), MIN_TLV_LEN)?;
-        buf[0] = self.tlv_type as u8;
-        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
-        Ok(MIN_TLV_LEN + self.value().len())
+    /// Creates a TLV with an empty value field.
+    pub fn new_empty(tlv_type: TlvType) -> Tlv<'a> {
+        Tlv {
+            tlv_type,
+            lv: Lv::new_empty(),
+        }
     }
 
-    pub fn value(&self) -> &[u8] {
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        generic_len_check_data_serialization(buf, self.len_value(), MIN_TLV_LEN)?;
+        buf[0] = self.tlv_type as u8;
+        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
+        Ok(self.len_full())
+    }
+
+    pub fn value(&self) -> Option<&[u8]> {
         self.lv.value()
+    }
+
+    /// Returns the length of the value part, not including the length byte.
+    pub fn len_value(&self) -> usize {
+        self.lv.len_value() + 1
+    }
+
+    /// Returns the full raw length, including the length byte.
+    pub fn len_full(&self) -> usize {
+        self.lv.len_raw() + 1
+    }
+
+    /// Checks whether the value field is empty.
+    pub fn is_empty(&self) -> bool {
+        self.lv.is_empty()
     }
 
     pub fn from_be_bytes(buf: &'a [u8]) -> Result<Tlv<'a>, TlvLvError> {

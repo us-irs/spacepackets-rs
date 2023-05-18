@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::cfdp::lv::Lv;
 use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
 use crate::cfdp::ChecksumType;
