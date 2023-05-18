@@ -5,6 +5,21 @@ use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
 
+pub mod metadata;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum FileDirectiveType {
+    EofPdu = 0x04,
+    FinishedPdu = 0x05,
+    AckPdu = 0x06,
+    MetadataPdu = 0x07,
+    NakPdu = 0x08,
+    PromptPdu = 0x09,
+    KeepAlivePdu = 0x0c,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PduError {
@@ -148,7 +163,7 @@ impl CommonPduConfig {
     }
 }
 
-const FIXED_HEADER_LEN: usize = 4;
+pub const FIXED_HEADER_LEN: usize = 4;
 
 /// Abstraction for the PDU header common to all CFDP PDUs
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
