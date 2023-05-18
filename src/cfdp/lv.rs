@@ -1,3 +1,4 @@
+//! Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
 use crate::cfdp::TlvLvError;
 use crate::{ByteConversionError, SizeMissmatch};
 #[cfg(feature = "serde")]
@@ -8,12 +9,10 @@ use std::string::String;
 pub const MIN_LV_LEN: usize = 1;
 
 /// Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
-///
-/// This is just a thin wrapper around a raw slice which performs some additional error handling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Lv<'a> {
-    data: Option<&'a [u8]>,
+pub struct Lv<'value> {
+    data: Option<&'value [u8]>,
 }
 
 pub(crate) fn generic_len_check_data_serialization(
@@ -43,7 +42,7 @@ pub(crate) fn generic_len_check_deserialization(
     Ok(())
 }
 
-impl<'a> Lv<'a> {
+impl<'value> Lv<'value> {
     pub fn new(data: &[u8]) -> Result<Lv, TlvLvError> {
         if data.len() > u8::MAX as usize {
             return Err(TlvLvError::DataTooLarge(data.len()));
@@ -52,7 +51,7 @@ impl<'a> Lv<'a> {
     }
 
     /// Creates a LV with an empty value field.
-    pub fn new_empty() -> Lv<'a> {
+    pub fn new_empty() -> Lv<'value> {
         Lv { data: None }
     }
 
@@ -65,7 +64,7 @@ impl<'a> Lv<'a> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[cfg(feature = "std")]
-    pub fn new_from_string(string: &'a String) -> Result<Lv<'a>, TlvLvError> {
+    pub fn new_from_string(string: &'value String) -> Result<Lv<'value>, TlvLvError> {
         Self::new(string.as_bytes())
     }
 
@@ -99,7 +98,7 @@ impl<'a> Lv<'a> {
     }
 
     /// Reads a LV  from a raw buffer.
-    pub fn from_be_bytes(buf: &'a [u8]) -> Result<Lv<'a>, TlvLvError> {
+    pub fn from_be_bytes(buf: &'value [u8]) -> Result<Lv<'value>, ByteConversionError> {
         generic_len_check_deserialization(buf, MIN_LV_LEN)?;
         Self::from_be_bytes_no_len_check(buf)
     }
@@ -116,7 +115,9 @@ impl<'a> Lv<'a> {
         MIN_LV_LEN + data.len()
     }
 
-    pub(crate) fn from_be_bytes_no_len_check(buf: &'a [u8]) -> Result<Lv<'a>, TlvLvError> {
+    pub(crate) fn from_be_bytes_no_len_check(
+        buf: &'value [u8],
+    ) -> Result<Lv<'value>, ByteConversionError> {
         let value_len = buf[0] as usize;
         generic_len_check_deserialization(buf, value_len + MIN_LV_LEN)?;
         let mut data = None;
@@ -131,6 +132,8 @@ impl<'a> Lv<'a> {
 pub mod tests {
     use crate::cfdp::lv::Lv;
     use crate::cfdp::TlvLvError;
+    use crate::ByteConversionError;
+    use std::string::String;
 
     #[test]
     fn test_basic() {
@@ -225,5 +228,68 @@ pub mod tests {
         } else {
             panic!("invalid exception {:?}", error)
         }
+    }
+
+    #[test]
+    fn test_serialization_buf_too_small() {
+        let mut buf: [u8; 3] = [0; 3];
+        let lv_data: [u8; 4] = [1, 2, 3, 4];
+        let lv = Lv::new(&lv_data).unwrap();
+        let res = lv.write_to_be_bytes(&mut buf);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        if let ByteConversionError::ToSliceTooSmall(missmatch) = error {
+            assert_eq!(missmatch.expected, 5);
+            assert_eq!(missmatch.found, 3);
+        } else {
+            panic!("invalid error {}", error);
+        }
+    }
+
+    #[test]
+    fn test_deserialization_buf_too_small() {
+        let mut buf: [u8; 3] = [0; 3];
+        buf[0] = 4;
+        let res = Lv::from_be_bytes(&buf);
+        assert!(res.is_err());
+        let error = res.unwrap_err();
+        if let ByteConversionError::FromSliceTooSmall(missmatch) = error {
+            assert_eq!(missmatch.found, 3);
+            assert_eq!(missmatch.expected, 5);
+        } else {
+            panic!("invalid error {}", error);
+        }
+    }
+
+    fn verify_test_str_lv(lv: Lv) {
+        let mut buf: [u8; 16] = [0; 16];
+        let res = lv.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        assert_eq!(res, 8 + 1);
+        assert_eq!(buf[0], 8);
+        assert_eq!(buf[1], 't' as u8);
+        assert_eq!(buf[2], 'e' as u8);
+        assert_eq!(buf[3], 's' as u8);
+        assert_eq!(buf[4], 't' as u8);
+        assert_eq!(buf[5], '.' as u8);
+        assert_eq!(buf[6], 'b' as u8);
+        assert_eq!(buf[7], 'i' as u8);
+        assert_eq!(buf[8], 'n' as u8);
+    }
+    #[test]
+    fn test_str_helper() {
+        let test_str = "test.bin";
+        let str_lv = Lv::new_from_str(test_str);
+        assert!(str_lv.is_ok());
+        verify_test_str_lv(str_lv.unwrap());
+    }
+
+    #[test]
+    fn test_string_helper() {
+        let string = String::from("test.bin");
+        let str_lv = Lv::new_from_string(&string);
+        assert!(str_lv.is_ok());
+        verify_test_str_lv(str_lv.unwrap());
     }
 }

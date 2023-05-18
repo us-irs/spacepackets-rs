@@ -1,3 +1,4 @@
+//! CFDP Packet Data Unit (PDU) support.
 use crate::cfdp::*;
 use crate::util::{UnsignedByteField, UnsignedEnum};
 use crate::{ByteConversionError, SizeMissmatch};

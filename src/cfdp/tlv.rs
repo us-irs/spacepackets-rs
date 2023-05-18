@@ -1,3 +1,4 @@
+//! Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
 use crate::cfdp::lv::{
     generic_len_check_data_serialization, generic_len_check_deserialization, Lv, MIN_LV_LEN,
 };
@@ -22,8 +23,6 @@ pub enum TlvType {
 }
 
 /// Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
-///
-/// This is just a thin wrapper around a length-value (LV) object, which add the [TlvType].
 pub struct Tlv<'a> {
     tlv_type: TlvType,
     lv: Lv<'a>,
@@ -85,4 +84,10 @@ impl<'a> Tlv<'a> {
             lv: Lv::from_be_bytes(&buf[MIN_LV_LEN..])?,
         })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_basic() {}
 }

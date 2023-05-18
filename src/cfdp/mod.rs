@@ -10,7 +10,9 @@ pub mod lv;
 pub mod pdu;
 pub mod tlv;
 
+/// This is the name of the standard this module is based on.
 pub const CFDP_VERSION_2_NAME: &str = "CCSDS 727.0-B-5";
+/// Currently, only this version is supported.
 pub const CFDP_VERSION_2: u8 = 0b001;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
@@ -116,8 +118,8 @@ pub enum LargeFileFlag {
     Large = 1,
 }
 
-/// Checksum types according to the SANA Checksum Types registry
-/// https://sanaregistry.org/r/checksum_identifiers/
+/// Checksum types according to the
+/// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
