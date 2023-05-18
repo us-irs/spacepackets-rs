@@ -169,19 +169,19 @@ impl UnsignedEnum for UnsignedByteField {
         match self.len() {
             0 => Ok(()),
             1 => {
-                let u8 = UnsignedU8::try_from(*self).unwrap();
+                let u8 = UnsignedByteFieldU8::try_from(*self).unwrap();
                 u8.write_to_be_bytes(buf)
             }
             2 => {
-                let u16 = UnsignedU16::try_from(*self).unwrap();
+                let u16 = UnsignedByteFieldU16::try_from(*self).unwrap();
                 u16.write_to_be_bytes(buf)
             }
             4 => {
-                let u32 = UnsignedU32::try_from(*self).unwrap();
+                let u32 = UnsignedByteFieldU32::try_from(*self).unwrap();
                 u32.write_to_be_bytes(buf)
             }
             8 => {
-                let u64 = UnsignedU64::try_from(*self).unwrap();
+                let u64 = UnsignedByteFieldU64::try_from(*self).unwrap();
                 u64.write_to_be_bytes(buf)
             }
             _ => {
@@ -222,18 +222,23 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
 }
 
 pub type UnsignedByteFieldEmpty = GenericUnsignedByteField<()>;
-pub type UnsignedU8 = GenericUnsignedByteField<u8>;
-pub type UnsignedU16 = GenericUnsignedByteField<u16>;
-pub type UnsignedU32 = GenericUnsignedByteField<u32>;
-pub type UnsignedU64 = GenericUnsignedByteField<u64>;
+pub type UnsignedByteFieldU8 = GenericUnsignedByteField<u8>;
+pub type UnsignedByteFieldU16 = GenericUnsignedByteField<u16>;
+pub type UnsignedByteFieldU32 = GenericUnsignedByteField<u32>;
+pub type UnsignedByteFieldU64 = GenericUnsignedByteField<u64>;
 
-impl From<UnsignedU8> for UnsignedByteField {
-    fn from(value: UnsignedU8) -> Self {
+pub type UbfU8 = UnsignedByteFieldU8;
+pub type UbfU16 = UnsignedByteFieldU16;
+pub type UbfU32 = UnsignedByteFieldU32;
+pub type UbfU64 = UnsignedByteFieldU64;
+
+impl From<UnsignedByteFieldU8> for UnsignedByteField {
+    fn from(value: UnsignedByteFieldU8) -> Self {
         Self::new(1, value.value as u64)
     }
 }
 
-impl TryFrom<UnsignedByteField> for UnsignedU8 {
+impl TryFrom<UnsignedByteField> for UnsignedByteFieldU8 {
     type Error = UnsignedByteFieldError;
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
@@ -244,13 +249,13 @@ impl TryFrom<UnsignedByteField> for UnsignedU8 {
     }
 }
 
-impl From<UnsignedU16> for UnsignedByteField {
-    fn from(value: UnsignedU16) -> Self {
+impl From<UnsignedByteFieldU16> for UnsignedByteField {
+    fn from(value: UnsignedByteFieldU16) -> Self {
         Self::new(2, value.value as u64)
     }
 }
 
-impl TryFrom<UnsignedByteField> for UnsignedU16 {
+impl TryFrom<UnsignedByteField> for UnsignedByteFieldU16 {
     type Error = UnsignedByteFieldError;
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
@@ -261,13 +266,13 @@ impl TryFrom<UnsignedByteField> for UnsignedU16 {
     }
 }
 
-impl From<UnsignedU32> for UnsignedByteField {
-    fn from(value: UnsignedU32) -> Self {
+impl From<UnsignedByteFieldU32> for UnsignedByteField {
+    fn from(value: UnsignedByteFieldU32) -> Self {
         Self::new(4, value.value as u64)
     }
 }
 
-impl TryFrom<UnsignedByteField> for UnsignedU32 {
+impl TryFrom<UnsignedByteField> for UnsignedByteFieldU32 {
     type Error = UnsignedByteFieldError;
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
@@ -278,13 +283,13 @@ impl TryFrom<UnsignedByteField> for UnsignedU32 {
     }
 }
 
-impl From<UnsignedU64> for UnsignedByteField {
-    fn from(value: UnsignedU64) -> Self {
+impl From<UnsignedByteFieldU64> for UnsignedByteField {
+    fn from(value: UnsignedByteFieldU64) -> Self {
         Self::new(8, value.value)
     }
 }
 
-impl TryFrom<UnsignedByteField> for UnsignedU64 {
+impl TryFrom<UnsignedByteField> for UnsignedByteFieldU64 {
     type Error = UnsignedByteFieldError;
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
@@ -298,15 +303,15 @@ impl TryFrom<UnsignedByteField> for UnsignedU64 {
 #[cfg(test)]
 pub mod tests {
     use crate::util::{
-        UnsignedByteField, UnsignedByteFieldError, UnsignedEnum, UnsignedU16, UnsignedU32,
-        UnsignedU64, UnsignedU8,
+        UnsignedByteField, UnsignedByteFieldError, UnsignedByteFieldU16, UnsignedByteFieldU32,
+        UnsignedByteFieldU64, UnsignedByteFieldU8, UnsignedEnum,
     };
     use crate::ByteConversionError;
     use std::format;
 
     #[test]
     fn test_simple_u8() {
-        let u8 = UnsignedU8::new(5);
+        let u8 = UnsignedByteFieldU8::new(5);
         assert_eq!(u8.len(), 1);
         let mut buf: [u8; 8] = [0; 8];
         u8.write_to_be_bytes(&mut buf)
@@ -319,7 +324,7 @@ pub mod tests {
 
     #[test]
     fn test_simple_u16() {
-        let u16 = UnsignedU16::new(3823);
+        let u16 = UnsignedByteFieldU16::new(3823);
         assert_eq!(u16.len(), 2);
         let mut buf: [u8; 8] = [0; 8];
         u16.write_to_be_bytes(&mut buf)
@@ -333,7 +338,7 @@ pub mod tests {
 
     #[test]
     fn test_simple_u32() {
-        let u32 = UnsignedU32::new(80932);
+        let u32 = UnsignedByteFieldU32::new(80932);
         assert_eq!(u32.len(), 4);
         let mut buf: [u8; 8] = [0; 8];
         u32.write_to_be_bytes(&mut buf)
@@ -347,7 +352,7 @@ pub mod tests {
 
     #[test]
     fn test_simple_u64() {
-        let u64 = UnsignedU64::new(5999999);
+        let u64 = UnsignedByteFieldU64::new(5999999);
         assert_eq!(u64.len(), 8);
         let mut buf: [u8; 8] = [0; 8];
         u64.write_to_be_bytes(&mut buf)
@@ -358,11 +363,12 @@ pub mod tests {
 
     #[test]
     fn conversions_u8() {
-        let u8 = UnsignedU8::new(5);
+        let u8 = UnsignedByteFieldU8::new(5);
         let u8_type_erased = UnsignedByteField::from(u8);
         assert_eq!(u8_type_erased.width, 1);
         assert_eq!(u8_type_erased.value, 5);
-        let u8_conv_back = UnsignedU8::try_from(u8_type_erased).expect("conversion failed for u8");
+        let u8_conv_back =
+            UnsignedByteFieldU8::try_from(u8_type_erased).expect("conversion failed for u8");
         assert_eq!(u8, u8_conv_back);
         assert_eq!(u8_conv_back.value, 5);
     }
@@ -370,7 +376,7 @@ pub mod tests {
     #[test]
     fn conversion_u8_fails() {
         let field = UnsignedByteField::new(2, 60000);
-        let conv_fails = UnsignedU8::try_from(field);
+        let conv_fails = UnsignedByteFieldU8::try_from(field);
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
@@ -386,12 +392,12 @@ pub mod tests {
 
     #[test]
     fn conversions_u16() {
-        let u16 = UnsignedU16::new(64444);
+        let u16 = UnsignedByteFieldU16::new(64444);
         let u16_type_erased = UnsignedByteField::from(u16);
         assert_eq!(u16_type_erased.width, 2);
         assert_eq!(u16_type_erased.value, 64444);
         let u16_conv_back =
-            UnsignedU16::try_from(u16_type_erased).expect("conversion failed for u16");
+            UnsignedByteFieldU16::try_from(u16_type_erased).expect("conversion failed for u16");
         assert_eq!(u16, u16_conv_back);
         assert_eq!(u16_conv_back.value, 64444);
     }
@@ -399,7 +405,7 @@ pub mod tests {
     #[test]
     fn conversion_u16_fails() {
         let field = UnsignedByteField::new(4, 75000);
-        let conv_fails = UnsignedU16::try_from(field);
+        let conv_fails = UnsignedByteFieldU16::try_from(field);
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
@@ -415,12 +421,12 @@ pub mod tests {
 
     #[test]
     fn conversions_u32() {
-        let u32 = UnsignedU32::new(75000);
+        let u32 = UnsignedByteFieldU32::new(75000);
         let u32_type_erased = UnsignedByteField::from(u32);
         assert_eq!(u32_type_erased.width, 4);
         assert_eq!(u32_type_erased.value, 75000);
         let u32_conv_back =
-            UnsignedU32::try_from(u32_type_erased).expect("conversion failed for u32");
+            UnsignedByteFieldU32::try_from(u32_type_erased).expect("conversion failed for u32");
         assert_eq!(u32, u32_conv_back);
         assert_eq!(u32_conv_back.value, 75000);
     }
@@ -428,7 +434,7 @@ pub mod tests {
     #[test]
     fn conversion_u32_fails() {
         let field = UnsignedByteField::new(8, 75000);
-        let conv_fails = UnsignedU32::try_from(field);
+        let conv_fails = UnsignedByteFieldU32::try_from(field);
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
@@ -444,12 +450,12 @@ pub mod tests {
 
     #[test]
     fn conversions_u64() {
-        let u64 = UnsignedU64::new(5999999);
+        let u64 = UnsignedByteFieldU64::new(5999999);
         let u64_type_erased = UnsignedByteField::from(u64);
         assert_eq!(u64_type_erased.width, 8);
         assert_eq!(u64_type_erased.value, 5999999);
         let u64_conv_back =
-            UnsignedU64::try_from(u64_type_erased).expect("conversion failed for u64");
+            UnsignedByteFieldU64::try_from(u64_type_erased).expect("conversion failed for u64");
         assert_eq!(u64, u64_conv_back);
         assert_eq!(u64_conv_back.value, 5999999);
     }
@@ -457,7 +463,7 @@ pub mod tests {
     #[test]
     fn conversion_u64_fails() {
         let field = UnsignedByteField::new(4, 60000);
-        let conv_fails = UnsignedU64::try_from(field);
+        let conv_fails = UnsignedByteFieldU64::try_from(field);
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
@@ -557,7 +563,7 @@ pub mod tests {
 
     #[test]
     fn type_u16_target_buf_too_small() {
-        let u16 = UnsignedU16::new(500);
+        let u16 = UnsignedByteFieldU16::new(500);
         let mut buf: [u8; 1] = [0; 1];
         let res = u16.write_to_be_bytes(&mut buf);
         assert!(res.is_err());
@@ -605,7 +611,7 @@ pub mod tests {
 
     #[test]
     fn type_u32_target_buf_too_small() {
-        let u16 = UnsignedU32::new(500);
+        let u16 = UnsignedByteFieldU32::new(500);
         let mut buf: [u8; 3] = [0; 3];
         let res = u16.write_to_be_bytes(&mut buf);
         assert!(res.is_err());

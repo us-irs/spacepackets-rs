@@ -26,13 +26,13 @@ impl Display for PduError {
             PduError::InvalidEntityLen(raw_id) => {
                 write!(
                     f,
-                    "Invalid entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
+                    "Invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
                 )
             }
             PduError::InvalidTransactionSeqNumLen(raw_id) => {
                 write!(
                     f,
-                    "Invalid transaction seq num length {raw_id}, only [1, 2, 4, 8] are allowed"
+                    "invalid PDUtransaction seq num length {raw_id}, only [1, 2, 4, 8] are allowed"
                 )
             }
             PduError::CfdpVersionMissmatch(raw) => {
@@ -44,7 +44,7 @@ impl Display for PduError {
             PduError::SourceDestIdLenMissmatch((src_len, dest_len)) => {
                 write!(
                     f,
-                    "missmatch of source length {src_len} and destination length {dest_len}"
+                    "missmatch of PDU source length {src_len} and destination length {dest_len}"
                 )
             }
             PduError::ByteConversionError(e) => {
@@ -188,6 +188,8 @@ impl PduHeader {
     }
 
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        // Internal note: There is currently no way to pass a PDU configuration like this, but
+        // this check is still kept for defensive programming.
         if self.pdu_conf.source_entity_id.len() != self.pdu_conf.dest_entity_id.len() {
             return Err(PduError::SourceDestIdLenMissmatch((
                 self.pdu_conf.source_entity_id.len(),
@@ -341,15 +343,15 @@ mod tests {
         CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
         TransmissionMode, CFDP_VERSION_2,
     };
-    use crate::util::{UnsignedU16, UnsignedU8};
+    use crate::util::{UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8};
     use crate::ByteConversionError;
     use std::format;
 
     #[test]
     fn test_basic_state() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
@@ -370,9 +372,9 @@ mod tests {
 
     #[test]
     fn test_serialization_1() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
@@ -409,9 +411,9 @@ mod tests {
 
     #[test]
     fn test_deserialization_1() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
@@ -427,9 +429,9 @@ mod tests {
 
     #[test]
     fn test_serialization_2() {
-        let src_id = UnsignedU16::new(0x0001);
-        let dest_id = UnsignedU16::new(0x0203);
-        let transaction_id = UnsignedU16::new(0x0405);
+        let src_id = UnsignedByteFieldU16::new(0x0001);
+        let dest_id = UnsignedByteFieldU16::new(0x0203);
+        let transaction_id = UnsignedByteFieldU16::new(0x0405);
         let mut common_pdu_cfg =
             CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
                 .expect("common config creation failed");
@@ -476,9 +478,9 @@ mod tests {
 
     #[test]
     fn test_deserialization_2() {
-        let src_id = UnsignedU16::new(0x0001);
-        let dest_id = UnsignedU16::new(0x0203);
-        let transaction_id = UnsignedU16::new(0x0405);
+        let src_id = UnsignedByteFieldU16::new(0x0001);
+        let dest_id = UnsignedByteFieldU16::new(0x0203);
+        let transaction_id = UnsignedByteFieldU16::new(0x0405);
         let mut common_pdu_cfg =
             CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
                 .expect("common config creation failed");
@@ -504,9 +506,9 @@ mod tests {
 
     #[test]
     fn test_invalid_raw_version() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
@@ -543,9 +545,9 @@ mod tests {
 
     #[test]
     fn test_buf_too_small_2() {
-        let src_id = UnsignedU8::new(1);
-        let dest_id = UnsignedU8::new(2);
-        let transaction_id = UnsignedU8::new(3);
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
@@ -560,6 +562,95 @@ mod tests {
         {
             assert_eq!(missmatch.found, 6);
             assert_eq!(missmatch.expected, 7);
+        }
+    }
+
+    #[test]
+    fn test_invalid_seq_len() {
+        let src_id = UbfU8::new(1);
+        let dest_id = UbfU8::new(2);
+        let transaction_seq_id = UbfU8::new(3);
+        let invalid_byte_field = UnsignedByteField::new(3, 5);
+        let pdu_conf_res = CommonPduConfig::new_with_defaults(src_id, dest_id, invalid_byte_field);
+        assert!(pdu_conf_res.is_err());
+        let error = pdu_conf_res.unwrap_err();
+        if let PduError::InvalidTransactionSeqNumLen(len) = error {
+            assert_eq!(len, 3);
+        } else {
+            panic!("Invalid exception: {}", error)
+        }
+        let pdu_conf_res = CommonPduConfig::new_with_defaults(
+            invalid_byte_field,
+            invalid_byte_field,
+            transaction_seq_id,
+        );
+        assert!(pdu_conf_res.is_err());
+        let error = pdu_conf_res.unwrap_err();
+        if let PduError::InvalidEntityLen(len) = error {
+            assert_eq!(len, 3);
+        } else {
+            panic!("Invalid exception: {}", error)
+        }
+    }
+    #[test]
+    fn test_missmatch_src_dest_id() {
+        let src_id = UnsignedByteField::new(1, 5);
+        let dest_id = UnsignedByteField::new(2, 5);
+        let transaction_seq_id = UbfU8::new(3);
+        let pdu_conf_res = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_id);
+        assert!(pdu_conf_res.is_err());
+        let error = pdu_conf_res.unwrap_err();
+        if let PduError::SourceDestIdLenMissmatch((src_len, dest_len)) = error {
+            assert_eq!(src_len, 1);
+            assert_eq!(dest_len, 2);
+        }
+    }
+
+    #[test]
+    fn test_invalid_raw_src_id_len() {
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        buf[3] &= !0b0111_0000;
+        // Equivalent to the length of three
+        buf[3] |= 0b10 << 4;
+        let header_res = PduHeader::from_be_bytes(&buf);
+        assert!(header_res.is_err());
+        let error = header_res.unwrap_err();
+        if let PduError::InvalidEntityLen(len) = error {
+            assert_eq!(len, 3);
+        } else {
+            panic!("invalid exception {:?}", error)
+        }
+    }
+
+    #[test]
+    fn test_invalid_transaction_seq_id_len() {
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
+        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            .expect("common config creation failed");
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let mut buf: [u8; 7] = [0; 7];
+        let res = pdu_header.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        buf[3] &= !0b0000_0111;
+        // Equivalent to the length of three
+        buf[3] |= 0b10;
+        let header_res = PduHeader::from_be_bytes(&buf);
+        assert!(header_res.is_err());
+        let error = header_res.unwrap_err();
+        if let PduError::InvalidTransactionSeqNumLen(len) = error {
+            assert_eq!(len, 3);
+        } else {
+            panic!("invalid exception {:?}", error)
         }
     }
 }
