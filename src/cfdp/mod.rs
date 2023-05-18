@@ -1,7 +1,12 @@
+use crate::ByteConversionError;
+use core::fmt::{Display, Formatter};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
+use std::error::Error;
 
+pub mod lv;
 pub mod pdu;
 pub mod tlv;
 
@@ -127,3 +132,49 @@ pub enum ChecksumType {
 }
 
 pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum TlvLvError {
+    DataTooLarge(usize),
+    ByteConversionError(ByteConversionError),
+    /// Only relevant for TLV de-serialization.
+    UnknownTlvType(u8),
+}
+
+impl From<ByteConversionError> for TlvLvError {
+    fn from(value: ByteConversionError) -> Self {
+        Self::ByteConversionError(value)
+    }
+}
+
+impl Display for TlvLvError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TlvLvError::UnknownTlvType(raw_tlv_id) => {
+                write!(f, "unknown TLV type {raw_tlv_id}")
+            }
+            TlvLvError::DataTooLarge(data_len) => {
+                write!(
+                    f,
+                    "data with size {} larger than allowed {} bytes",
+                    data_len,
+                    u8::MAX
+                )
+            }
+            TlvLvError::ByteConversionError(e) => {
+                write!(f, "{}", e)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl Error for TlvLvError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            TlvLvError::ByteConversionError(e) => Some(e),
+            _ => None,
+        }
+    }
+}

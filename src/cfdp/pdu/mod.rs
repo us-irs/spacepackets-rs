@@ -63,14 +63,21 @@ impl Display for PduError {
                 )
             }
             PduError::ByteConversionError(e) => {
-                write!(f, "low level byte conversion error: {e}")
+                write!(f, "{}", e)
             }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl Error for PduError {}
+impl Error for PduError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            PduError::ByteConversionError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 
 impl From<ByteConversionError> for PduError {
     fn from(value: ByteConversionError) -> Self {

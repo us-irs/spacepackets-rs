@@ -1,4 +1,8 @@
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::cfdp::lv::{
+    generic_len_check_data_serialization, generic_len_check_deserialization, Lv, MIN_LV_LEN,
+};
+use crate::cfdp::TlvLvError;
+use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -19,68 +23,40 @@ pub enum TlvType {
 
 pub struct Tlv<'a> {
     tlv_type: TlvType,
-    data: &'a [u8],
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum TlvError {
-    DataTooLarge(usize),
-    ByteConversionError(ByteConversionError),
-    UnknownTlvType(u8),
-}
-
-impl From<ByteConversionError> for TlvError {
-    fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversionError(value)
-    }
+    lv: Lv<'a>,
 }
 
 impl<'a> Tlv<'a> {
-    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv, TlvError> {
+    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv, TlvLvError> {
         if data.len() > u8::MAX as usize {
-            return Err(TlvError::DataTooLarge(data.len()));
+            return Err(TlvLvError::DataTooLarge(data.len()));
         }
-        Ok(Tlv { tlv_type, data })
+        Ok(Tlv {
+            tlv_type,
+            lv: Lv::new(data)?,
+        })
     }
 
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        if buf.len() < self.data.len() + MIN_TLV_LEN {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: self.data.len() + MIN_TLV_LEN,
-            }));
-        }
+        generic_len_check_data_serialization(buf, self.value(), MIN_TLV_LEN)?;
         buf[0] = self.tlv_type as u8;
-        // Length check in constructor ensures the length always has a valid value.
-        buf[1] = self.data.len() as u8;
-        buf[MIN_TLV_LEN..self.data.len() + MIN_TLV_LEN].copy_from_slice(self.data);
-        Ok(MIN_TLV_LEN + self.data.len())
+        self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
+        Ok(MIN_TLV_LEN + self.value().len())
     }
 
-    pub fn from_be_bytes(buf: &'a [u8]) -> Result<Tlv<'a>, TlvError> {
-        if buf.len() < MIN_TLV_LEN {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: MIN_TLV_LEN,
-            })
-            .into());
-        }
+    pub fn value(&self) -> &[u8] {
+        self.lv.value()
+    }
+
+    pub fn from_be_bytes(buf: &'a [u8]) -> Result<Tlv<'a>, TlvLvError> {
+        generic_len_check_deserialization(buf, MIN_TLV_LEN)?;
         let tlv_type_res = TlvType::try_from(buf[0]);
         if tlv_type_res.is_err() {
-            return Err(TlvError::UnknownTlvType(buf[1]));
-        }
-        let value_len = buf[1] as usize;
-        if buf.len() < value_len {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: MIN_TLV_LEN + value_len,
-            })
-            .into());
+            return Err(TlvLvError::UnknownTlvType(buf[1]));
         }
         Ok(Self {
             tlv_type: tlv_type_res.unwrap(),
-            data: &buf[MIN_TLV_LEN..MIN_TLV_LEN + value_len],
+            lv: Lv::from_be_bytes(&buf[MIN_LV_LEN..])?,
         })
     }
 }
