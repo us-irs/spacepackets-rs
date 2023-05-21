@@ -34,6 +34,7 @@ pub enum PduError {
     /// The first entry will be the source entity ID length, the second one the destination entity
     /// ID length.
     SourceDestIdLenMissmatch((usize, usize)),
+    FileSizeTooLarge(u64),
 }
 
 impl Display for PduError {
@@ -65,6 +66,9 @@ impl Display for PduError {
             }
             PduError::ByteConversionError(e) => {
                 write!(f, "{}", e)
+            }
+            PduError::FileSizeTooLarge(value) => {
+                write!(f, "file size value {} exceeds allowed 32 bit width", value)
             }
         }
     }
@@ -210,6 +214,12 @@ impl PduHeader {
         }
     }
 
+    pub fn written_len(&self) -> usize {
+        FIXED_HEADER_LEN
+            + self.pdu_conf.source_entity_id.len()
+            + self.pdu_conf.transaction_seq_num.len()
+            + self.pdu_conf.dest_entity_id.len()
+    }
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         // Internal note: There is currently no way to pass a PDU configuration like this, but
         // this check is still kept for defensive programming.

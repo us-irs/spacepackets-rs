@@ -9,10 +9,15 @@ use std::string::String;
 pub const MIN_LV_LEN: usize = 1;
 
 /// Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
+///
+/// # Lifetimes
+///  * `data`: If the LV is generated from a raw bytestream, this will be the lifetime of
+///    the raw bytestream. If the LV is generated from a raw slice or a similar data reference,
+///    this will be the lifetime of that data reference.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Lv<'value> {
-    data: Option<&'value [u8]>,
+pub struct Lv<'data> {
+    data: Option<&'data [u8]>,
 }
 
 pub(crate) fn generic_len_check_data_serialization(
@@ -42,7 +47,7 @@ pub(crate) fn generic_len_check_deserialization(
     Ok(())
 }
 
-impl<'value> Lv<'value> {
+impl<'data> Lv<'data> {
     pub fn new(data: &[u8]) -> Result<Lv, TlvLvError> {
         if data.len() > u8::MAX as usize {
             return Err(TlvLvError::DataTooLarge(data.len()));
@@ -51,7 +56,7 @@ impl<'value> Lv<'value> {
     }
 
     /// Creates a LV with an empty value field.
-    pub fn new_empty() -> Lv<'value> {
+    pub fn new_empty() -> Lv<'data> {
         Lv { data: None }
     }
 
@@ -64,7 +69,7 @@ impl<'value> Lv<'value> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[cfg(feature = "std")]
-    pub fn new_from_string(string: &'value String) -> Result<Lv<'value>, TlvLvError> {
+    pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvError> {
         Self::new(string.as_bytes())
     }
 
@@ -77,7 +82,7 @@ impl<'value> Lv<'value> {
     }
 
     /// Returns the full raw length, including the length byte.
-    pub fn len_raw(&self) -> usize {
+    pub fn len_full(&self) -> usize {
         self.len_value() + 1
     }
 
@@ -98,7 +103,7 @@ impl<'value> Lv<'value> {
     }
 
     /// Reads a LV  from a raw buffer.
-    pub fn from_be_bytes(buf: &'value [u8]) -> Result<Lv<'value>, ByteConversionError> {
+    pub fn from_be_bytes(buf: &'data [u8]) -> Result<Lv<'data>, ByteConversionError> {
         generic_len_check_deserialization(buf, MIN_LV_LEN)?;
         Self::from_be_bytes_no_len_check(buf)
     }
@@ -116,8 +121,8 @@ impl<'value> Lv<'value> {
     }
 
     pub(crate) fn from_be_bytes_no_len_check(
-        buf: &'value [u8],
-    ) -> Result<Lv<'value>, ByteConversionError> {
+        buf: &'data [u8],
+    ) -> Result<Lv<'data>, ByteConversionError> {
         let value_len = buf[0] as usize;
         generic_len_check_deserialization(buf, value_len + MIN_LV_LEN)?;
         let mut data = None;
@@ -148,7 +153,7 @@ pub mod tests {
         assert_eq!(val[2], 3);
         assert_eq!(val[3], 4);
         assert!(!lv.is_empty());
-        assert_eq!(lv.len_raw(), 5);
+        assert_eq!(lv.len_full(), 5);
         assert_eq!(lv.len_value(), 4);
     }
 
@@ -156,7 +161,7 @@ pub mod tests {
     fn test_empty() {
         let lv_empty = Lv::new_empty();
         assert_eq!(lv_empty.len_value(), 0);
-        assert_eq!(lv_empty.len_raw(), 1);
+        assert_eq!(lv_empty.len_full(), 1);
         assert!(lv_empty.is_empty());
         assert_eq!(lv_empty.value(), None);
         let mut buf: [u8; 4] = [0xff; 4];
@@ -199,7 +204,7 @@ pub mod tests {
         assert!(!lv.is_empty());
         assert!(lv.value().is_some());
         assert_eq!(lv.len_value(), 4);
-        assert_eq!(lv.len_raw(), 5);
+        assert_eq!(lv.len_full(), 5);
         let val = lv.value().unwrap();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);

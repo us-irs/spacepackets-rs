@@ -140,8 +140,6 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 pub enum TlvLvError {
     DataTooLarge(usize),
     ByteConversionError(ByteConversionError),
-    /// Only relevant for TLV de-serialization.
-    UnknownTlvType(u8),
 }
 
 impl From<ByteConversionError> for TlvLvError {
@@ -153,9 +151,6 @@ impl From<ByteConversionError> for TlvLvError {
 impl Display for TlvLvError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            TlvLvError::UnknownTlvType(raw_tlv_id) => {
-                write!(f, "unknown TLV type {raw_tlv_id}")
-            }
             TlvLvError::DataTooLarge(data_len) => {
                 write!(
                     f,
