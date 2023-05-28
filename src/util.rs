@@ -126,6 +126,10 @@ impl UnsignedByteField {
         Self { width, value }
     }
 
+    pub fn value(&self) -> u64 {
+        self.value
+    }
+
     pub fn new_from_be_bytes(width: usize, buf: &[u8]) -> Result<Self, UnsignedByteFieldError> {
         if width > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {

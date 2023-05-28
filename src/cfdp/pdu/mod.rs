@@ -376,9 +376,72 @@ mod tests {
         CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
         TransmissionMode, CFDP_VERSION_2,
     };
-    use crate::util::{UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8};
+    use crate::util::{
+        UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum,
+    };
     use crate::ByteConversionError;
     use std::format;
+
+    pub(crate) fn verify_raw_header(pdu_conf: &PduHeader, buf: &[u8]) {
+        assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
+        // File directive
+        assert_eq!((buf[0] >> 4) & 1, pdu_conf.pdu_type as u8);
+        // Towards receiver
+        assert_eq!((buf[0] >> 3) & 1, pdu_conf.pdu_conf.direction as u8);
+        // Acknowledged
+        assert_eq!((buf[0] >> 2) & 1, pdu_conf.pdu_conf.trans_mode as u8);
+        // No CRC
+        assert_eq!((buf[0] >> 1) & 1, pdu_conf.pdu_conf.crc_flag as u8);
+        // Regular file size
+        assert_eq!(buf[0] & 1, pdu_conf.pdu_conf.file_flag as u8);
+        let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
+        assert_eq!(pdu_datafield_len, pdu_conf.pdu_datafield_len);
+        // No record boundary preservation
+        assert_eq!((buf[3] >> 7) & 1, pdu_conf.seg_ctrl as u8);
+        // Entity ID length raw value is actual number of octets - 1 => 0
+        let entity_id_len = pdu_conf.pdu_conf.source_entity_id.len();
+        assert_eq!((buf[3] >> 4) & 0b111, entity_id_len as u8 - 1);
+        // No segment metadata
+        assert_eq!((buf[3] >> 3) & 0b1, pdu_conf.seg_metadata_flag as u8);
+        // Transaction Sequence ID length raw value is actual number of octets - 1 => 0
+        let seq_num_len = pdu_conf.pdu_conf.transaction_seq_num.len();
+        assert_eq!(buf[3] & 0b111, seq_num_len as u8 - 1);
+        let mut current_idx = 4;
+        let mut byte_field_check = |field_len: usize, ubf: &UnsignedByteField| {
+            match field_len {
+                1 => assert_eq!(buf[current_idx], ubf.value() as u8),
+                2 => assert_eq!(
+                    u16::from_be_bytes(
+                        buf[current_idx..current_idx + field_len]
+                            .try_into()
+                            .unwrap()
+                    ),
+                    ubf.value() as u16
+                ),
+                4 => assert_eq!(
+                    u32::from_be_bytes(
+                        buf[current_idx..current_idx + field_len]
+                            .try_into()
+                            .unwrap()
+                    ),
+                    ubf.value() as u32
+                ),
+                8 => assert_eq!(
+                    u64::from_be_bytes(
+                        buf[current_idx..current_idx + field_len]
+                            .try_into()
+                            .unwrap()
+                    ),
+                    ubf.value() as u64
+                ),
+                _ => panic!("invalid entity ID length"),
+            }
+            current_idx += field_len
+        };
+        byte_field_check(entity_id_len, &pdu_conf.pdu_conf.source_entity_id);
+        byte_field_check(seq_num_len, &pdu_conf.pdu_conf.transaction_seq_num);
+        byte_field_check(entity_id_len, &pdu_conf.pdu_conf.dest_entity_id);
+    }
 
     #[test]
     fn test_basic_state() {
@@ -401,6 +464,7 @@ mod tests {
             SegmentationControl::NoRecordBoundaryPreservation
         );
         assert_eq!(pdu_header.pdu_datafield_len, 5);
+        assert_eq!(pdu_header.written_len(), 7);
     }
 
     #[test]
@@ -416,30 +480,7 @@ mod tests {
         assert!(res.is_ok());
         // 4 byte fixed header plus three bytes src, dest ID and transaction ID
         assert_eq!(res.unwrap(), 7);
-        assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
-        // File directive
-        assert_eq!((buf[0] >> 4) & 1, 0);
-        // Towards receiver
-        assert_eq!((buf[0] >> 3) & 1, 0);
-        // Acknowledged
-        assert_eq!((buf[0] >> 2) & 1, 0);
-        // No CRC
-        assert_eq!((buf[0] >> 1) & 1, 0);
-        // Regular file size
-        assert_eq!(buf[0] & 1, 0);
-        let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
-        assert_eq!(pdu_datafield_len, 5);
-        // No record boundary preservation
-        assert_eq!((buf[3] >> 7) & 1, 0);
-        // Entity ID length raw value is actual number of octets - 1 => 0
-        assert_eq!((buf[3] >> 4) & 0b111, 0);
-        // No segment metadata
-        assert_eq!((buf[3] >> 3) & 0b1, 0);
-        // Transaction Sequence ID length raw value is actual number of octets - 1 => 0
-        assert_eq!(buf[3] & 0b111, 0);
-        assert_eq!(buf[4], 1);
-        assert_eq!(buf[5], 3);
-        assert_eq!(buf[6], 2);
+        verify_raw_header(&pdu_header, &buf);
     }
 
     #[test]
@@ -478,35 +519,13 @@ mod tests {
             SegmentMetadataFlag::Present,
             SegmentationControl::WithRecordBoundaryPreservation,
         );
+        assert_eq!(pdu_header.written_len(), 10);
         let mut buf: [u8; 16] = [0; 16];
         let res = pdu_header.write_to_be_bytes(&mut buf);
         assert!(res.is_ok(), "{}", format!("Result {res:?} not okay"));
         // 4 byte fixed header, 6 bytes additional fields
         assert_eq!(res.unwrap(), 10);
-        assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
-        // File directive
-        assert_eq!((buf[0] >> 4) & 1, 1);
-        // Towards sender
-        assert_eq!((buf[0] >> 3) & 1, 1);
-        // Unacknowledged
-        assert_eq!((buf[0] >> 2) & 1, 1);
-        // With CRC
-        assert_eq!((buf[0] >> 1) & 1, 1);
-        // Large file size
-        assert_eq!(buf[0] & 1, 1);
-        let pdu_datafield_len = u16::from_be_bytes(buf[1..3].try_into().unwrap());
-        assert_eq!(pdu_datafield_len, 5);
-        // With record boundary preservation
-        assert_eq!((buf[3] >> 7) & 1, 1);
-        // Entity ID length raw value is actual number of octets - 1 => 1
-        assert_eq!((buf[3] >> 4) & 0b111, 1);
-        // With segment metadata
-        assert_eq!((buf[3] >> 3) & 0b1, 1);
-        // Transaction Sequence ID length raw value is actual number of octets - 1 => 1
-        assert_eq!(buf[3] & 0b111, 1);
-        assert_eq!(u16::from_be_bytes(buf[4..6].try_into().unwrap()), 0x0001);
-        assert_eq!(u16::from_be_bytes(buf[6..8].try_into().unwrap()), 0x0405);
-        assert_eq!(u16::from_be_bytes(buf[8..10].try_into().unwrap()), 0x0203);
+        verify_raw_header(&pdu_header, &buf);
     }
 
     #[test]

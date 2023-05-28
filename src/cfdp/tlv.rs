@@ -232,6 +232,7 @@ mod tests {
             panic!("unexpected error {:?}", error);
         }
     }
+
     #[test]
     fn test_deserialization_custom_tlv_type() {
         let mut buf: [u8; 4] = [0; 4];

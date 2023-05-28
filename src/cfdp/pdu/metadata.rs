@@ -21,7 +21,7 @@ impl MetadataGenericParams {
         Self {
             closure_requested,
             checksum_type,
-            file_size
+            file_size,
         }
     }
 }
@@ -97,6 +97,10 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         self.dest_file_name
     }
 
+    pub fn options(&self) -> Option<&'opts [u8]> {
+        self.options
+    }
+
     pub fn written_len(&self) -> usize {
         // One directive type octet, and one byte of the parameter field.
         let mut len = self.pdu_header.written_len() + 2;
@@ -139,8 +143,12 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
                 .copy_from_slice(&(self.metadata_params.file_size as u32).to_be_bytes());
             current_idx += core::mem::size_of::<u32>()
         }
-        current_idx += self.src_file_name.write_to_be_bytes(buf)?;
-        current_idx += self.dest_file_name.write_to_be_bytes(buf)?;
+        current_idx += self
+            .src_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
+        current_idx += self
+            .dest_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
         if let Some(opts) = self.options {
             buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
             current_idx += opts.len();
@@ -151,32 +159,63 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::cfdp::ChecksumType;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{MetadataGenericParams, MetadataPdu};
+    use crate::cfdp::pdu::tests::verify_raw_header;
+    use crate::cfdp::pdu::{CommonPduConfig, FileDirectiveType, PduHeader};
+    use crate::cfdp::ChecksumType;
     use crate::util::UbfU8;
-    use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
 
-    #[test]
-    fn test_basic() {
+    fn common_pdu_conf() -> CommonPduConfig {
         let src_id = UbfU8::new(5);
         let dest_id = UbfU8::new(10);
         let transaction_seq_num = UbfU8::new(20);
-        let common_pdu_conf = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).expect("Generating common PDU config");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_conf, 0);
+        CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num)
+            .expect("Generating common PDU config")
+    }
+
+    #[test]
+    fn test_basic() {
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(), 0);
         let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 10);
-        let src_filename = Lv::new_from_str("hello-world.txt").expect("Generating string LV failed");
+        let src_filename =
+            Lv::new_from_str("hello-world.txt").expect("Generating string LV failed");
         let src_len = src_filename.len_full();
-        let dest_filename = Lv::new_from_str("hello-world2.txt").expect("Generating destination LV failed");
+        let dest_filename =
+            Lv::new_from_str("hello-world2.txt").expect("Generating destination LV failed");
         let dest_len = dest_filename.len_full();
-        let metadata_pdu= MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
-        assert_eq!(metadata_pdu.written_len(), pdu_header.written_len() + 1 + 1 + 4 + src_len + dest_len);
+        let metadata_pdu =
+            MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
+        assert_eq!(
+            metadata_pdu.written_len(),
+            pdu_header.written_len() + 1 + 1 + 4 + src_len + dest_len
+        );
         assert_eq!(metadata_pdu.src_file_name(), src_filename);
         assert_eq!(metadata_pdu.dest_file_name(), dest_filename);
+        assert_eq!(metadata_pdu.options(), None);
     }
 
     #[test]
     fn test_serialization() {
-
+        let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(), 0);
+        let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 10);
+        let src_filename =
+            Lv::new_from_str("hello-world.txt").expect("Generating string LV failed");
+        let src_len = src_filename.len_full();
+        let dest_filename =
+            Lv::new_from_str("hello-world2.txt").expect("Generating destination LV failed");
+        let dest_len = dest_filename.len_full();
+        let metadata_pdu =
+            MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
+        let mut buf: [u8; 64] = [0; 64];
+        let res = metadata_pdu.write_to_be_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(
+            written,
+            pdu_header.written_len() + 1 + 1 + 4 + src_len + dest_len
+        );
+        verify_raw_header(&pdu_header, &buf);
+        assert_eq!(buf[7], FileDirectiveType::MetadataPdu as u8);
     }
 }
