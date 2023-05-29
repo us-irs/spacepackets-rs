@@ -1,8 +1,8 @@
 use crate::cfdp::lv::Lv;
 use crate::cfdp::pdu::{FileDirectiveType, PduError, PduHeader};
 use crate::cfdp::tlv::Tlv;
-use crate::cfdp::{ChecksumType, LargeFileFlag};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag};
+use crate::{ByteConversionError, SizeMissmatch, CRC_CCITT_FALSE};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "serde")]
@@ -74,12 +74,25 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
     }
 
     pub fn new_with_opts(
-        pdu_header: PduHeader,
+        mut pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
         src_file_name: Lv<'src_name>,
         dest_file_name: Lv<'dest_name>,
         options: Option<&'opts [u8]>,
     ) -> Self {
+        let is_large_file = pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large;
+        let has_crc = pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc;
+        pdu_header.pdu_datafield_len =
+            2 + 4 + src_file_name.len_full() as u16 + dest_file_name.len_full() as u16;
+        if is_large_file {
+            pdu_header.pdu_datafield_len += 4;
+        }
+        if has_crc {
+            pdu_header.pdu_datafield_len += 2;
+        }
+        if let Some(opts) = options {
+            pdu_header.pdu_datafield_len += opts.len() as u16;
+        }
         Self {
             pdu_header,
             metadata_params,
@@ -114,10 +127,17 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         if let Some(opts) = self.options {
             len += opts.len();
         }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            len += 2;
+        }
         len
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.written_len();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
@@ -126,7 +146,8 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
             })
             .into());
         }
-        let mut current_idx = self.pdu_header.write_to_be_bytes(buf)?;
+
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
         buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
         current_idx += 1;
         buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
@@ -154,13 +175,19 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
             buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
             current_idx += opts.len();
         }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            let mut digest = CRC_CCITT_FALSE.digest();
+            digest.update(&buf[..current_idx]);
+            buf[current_idx..current_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+            current_idx += 2;
+        }
         Ok(current_idx)
     }
 
-    pub fn from_be_bytes<'longest: 'src_name + 'dest_name + 'opts>(
+    pub fn from_bytes<'longest: 'src_name + 'dest_name + 'opts>(
         buf: &'longest [u8],
     ) -> Result<MetadataPdu<'src_name, 'dest_name, 'opts>, PduError> {
-        let (pdu_header, mut current_idx) = PduHeader::from_be_bytes(buf)?;
+        let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
         let is_large_file = pdu_header.pdu_conf.file_flag == LargeFileFlag::Large;
         // Minimal length: 1 byte + FSS (4 byte) + 2 empty LV (1 byte)
@@ -272,14 +299,14 @@ pub mod tests {
         let metadata_pdu =
             MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
         let mut buf: [u8; 64] = [0; 64];
-        let res = metadata_pdu.write_to_be_bytes(&mut buf);
+        let res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
         assert_eq!(
             written,
             pdu_header.header_len() + 1 + 1 + 4 + src_len + dest_len
         );
-        verify_raw_header(&pdu_header, &buf);
+        verify_raw_header(metadata_pdu.pdu_header(), &buf);
         assert_eq!(buf[7], FileDirectiveType::MetadataPdu as u8);
         assert_eq!(buf[8] >> 6, false as u8);
         assert_eq!(buf[8] & 0b1111, ChecksumType::Crc32 as u8);

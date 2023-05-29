@@ -257,7 +257,7 @@ impl PduHeader {
         self.header_len() + self.pdu_datafield_len as usize
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         // Internal note: There is currently no way to pass a PDU configuration like this, but
         // this check is still kept for defensive programming.
         if self.pdu_conf.source_entity_id.len() != self.pdu_conf.dest_entity_id.len() {
@@ -340,7 +340,7 @@ impl PduHeader {
     /// to hold the full PDU.
     ///
     /// Both functions can however be performed with the [verify_length_and_checksum] function.
-    pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
+    pub fn from_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
         if buf.len() < FIXED_HEADER_LEN {
             return Err(PduError::ByteConversionError(
                 ByteConversionError::FromSliceTooSmall(SizeMissmatch {
@@ -546,7 +546,7 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         // 4 byte fixed header plus three bytes src, dest ID and transaction ID
         assert_eq!(res.unwrap(), 7);
@@ -562,9 +562,9 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        let deser_res = PduHeader::from_be_bytes(&buf);
+        let deser_res = PduHeader::from_bytes(&buf);
         assert!(deser_res.is_ok());
         let (header_read_back, read_size) = deser_res.unwrap();
         assert_eq!(read_size, 7);
@@ -591,7 +591,7 @@ mod tests {
         );
         assert_eq!(pdu_header.header_len(), 10);
         let mut buf: [u8; 16] = [0; 16];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok(), "{}", format!("Result {res:?} not okay"));
         // 4 byte fixed header, 6 bytes additional fields
         assert_eq!(res.unwrap(), 10);
@@ -617,9 +617,9 @@ mod tests {
             SegmentationControl::WithRecordBoundaryPreservation,
         );
         let mut buf: [u8; 16] = [0; 16];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        let deser_res = PduHeader::from_be_bytes(&buf);
+        let deser_res = PduHeader::from_bytes(&buf);
         assert!(deser_res.is_ok());
         let (header_read_back, read_size) = deser_res.unwrap();
         assert_eq!(read_size, 10);
@@ -635,11 +635,11 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         buf[0] &= !0b1110_0000;
         buf[0] |= (CFDP_VERSION_2 + 1) << 5;
-        let res = PduHeader::from_be_bytes(&buf);
+        let res = PduHeader::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
         if let PduError::CfdpVersionMissmatch(raw_version) = error {
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn test_buf_too_small_1() {
         let buf: [u8; 3] = [0; 3];
-        let res = PduHeader::from_be_bytes(&buf);
+        let res = PduHeader::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
         if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
@@ -674,9 +674,9 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        let header = PduHeader::from_be_bytes(&buf[0..6]);
+        let header = PduHeader::from_bytes(&buf[0..6]);
         assert!(header.is_err());
         let error = header.unwrap_err();
         if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
@@ -737,12 +737,12 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         buf[3] &= !0b0111_0000;
         // Equivalent to the length of three
         buf[3] |= 0b10 << 4;
-        let header_res = PduHeader::from_be_bytes(&buf);
+        let header_res = PduHeader::from_bytes(&buf);
         assert!(header_res.is_err());
         let error = header_res.unwrap_err();
         if let PduError::InvalidEntityLen(len) = error {
@@ -761,12 +761,12 @@ mod tests {
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
-        let res = pdu_header.write_to_be_bytes(&mut buf);
+        let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         buf[3] &= !0b0000_0111;
         // Equivalent to the length of three
         buf[3] |= 0b10;
-        let header_res = PduHeader::from_be_bytes(&buf);
+        let header_res = PduHeader::from_bytes(&buf);
         assert!(header_res.is_err());
         let error = header_res.unwrap_err();
         if let PduError::InvalidTransactionSeqNumLen(len) = error {
