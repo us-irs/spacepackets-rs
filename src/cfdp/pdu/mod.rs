@@ -1,6 +1,7 @@
 //! CFDP Packet Data Unit (PDU) support.
 use crate::cfdp::*;
 use crate::util::{UnsignedByteField, UnsignedEnum};
+use crate::CRC_CCITT_FALSE;
 use crate::{ByteConversionError, SizeMissmatch};
 use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
@@ -34,7 +35,19 @@ pub enum PduError {
     /// The first entry will be the source entity ID length, the second one the destination entity
     /// ID length.
     SourceDestIdLenMissmatch((usize, usize)),
+    /// The first tuple entry will be the found directive type, the second entry the expected entry
+    /// type.
+    WrongDirectiveType((FileDirectiveType, FileDirectiveType)),
+    /// The directive type field contained a value not in the range of permitted values.
+    /// The first tuple entry will be the found raw number, the second entry the expected entry
+    /// type.
+    InvalidDirectiveType((u8, FileDirectiveType)),
+    /// Invalid checksum type which is not part of the checksums listed in the
+    /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/).
+    InvalidChecksumType(u8),
     FileSizeTooLarge(u64),
+    /// If the CRC flag for a PDU is enabled and the checksum check fails. Contains raw 16-bit CRC.
+    ChecksumError(u16),
 }
 
 impl Display for PduError {
@@ -68,7 +81,23 @@ impl Display for PduError {
                 write!(f, "{}", e)
             }
             PduError::FileSizeTooLarge(value) => {
-                write!(f, "file size value {} exceeds allowed 32 bit width", value)
+                write!(f, "file size value {value} exceeds allowed 32 bit width")
+            }
+            PduError::WrongDirectiveType((found, expected)) => {
+                write!(f, "found directive type {found:?}, expected {expected:?}")
+            }
+            PduError::InvalidDirectiveType((found, expected)) => {
+                write!(
+                    f,
+                    "invalid directive type value {found}, expected {expected:?} ({})",
+                    *expected as u8
+                )
+            }
+            PduError::InvalidChecksumType(checksum_type) => {
+                write!(f, "invalid checksum type {checksum_type}")
+            }
+            PduError::ChecksumError(checksum) => {
+                write!(f, "checksum error for CRC {checksum:#04x}")
             }
         }
     }
@@ -214,12 +243,20 @@ impl PduHeader {
         }
     }
 
-    pub fn written_len(&self) -> usize {
+    /// Returns only the length of the PDU header when written to a raw buffer.
+    pub fn header_len(&self) -> usize {
         FIXED_HEADER_LEN
             + self.pdu_conf.source_entity_id.len()
             + self.pdu_conf.transaction_seq_num.len()
             + self.pdu_conf.dest_entity_id.len()
     }
+
+    /// Returns the full length of the PDU when written to a raw buffer, which is the header length
+    /// plus the PDU datafield length.
+    pub fn pdu_len(&self) -> usize {
+        self.header_len() + self.pdu_datafield_len as usize
+    }
+
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         // Internal note: There is currently no way to pass a PDU configuration like this, but
         // this check is still kept for defensive programming.
@@ -270,6 +307,39 @@ impl PduHeader {
         Ok(current_idx)
     }
 
+    /// This function first verifies that the buffer can hold the full length of the PDU parsed from
+    /// the header. Then, it verifies the checksum as specified in the standard if the CRC flag
+    /// of the PDU header is set.
+    ///
+    /// This function will return the PDU length excluding the 2 CRC bytes on success. If the CRC
+    /// flag is not set, it will simply return the PDU length.
+    pub fn verify_length_and_checksum(&self, buf: &[u8]) -> Result<usize, PduError> {
+        if buf.len() < self.pdu_len() {
+            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: self.pdu_len(),
+            })
+            .into());
+        }
+        if self.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            let mut digest = CRC_CCITT_FALSE.digest();
+            digest.update(&buf[..self.pdu_len()]);
+            if digest.finalize() != 0 {
+                return Err(PduError::ChecksumError(u16::from_be_bytes(
+                    buf[self.pdu_len() - 2..self.pdu_len()].try_into().unwrap(),
+                )));
+            }
+        }
+        Ok(self.pdu_len())
+    }
+
+    /// Please note that this function will not verify that the passed buffer can hold the full
+    /// PDU length. This allows recovering the header portion even if the data field length is
+    /// invalid. This function will also not do the CRC procedure specified in chapter 4.1.1
+    /// and 4.1.2 because performing the CRC procedure requires the buffer to be large enough
+    /// to hold the full PDU.
+    ///
+    /// Both functions can however be performed with the [verify_length_and_checksum] function.
     pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
         if buf.len() < FIXED_HEADER_LEN {
             return Err(PduError::ByteConversionError(
@@ -464,7 +534,7 @@ mod tests {
             SegmentationControl::NoRecordBoundaryPreservation
         );
         assert_eq!(pdu_header.pdu_datafield_len, 5);
-        assert_eq!(pdu_header.written_len(), 7);
+        assert_eq!(pdu_header.header_len(), 7);
     }
 
     #[test]
@@ -519,7 +589,7 @@ mod tests {
             SegmentMetadataFlag::Present,
             SegmentationControl::WithRecordBoundaryPreservation,
         );
-        assert_eq!(pdu_header.written_len(), 10);
+        assert_eq!(pdu_header.header_len(), 10);
         let mut buf: [u8; 16] = [0; 16];
         let res = pdu_header.write_to_be_bytes(&mut buf);
         assert!(res.is_ok(), "{}", format!("Result {res:?} not okay"));

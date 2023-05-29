@@ -3,10 +3,9 @@
 //!
 //! You can find the PUS telecommand definitions in the [crate::tc] module and ithe PUS telemetry definitions
 //! inside the [crate::tm] module.
-use crate::{ByteConversionError, CcsdsPacket};
+use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
-use crc::{Crc, CRC_16_IBM_3740};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -19,9 +18,6 @@ pub mod scheduling;
 pub mod verification;
 
 pub type CrcType = u16;
-
-/// CRC algorithm used by the PUS standard.
-pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
@@ -261,7 +257,10 @@ pub(crate) fn user_data_from_raw(
     }
 }
 
-pub(crate) fn verify_crc16_from_raw(raw_data: &[u8], crc16: u16) -> Result<(), PusError> {
+pub(crate) fn verify_crc16_ccitt_false_from_raw(
+    raw_data: &[u8],
+    crc16: u16,
+) -> Result<(), PusError> {
     let mut digest = CRC_CCITT_FALSE.digest();
     digest.update(raw_data);
     if digest.finalize() == 0 {

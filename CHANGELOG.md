@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
  
 - The `EcssEnumeration` now requires the `UnsignedEnum` trait and only adds the `pfc` method to it.
 - Renamed `byte_width` usages to `len` (part of new `UnsignedEnum` trait)
+- Moved `ecss::CRC_CCITT_FALSE` CRC constant to the root module. This CRC type is not just used by
+  the PUS standard, but by the CCSDS Telecommand standard and the CFDP standard as well.
 
 # [v0.5.4] 2023-02-12
 

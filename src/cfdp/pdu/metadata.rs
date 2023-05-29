@@ -103,7 +103,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
 
     pub fn written_len(&self) -> usize {
         // One directive type octet, and one byte of the parameter field.
-        let mut len = self.pdu_header.written_len() + 2;
+        let mut len = self.pdu_header.header_len() + 2;
         if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
             len += 8;
         } else {
@@ -116,6 +116,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         }
         len
     }
+
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.written_len();
         if buf.len() < expected_len {
@@ -129,7 +130,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
         current_idx += 1;
         buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
-            | ((self.metadata_params.checksum_type as u8) << 4);
+            | (self.metadata_params.checksum_type as u8);
         current_idx += 1;
         if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
             buf[current_idx..current_idx + core::mem::size_of::<u64>()]
@@ -154,6 +155,69 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
             current_idx += opts.len();
         }
         Ok(current_idx)
+    }
+
+    pub fn from_be_bytes<'longest: 'src_name + 'dest_name + 'opts>(
+        buf: &'longest [u8],
+    ) -> Result<MetadataPdu<'src_name, 'dest_name, 'opts>, PduError> {
+        let (pdu_header, mut current_idx) = PduHeader::from_be_bytes(buf)?;
+        let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
+        let is_large_file = pdu_header.pdu_conf.file_flag == LargeFileFlag::Large;
+        // Minimal length: 1 byte + FSS (4 byte) + 2 empty LV (1 byte)
+        let mut min_expected_len = current_idx + 7;
+        if is_large_file {
+            min_expected_len += 4;
+        }
+        min_expected_len = core::cmp::max(min_expected_len, pdu_header.pdu_len());
+        if buf.len() < min_expected_len {
+            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: min_expected_len,
+            })
+            .into());
+        }
+        let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
+            PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::MetadataPdu))
+        })?;
+        if directive_type != FileDirectiveType::MetadataPdu {
+            return Err(PduError::WrongDirectiveType((
+                directive_type,
+                FileDirectiveType::MetadataPdu,
+            )));
+        }
+        current_idx += 1;
+
+        let file_size = if pdu_header.pdu_conf.file_flag == LargeFileFlag::Large {
+            u64::from_be_bytes(buf[current_idx + 1..current_idx + 9].try_into().unwrap())
+        } else {
+            u32::from_be_bytes(buf[current_idx + 1..current_idx + 5].try_into().unwrap()) as u64
+        };
+        let metadata_params = MetadataGenericParams {
+            closure_requested: ((buf[current_idx] >> 6) & 0b1) != 0,
+            checksum_type: ChecksumType::try_from(buf[current_idx] & 0b1111)
+                .map_err(|_| PduError::InvalidChecksumType(buf[current_idx] & 0b1111))?,
+            file_size,
+        };
+        current_idx += 5;
+        if is_large_file {
+            current_idx += 4;
+        }
+        let src_file_name = Lv::from_be_bytes(&buf[current_idx..])?;
+        current_idx += src_file_name.len_full();
+        let dest_file_name = Lv::from_be_bytes(&buf[current_idx..])?;
+        current_idx += dest_file_name.len_full();
+        // All left-over bytes are options.
+        let mut options = None;
+        if current_idx < full_len_without_crc {
+            options = Some(&buf[current_idx..full_len_without_crc]);
+        }
+        Ok(Self {
+            pdu_header,
+            metadata_params,
+            src_file_name,
+            dest_file_name,
+            options,
+        })
     }
 }
 
@@ -188,7 +252,7 @@ pub mod tests {
             MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
         assert_eq!(
             metadata_pdu.written_len(),
-            pdu_header.written_len() + 1 + 1 + 4 + src_len + dest_len
+            pdu_header.header_len() + 1 + 1 + 4 + src_len + dest_len
         );
         assert_eq!(metadata_pdu.src_file_name(), src_filename);
         assert_eq!(metadata_pdu.dest_file_name(), dest_filename);
@@ -213,9 +277,23 @@ pub mod tests {
         let written = res.unwrap();
         assert_eq!(
             written,
-            pdu_header.written_len() + 1 + 1 + 4 + src_len + dest_len
+            pdu_header.header_len() + 1 + 1 + 4 + src_len + dest_len
         );
         verify_raw_header(&pdu_header, &buf);
         assert_eq!(buf[7], FileDirectiveType::MetadataPdu as u8);
+        assert_eq!(buf[8] >> 6, false as u8);
+        assert_eq!(buf[8] & 0b1111, ChecksumType::Crc32 as u8);
+        assert_eq!(u32::from_be_bytes(buf[9..13].try_into().unwrap()), 10);
+        let mut current_idx = 13;
+        let src_name_from_raw =
+            Lv::from_be_bytes(&buf[current_idx..]).expect("Creating source name LV failed");
+        assert_eq!(src_name_from_raw, src_filename);
+        current_idx += src_name_from_raw.len_full();
+        let dest_name_from_raw =
+            Lv::from_be_bytes(&buf[current_idx..]).expect("Creating dest name LV failed");
+        assert_eq!(dest_name_from_raw, dest_filename);
+        current_idx += dest_name_from_raw.len_full();
+        // No options, so no additional data here.
+        assert_eq!(current_idx, written);
     }
 }

@@ -61,6 +61,7 @@ extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
 use core::fmt::{Debug, Display, Formatter};
+use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
 #[cfg(not(feature = "std"))]
 use num_traits::Unsigned;
@@ -80,6 +81,9 @@ pub mod util;
 mod private {
     pub trait Sealed {}
 }
+
+/// CRC algorithm used by the PUS standard, the CCSDS TC standard and the CFDP standard.
+pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;

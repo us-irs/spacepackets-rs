@@ -2,11 +2,11 @@
 //! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
-    verify_crc16_from_raw, CrcType, PusError, PusPacket, PusVersion, CRC_CCITT_FALSE,
+    verify_crc16_ccitt_false_from_raw, CrcType, PusError, PusPacket, PusVersion,
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, SpHeader,
-    CCSDS_HEADER_LEN,
+    CCSDS_HEADER_LEN, CRC_CCITT_FALSE,
 };
 use core::mem::size_of;
 #[cfg(feature = "serde")]
@@ -439,7 +439,7 @@ impl<'raw_data> PusTm<'raw_data> {
             calc_crc_on_serialization: false,
             crc16: Some(crc_from_raw_data(raw_data)?),
         };
-        verify_crc16_from_raw(raw_data, pus_tm.crc16.expect("CRC16 invalid"))?;
+        verify_crc16_ccitt_false_from_raw(raw_data, pus_tm.crc16.expect("CRC16 invalid"))?;
         Ok((pus_tm, total_len))
     }
 
