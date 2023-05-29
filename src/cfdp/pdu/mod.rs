@@ -206,7 +206,9 @@ impl CommonPduConfig {
 
 pub const FIXED_HEADER_LEN: usize = 4;
 
-/// Abstraction for the PDU header common to all CFDP PDUs
+/// Abstraction for the PDU header common to all CFDP PDUs.
+///
+/// For detailed information, refer to chapter 5.1 of the CFDP standard.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PduHeader {
@@ -329,6 +331,7 @@ impl PduHeader {
                     buf[self.pdu_len() - 2..self.pdu_len()].try_into().unwrap(),
                 )));
             }
+            return Ok(self.pdu_len() - 2);
         }
         Ok(self.pdu_len())
     }

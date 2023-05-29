@@ -103,7 +103,7 @@ impl<'data> Lv<'data> {
     }
 
     /// Reads a LV  from a raw buffer.
-    pub fn from_be_bytes(buf: &'data [u8]) -> Result<Lv<'data>, ByteConversionError> {
+    pub fn from_bytes(buf: &'data [u8]) -> Result<Lv<'data>, ByteConversionError> {
         generic_len_check_deserialization(buf, MIN_LV_LEN)?;
         Self::from_be_bytes_no_len_check(buf)
     }
@@ -198,7 +198,7 @@ pub mod tests {
         buf[2] = 2;
         buf[3] = 3;
         buf[4] = 4;
-        let lv = Lv::from_be_bytes(&buf);
+        let lv = Lv::from_bytes(&buf);
         assert!(lv.is_ok());
         let lv = lv.unwrap();
         assert!(!lv.is_empty());
@@ -215,7 +215,7 @@ pub mod tests {
     #[test]
     fn test_deserialization_empty() {
         let buf: [u8; 2] = [0; 2];
-        let lv_empty = Lv::from_be_bytes(&buf);
+        let lv_empty = Lv::from_bytes(&buf);
         assert!(lv_empty.is_ok());
         let lv_empty = lv_empty.unwrap();
         assert!(lv_empty.is_empty());
@@ -255,7 +255,7 @@ pub mod tests {
     fn test_deserialization_buf_too_small() {
         let mut buf: [u8; 3] = [0; 3];
         buf[0] = 4;
-        let res = Lv::from_be_bytes(&buf);
+        let res = Lv::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
         if let ByteConversionError::FromSliceTooSmall(missmatch) = error {

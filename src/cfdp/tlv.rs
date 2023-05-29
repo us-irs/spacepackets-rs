@@ -111,11 +111,11 @@ impl<'data> Tlv<'data> {
     /// bytestream with the exact size of the expected TLV. This function will take care
     /// of parsing the length byte, and the length of the parsed TLV can be retrieved using
     /// [len_full].
-    pub fn from_be_bytes(buf: &'data [u8]) -> Result<Tlv<'data>, TlvLvError> {
+    pub fn from_bytes(buf: &'data [u8]) -> Result<Tlv<'data>, TlvLvError> {
         generic_len_check_deserialization(buf, MIN_TLV_LEN)?;
         Ok(Self {
             tlv_type_field: TlvTypeField::from(buf[0]),
-            lv: Lv::from_be_bytes(&buf[MIN_LV_LEN..])?,
+            lv: Lv::from_bytes(&buf[MIN_LV_LEN..])?,
         })
     }
 }
@@ -167,7 +167,7 @@ mod tests {
         assert!(entity_id.write_to_be_bytes(&mut buf[2..]).is_ok());
         buf[0] = TlvType::EntityId as u8;
         buf[1] = 1;
-        let tlv_from_raw = Tlv::from_be_bytes(&mut buf);
+        let tlv_from_raw = Tlv::from_bytes(&mut buf);
         assert!(tlv_from_raw.is_ok());
         let tlv_from_raw = tlv_from_raw.unwrap();
         assert_eq!(
@@ -207,7 +207,7 @@ mod tests {
         let mut buf: [u8; 4] = [0; 4];
         buf[0] = TlvType::MsgToUser as u8;
         buf[1] = 0;
-        let tlv_empty = Tlv::from_be_bytes(&mut buf);
+        let tlv_empty = Tlv::from_bytes(&mut buf);
         assert!(tlv_empty.is_ok());
         let tlv_empty = tlv_empty.unwrap();
         assert!(tlv_empty.is_empty());
@@ -239,7 +239,7 @@ mod tests {
         buf[0] = 3;
         buf[1] = 1;
         buf[2] = 5;
-        let tlv = Tlv::from_be_bytes(&mut buf);
+        let tlv = Tlv::from_bytes(&mut buf);
         assert!(tlv.is_ok());
         let tlv = tlv.unwrap();
         assert_eq!(tlv.tlv_type_field(), TlvTypeField::Custom(3));
