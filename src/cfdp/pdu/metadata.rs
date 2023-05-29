@@ -1,7 +1,7 @@
 use crate::cfdp::lv::Lv;
-use crate::cfdp::pdu::{FileDirectiveType, PduError, PduHeader};
+use crate::cfdp::pdu::{write_file_size, FileDirectiveType, PduError, PduHeader};
 use crate::cfdp::tlv::Tlv;
-use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag};
+use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag, PduType};
 use crate::{ByteConversionError, SizeMissmatch, CRC_CCITT_FALSE};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -130,6 +130,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         dest_file_name: Lv<'dest_name>,
         options: Option<&'opts [u8]>,
     ) -> Self {
+        pdu_header.pdu_type = PduType::FileDirective;
         let is_large_file = pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large;
         let has_crc = pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc;
         pdu_header.pdu_datafield_len =
@@ -213,18 +214,12 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
             | (self.metadata_params.checksum_type as u8);
         current_idx += 1;
-        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
-            buf[current_idx..current_idx + core::mem::size_of::<u64>()]
-                .copy_from_slice(&self.metadata_params.file_size.to_be_bytes());
-            current_idx += core::mem::size_of::<u64>()
-        } else {
-            if self.metadata_params.file_size > u32::MAX as u64 {
-                return Err(PduError::FileSizeTooLarge(self.metadata_params.file_size));
-            }
-            buf[current_idx..current_idx + core::mem::size_of::<u32>()]
-                .copy_from_slice(&(self.metadata_params.file_size as u32).to_be_bytes());
-            current_idx += core::mem::size_of::<u32>()
-        }
+        write_file_size(
+            &mut current_idx,
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.metadata_params.file_size,
+            buf,
+        )?;
         current_idx += self
             .src_file_name
             .write_to_be_bytes(&mut buf[current_idx..])?;
@@ -318,7 +313,9 @@ pub mod tests {
     use crate::cfdp::pdu::tests::verify_raw_header;
     use crate::cfdp::pdu::{CommonPduConfig, FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::{Tlv, TlvType};
-    use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag};
+    use crate::cfdp::{
+        ChecksumType, CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
+    };
     use crate::util::UbfU8;
     use std::vec;
 
@@ -543,5 +540,22 @@ pub mod tests {
             accumulated_len += opt.len_full();
         }
         assert_eq!(accumulated_len, pdu_read_back.options().unwrap().len());
+    }
+
+    #[test]
+    fn test_corrects_pdu_header() {
+        let pdu_header = PduHeader::new_for_file_data(
+            common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal),
+            0,
+            SegmentMetadataFlag::NotPresent,
+            SegmentationControl::NoRecordBoundaryPreservation,
+        );
+        let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 10);
+        let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
+        let dest_filename =
+            Lv::new_from_str(DEST_FILENAME).expect("Generating destination LV failed");
+        let metadata_pdu =
+            MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
+        assert_eq!(metadata_pdu.pdu_header().pdu_type(), PduType::FileDirective);
     }
 }

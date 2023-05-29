@@ -7,6 +7,7 @@ use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
 
+pub mod file_data;
 pub mod metadata;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
@@ -440,6 +441,27 @@ impl PduHeader {
     pub fn seg_ctrl(&self) -> SegmentationControl {
         self.seg_ctrl
     }
+}
+
+pub(crate) fn write_file_size(
+    current_idx: &mut usize,
+    fss: LargeFileFlag,
+    file_size: u64,
+    buf: &mut [u8],
+) -> Result<(), PduError> {
+    if fss == LargeFileFlag::Large {
+        buf[*current_idx..*current_idx + core::mem::size_of::<u64>()]
+            .copy_from_slice(&file_size.to_be_bytes());
+        *current_idx += core::mem::size_of::<u64>()
+    } else {
+        if file_size > u32::MAX as u64 {
+            return Err(PduError::FileSizeTooLarge(file_size));
+        }
+        buf[*current_idx..*current_idx + core::mem::size_of::<u32>()]
+            .copy_from_slice(&(file_size as u32).to_be_bytes());
+        *current_idx += core::mem::size_of::<u32>()
+    }
+    Ok(())
 }
 
 #[cfg(test)]
