@@ -52,8 +52,8 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         }
         buf[0] = ((self.record_continuation_state as u8) << 6)
             | self.metadata.map_or(0, |meta| meta.len() as u8);
-        if self.metadata.is_some() {
-            buf[1..].copy_from_slice(self.metadata.unwrap())
+        if let Some(metadata) = self.metadata {
+            buf[1..1 + metadata.len()].copy_from_slice(metadata)
         }
         Ok(self.written_len())
     }
@@ -320,5 +320,44 @@ mod tests {
         let fd_pdu = FileDataPdu::new_with_seg_metadata(pdu_header, segment_meta, 10, &file_data);
         assert!(fd_pdu.segment_metadata().is_some());
         assert_eq!(*fd_pdu.segment_metadata().unwrap(), segment_meta);
+        assert_eq!(
+            fd_pdu.written_len(),
+            fd_pdu.pdu_header.header_len()
+                + 1
+                + seg_metadata.len()
+                + core::mem::size_of::<u32>()
+                + 4
+        );
+        let mut buf: [u8; 32] = [0; 32];
+        fd_pdu
+            .write_to_bytes(&mut buf)
+            .expect("writing FD PDU failed");
+        let mut current_idx = fd_pdu.pdu_header.header_len();
+        assert_eq!(
+            RecordContinuationState::try_from((buf[current_idx] >> 6) & 0b11).unwrap(),
+            RecordContinuationState::StartAndEnd
+        );
+        assert_eq!((buf[current_idx] & 0b111111) as usize, seg_metadata.len());
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 4);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 3);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 2);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 1);
+        current_idx += 1;
+        // Still verify that the rest is written correctly.
+        assert_eq!(u32::from_be_bytes(buf[current_idx..current_idx+4].try_into().unwrap()), 10);
+        current_idx+=4;
+        assert_eq!(buf[current_idx], 1);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 2);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 3);
+        current_idx += 1;
+        assert_eq!(buf[current_idx], 4);
+        current_idx +=1;
+        assert_eq!(current_idx, fd_pdu.written_len());
     }
 }
