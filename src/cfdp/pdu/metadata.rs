@@ -47,7 +47,7 @@ pub fn build_metadata_opts_from_vec(
 
 /// Helper structure to loop through all options of a metadata PDU. It should be noted that
 /// iterators in Rust are not fallible, but the TLV creation can fail, for example if the raw TLV
-/// data in invalid for some reason. In that case, the iterator will yield [None] because there
+/// data is invalid for some reason. In that case, the iterator will yield [None] because there
 /// is no way to recover from this.
 ///
 /// The user can accumulate the length of all TLVs yielded by the iterator and compare it against

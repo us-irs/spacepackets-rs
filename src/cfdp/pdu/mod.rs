@@ -227,21 +227,46 @@ impl PduHeader {
         seg_metadata_flag: SegmentMetadataFlag,
         seg_ctrl: SegmentationControl,
     ) -> Self {
-        PduHeader {
-            pdu_type: PduType::FileData,
+        Self::new_generic(
+            PduType::FileData,
+            pdu_conf,
+            pdu_datafield_len,
+            seg_metadata_flag,
+            seg_ctrl,
+        )
+    }
+
+    pub fn new_for_file_data_default(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
+        Self::new_generic(
+            PduType::FileData,
+            pdu_conf,
+            pdu_datafield_len,
+            SegmentMetadataFlag::NotPresent,
+            SegmentationControl::NoRecordBoundaryPreservation,
+        )
+    }
+    pub fn new_no_file_data(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
+        Self::new_generic(
+            PduType::FileDirective,
+            pdu_conf,
+            pdu_datafield_len,
+            SegmentMetadataFlag::NotPresent,
+            SegmentationControl::NoRecordBoundaryPreservation,
+        )
+    }
+
+    pub fn new_generic(
+        pdu_type: PduType,
+        pdu_conf: CommonPduConfig,
+        pdu_datafield_len: u16,
+        seg_metadata_flag: SegmentMetadataFlag,
+        seg_ctrl: SegmentationControl,
+    ) -> Self {
+        Self {
+            pdu_type,
             pdu_conf,
             seg_metadata_flag,
             seg_ctrl,
-            pdu_datafield_len,
-        }
-    }
-
-    pub fn new_no_file_data(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
-        PduHeader {
-            pdu_type: PduType::FileDirective,
-            pdu_conf,
-            seg_metadata_flag: SegmentMetadataFlag::NotPresent,
-            seg_ctrl: SegmentationControl::NoRecordBoundaryPreservation,
             pdu_datafield_len,
         }
     }

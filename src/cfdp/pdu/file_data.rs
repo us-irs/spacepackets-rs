@@ -15,6 +15,8 @@ pub enum RecordContinuationState {
     StartAndEnd = 0b11,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SegmentMetadata<'seg_meta> {
     record_continuation_state: RecordContinuationState,
     seg_metadata_len: u8,
@@ -41,8 +43,11 @@ impl SegmentMetadata<'_> {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FileDataPdu<'seg_meta, 'file_data> {
     pdu_header: PduHeader,
+    #[cfg_attr(feature = "serde", serde(borrow))]
     segment_metadata: Option<SegmentMetadata<'seg_meta>>,
     offset: u64,
     file_data: &'file_data [u8],
@@ -101,6 +106,18 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         len
     }
 
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    pub fn file_data(&self) -> &'file_data [u8] {
+        self.file_data
+    }
+
+    pub fn seg_metadata(&self) -> Option<&SegmentMetadata> {
+        self.segment_metadata.as_ref()
+    }
+
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         if buf.len() < self.written_len() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
@@ -130,8 +147,21 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
 #[cfg(test)]
 mod tests {
+    use crate::cfdp::pdu::file_data::FileDataPdu;
+    use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
+    use crate::util::UbfU8;
+
     #[test]
     fn test_basic() {
-
+        let src_id = UbfU8::new(1);
+        let dest_id = UbfU8::new(2);
+        let transaction_seq_num = UbfU8::new(3);
+        let common_conf =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
+        assert_eq!(fd_pdu.file_data(), file_data);
+        assert_eq!(fd_pdu.offset(), 10);
     }
 }
