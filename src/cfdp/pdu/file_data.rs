@@ -19,13 +19,28 @@ pub enum RecordContinuationState {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SegmentMetadata<'seg_meta> {
     record_continuation_state: RecordContinuationState,
-    seg_metadata_len: u8,
     metadata: Option<&'seg_meta [u8]>,
 }
 
 impl<'seg_meta> SegmentMetadata<'seg_meta> {
+    pub fn new(
+        record_continuation_state: RecordContinuationState,
+        metadata: Option<&'seg_meta [u8]>,
+    ) -> Option<Self> {
+        if let Some(metadata) = metadata {
+            if metadata.len() > 2_usize.pow(6) - 1 {
+                return None;
+            }
+        }
+        Some(Self {
+            record_continuation_state,
+            metadata,
+        })
+    }
+
     pub fn written_len(&self) -> usize {
-        1 + self.seg_metadata_len as usize
+        // Map empty metadata to 0 and slice to its length.
+        1 + self.metadata.map_or(0, |meta| meta.len())
     }
 
     pub(crate) fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
@@ -35,7 +50,8 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
                 expected: self.written_len(),
             }));
         }
-        buf[0] = ((self.record_continuation_state as u8) << 6) | self.seg_metadata_len;
+        buf[0] = ((self.record_continuation_state as u8) << 6)
+            | self.metadata.map_or(0, |meta| meta.len() as u8);
         if self.metadata.is_some() {
             buf[1..].copy_from_slice(self.metadata.unwrap())
         }
@@ -58,7 +74,6 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
             // Can't fail, only 2 bits
             record_continuation_state: RecordContinuationState::try_from((buf[0] >> 6) & 0b11)
                 .unwrap(),
-            seg_metadata_len: seg_metadata_len as u8,
             metadata,
         })
     }
@@ -207,8 +222,9 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::pdu::file_data::FileDataPdu;
+    use crate::cfdp::pdu::file_data::{FileDataPdu, RecordContinuationState, SegmentMetadata};
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
+    use crate::cfdp::{SegmentMetadataFlag, SegmentationControl};
     use crate::util::UbfU8;
 
     #[test]
@@ -281,5 +297,28 @@ mod tests {
         assert!(fd_pdu_read_back.is_ok());
         let fd_pdu_read_back = fd_pdu_read_back.unwrap();
         assert_eq!(fd_pdu_read_back, fd_pdu);
+    }
+
+    #[test]
+    fn test_with_seg_metadata() {
+        let src_id = UbfU8::new(1);
+        let dest_id = UbfU8::new(2);
+        let transaction_seq_num = UbfU8::new(3);
+        let common_conf =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+        let pdu_header = PduHeader::new_for_file_data(
+            common_conf,
+            0,
+            SegmentMetadataFlag::Present,
+            SegmentationControl::WithRecordBoundaryPreservation,
+        );
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let seg_metadata: [u8; 4] = [4, 3, 2, 1];
+        let segment_meta =
+            SegmentMetadata::new(RecordContinuationState::StartAndEnd, Some(&seg_metadata))
+                .unwrap();
+        let fd_pdu = FileDataPdu::new_with_seg_metadata(pdu_header, segment_meta, 10, &file_data);
+        assert!(fd_pdu.segment_metadata().is_some());
+        assert_eq!(*fd_pdu.segment_metadata().unwrap(), segment_meta);
     }
 }
