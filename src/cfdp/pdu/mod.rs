@@ -468,25 +468,35 @@ impl PduHeader {
     }
 }
 
-pub(crate) fn write_file_size(
-    current_idx: &mut usize,
-    fss: LargeFileFlag,
+pub(crate) fn write_fss_field(
+    file_flag: LargeFileFlag,
     file_size: u64,
     buf: &mut [u8],
-) -> Result<(), PduError> {
-    if fss == LargeFileFlag::Large {
-        buf[*current_idx..*current_idx + core::mem::size_of::<u64>()]
-            .copy_from_slice(&file_size.to_be_bytes());
-        *current_idx += core::mem::size_of::<u64>()
+) -> Result<usize, PduError> {
+    Ok(if file_flag == LargeFileFlag::Large {
+        buf[..core::mem::size_of::<u64>()].copy_from_slice(&file_size.to_be_bytes());
+        core::mem::size_of::<u64>()
     } else {
         if file_size > u32::MAX as u64 {
             return Err(PduError::FileSizeTooLarge(file_size));
         }
-        buf[*current_idx..*current_idx + core::mem::size_of::<u32>()]
-            .copy_from_slice(&(file_size as u32).to_be_bytes());
-        *current_idx += core::mem::size_of::<u32>()
+        buf[..core::mem::size_of::<u32>()].copy_from_slice(&(file_size as u32).to_be_bytes());
+        core::mem::size_of::<u32>()
+    })
+}
+
+pub(crate) fn read_fss_field(file_flag: LargeFileFlag, buf: &[u8]) -> (usize, u64) {
+    if file_flag == LargeFileFlag::Large {
+        (
+            core::mem::size_of::<u64>(),
+            u64::from_be_bytes(buf[..core::mem::size_of::<u64>()].try_into().unwrap()),
+        )
+    } else {
+        (
+            core::mem::size_of::<u32>(),
+            u32::from_be_bytes(buf[..core::mem::size_of::<u32>()].try_into().unwrap()).into(),
+        )
     }
-    Ok(())
 }
 
 #[cfg(test)]
