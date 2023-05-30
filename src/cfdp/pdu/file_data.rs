@@ -127,3 +127,11 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         Ok(current_idx)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_basic() {
+
+    }
+}
