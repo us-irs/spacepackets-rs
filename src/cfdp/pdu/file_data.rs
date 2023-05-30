@@ -348,8 +348,11 @@ mod tests {
         assert_eq!(buf[current_idx], 1);
         current_idx += 1;
         // Still verify that the rest is written correctly.
-        assert_eq!(u32::from_be_bytes(buf[current_idx..current_idx+4].try_into().unwrap()), 10);
-        current_idx+=4;
+        assert_eq!(
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap()),
+            10
+        );
+        current_idx += 4;
         assert_eq!(buf[current_idx], 1);
         current_idx += 1;
         assert_eq!(buf[current_idx], 2);
@@ -357,7 +360,7 @@ mod tests {
         assert_eq!(buf[current_idx], 3);
         current_idx += 1;
         assert_eq!(buf[current_idx], 4);
-        current_idx +=1;
+        current_idx += 1;
         assert_eq!(current_idx, fd_pdu.written_len());
     }
 }
