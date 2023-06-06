@@ -7,6 +7,7 @@ use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
 
+pub mod eof;
 pub mod file_data;
 pub mod metadata;
 

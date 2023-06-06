@@ -3,7 +3,8 @@ use crate::cfdp::lv::{
     generic_len_check_data_serialization, generic_len_check_deserialization, Lv, MIN_LV_LEN,
 };
 use crate::cfdp::TlvLvError;
-use crate::ByteConversionError;
+use crate::util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum};
+use crate::{ByteConversionError, SizeMissmatch};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,7 @@ impl<'data> Tlv<'data> {
         self.tlv_type_field
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         generic_len_check_data_serialization(buf, self.len_value(), MIN_TLV_LEN)?;
         buf[0] = self.tlv_type_field.into();
         self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
@@ -120,6 +121,85 @@ impl<'data> Tlv<'data> {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct EntityIdTlv {
+    entity_id: UnsignedByteField,
+}
+
+impl EntityIdTlv {
+    pub fn new(entity_id: UnsignedByteField) -> Self {
+        Self { entity_id }
+    }
+
+    pub fn len_check(buf: &mut [u8]) -> Result<(), ByteConversionError> {
+        if buf.len() < 2 {
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: 2,
+            }));
+        }
+        Ok(())
+    }
+
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+        Self::len_check(buf)?;
+        buf[0] = TlvType::EntityId as u8;
+        buf[1] = self.entity_id.len() as u8;
+        self.entity_id.write_to_be_bytes(&mut buf[2..])
+    }
+
+    pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
+        Self::len_check(buf)?;
+        self.entity_id
+            .write_to_be_bytes(&mut buf[2..2 + self.entity_id.len()])?;
+        Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.len()]).map_err(|e| match e {
+            TlvLvError::ByteConversionError(e) => e,
+            // All other errors are impossible.
+            _ => panic!("unexpected TLV error"),
+        })
+    }
+}
+
+impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
+    type Error = TlvLvError;
+
+    fn try_from(value: Tlv) -> Result<Self, Self::Error> {
+        match value.tlv_type_field {
+            TlvTypeField::Standard(tlv_type) => {
+                if tlv_type != TlvType::EntityId {
+                    return Err(TlvLvError::InvalidTlvTypeField((
+                        tlv_type as u8,
+                        TlvType::EntityId as u8,
+                    )));
+                }
+            }
+            TlvTypeField::Custom(val) => {
+                return Err(TlvLvError::InvalidTlvTypeField((
+                    val,
+                    TlvType::EntityId as u8,
+                )));
+            }
+        }
+        if value.len_value() != 1
+            && value.len_value() != 2
+            && value.len_value() != 4
+            && value.len_value() != 8
+        {
+            return Err(TlvLvError::InvalidValueLength(value.len_value() as u8));
+        }
+        Ok(Self::new(
+            UnsignedByteField::new_from_be_bytes(value.len_value(), value.value().unwrap())
+                .map_err(|e| match e {
+                    UnsignedByteFieldError::ByteConversionError(e) => e,
+                    // This can not happen, we checked for the length validity, and the data is always smaller than
+                    // 255 bytes.
+                    _ => panic!("unexpected error"),
+                })?,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cfdp::tlv::{Tlv, TlvType, TlvTypeField};
@@ -154,7 +234,7 @@ mod tests {
         assert!(tlv_res.is_ok());
         let tlv_res = tlv_res.unwrap();
         let mut ser_buf: [u8; 4] = [0; 4];
-        assert!(tlv_res.write_to_be_bytes(&mut ser_buf).is_ok());
+        assert!(tlv_res.write_to_bytes(&mut ser_buf).is_ok());
         assert_eq!(ser_buf[0], TlvType::EntityId as u8);
         assert_eq!(ser_buf[1], 1);
         assert_eq!(ser_buf[2], 5);
@@ -197,7 +277,7 @@ mod tests {
     fn test_empty_serialization() {
         let tlv_empty = Tlv::new_empty(TlvType::MsgToUser);
         let mut buf: [u8; 4] = [0; 4];
-        assert!(tlv_empty.write_to_be_bytes(&mut buf).is_ok());
+        assert!(tlv_empty.write_to_bytes(&mut buf).is_ok());
         assert_eq!(buf[0], TlvType::MsgToUser as u8);
         assert_eq!(buf[1], 0);
     }

@@ -32,7 +32,7 @@ pub fn build_metadata_opts_from_slice(
 ) -> Result<usize, ByteConversionError> {
     let mut written = 0;
     for tlv in tlvs {
-        written += tlv.write_to_be_bytes(&mut buf[written..])?;
+        written += tlv.write_to_bytes(&mut buf[written..])?;
     }
     Ok(written)
 }
