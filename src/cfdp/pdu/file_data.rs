@@ -130,7 +130,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
     fn calc_pdu_datafield_len(&self) -> usize {
         let mut len = core::mem::size_of::<u32>();
         if self.pdu_header.pdu_conf.file_flag == LargeFileFlag::Large {
-            len += core::mem::size_of::<u32>();
+            len += 4;
         }
         if self.segment_metadata.is_some() {
             len += self.segment_metadata.as_ref().unwrap().written_len()
@@ -300,7 +300,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_seg_metadata() {
+    fn test_with_seg_metadata_serialization() {
         let src_id = UbfU8::new(1);
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
@@ -362,5 +362,34 @@ mod tests {
         assert_eq!(buf[current_idx], 4);
         current_idx += 1;
         assert_eq!(current_idx, fd_pdu.written_len());
+    }
+
+    #[test]
+    fn test_with_seg_metadata_deserialization() {
+        let src_id = UbfU8::new(1);
+        let dest_id = UbfU8::new(2);
+        let transaction_seq_num = UbfU8::new(3);
+        let common_conf =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+        let pdu_header = PduHeader::new_for_file_data(
+            common_conf,
+            0,
+            SegmentMetadataFlag::Present,
+            SegmentationControl::WithRecordBoundaryPreservation,
+        );
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let seg_metadata: [u8; 4] = [4, 3, 2, 1];
+        let segment_meta =
+            SegmentMetadata::new(RecordContinuationState::StartAndEnd, Some(&seg_metadata))
+                .unwrap();
+        let fd_pdu = FileDataPdu::new_with_seg_metadata(pdu_header, segment_meta, 10, &file_data);
+        let mut buf: [u8; 32] = [0; 32];
+        fd_pdu
+            .write_to_bytes(&mut buf)
+            .expect("writing FD PDU failed");
+        let fd_pdu_read_back = FileDataPdu::from_bytes(&buf);
+        assert!(fd_pdu_read_back.is_ok());
+        let fd_pdu_read_back = fd_pdu_read_back.unwrap();
+        assert_eq!(fd_pdu_read_back, fd_pdu);
     }
 }

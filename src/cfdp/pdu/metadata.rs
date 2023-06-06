@@ -92,13 +92,13 @@ pub struct MetadataPdu<'src_name, 'dest_name, 'opts> {
 }
 
 impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
-    pub fn new(
+    pub fn new_no_opts(
         pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
         src_file_name: Lv<'src_name>,
         dest_file_name: Lv<'dest_name>,
     ) -> Self {
-        Self::new_generic(
+        Self::new(
             pdu_header,
             metadata_params,
             src_file_name,
@@ -114,7 +114,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         dest_file_name: Lv<'dest_name>,
         options: &'opts [u8],
     ) -> Self {
-        Self::new_generic(
+        Self::new(
             pdu_header,
             metadata_params,
             src_file_name,
@@ -123,7 +123,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         )
     }
 
-    pub fn new_generic(
+    pub fn new(
         mut pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
         src_file_name: Lv<'src_name>,
@@ -336,7 +336,7 @@ pub mod tests {
         (
             src_filename,
             dest_filename,
-            MetadataPdu::new_generic(
+            MetadataPdu::new(
                 pdu_header,
                 metadata_params,
                 src_filename,
@@ -541,7 +541,7 @@ pub mod tests {
         let dest_filename =
             Lv::new_from_str(DEST_FILENAME).expect("Generating destination LV failed");
         let metadata_pdu =
-            MetadataPdu::new(pdu_header, metadata_params, src_filename, dest_filename);
+            MetadataPdu::new_no_opts(pdu_header, metadata_params, src_filename, dest_filename);
         assert_eq!(metadata_pdu.pdu_header().pdu_type(), PduType::FileDirective);
     }
 }
