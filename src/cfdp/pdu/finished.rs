@@ -1,4 +1,5 @@
 use crate::cfdp::pdu::PduHeader;
+use crate::cfdp::tlv::EntityIdTlv;
 use crate::cfdp::ConditionCode;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
@@ -29,6 +30,6 @@ pub struct FinishPdu<'fs_responses> {
     condition_code: ConditionCode,
     delivery_code: DeliveryCode,
     file_status: FileStatus,
-    fs_responses: Optional<&'fs_responses [u8]>,
-    // fault_location:
+    fs_responses: Option<&'fs_responses [u8]>,
+    fault_location: Option<EntityIdTlv>,
 }

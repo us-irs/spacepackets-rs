@@ -165,7 +165,6 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
     }
 
     pub fn written_len(&self) -> usize {
-        // One directive type octet, and one byte of the parameter field.
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
 
@@ -296,28 +295,16 @@ pub mod tests {
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
         MetadataPdu,
     };
-    use crate::cfdp::pdu::tests::verify_raw_header;
-    use crate::cfdp::pdu::{CommonPduConfig, FileDirectiveType, PduHeader};
+    use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
+    use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::{Tlv, TlvType};
     use crate::cfdp::{
         ChecksumType, CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
     };
-    use crate::util::UbfU8;
     use std::vec;
 
     const SRC_FILENAME: &'static str = "hello-world.txt";
     const DEST_FILENAME: &'static str = "hello-world2.txt";
-
-    fn common_pdu_conf(crc_flag: CrcFlag, fss: LargeFileFlag) -> CommonPduConfig {
-        let src_id = UbfU8::new(5);
-        let dest_id = UbfU8::new(10);
-        let transaction_seq_num = UbfU8::new(20);
-        let mut pdu_conf = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num)
-            .expect("Generating common PDU config");
-        pdu_conf.crc_flag = crc_flag;
-        pdu_conf.file_flag = fss;
-        pdu_conf
-    }
 
     fn generic_metadata_pdu<'opts>(
         crc_flag: CrcFlag,

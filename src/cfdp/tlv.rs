@@ -132,7 +132,7 @@ impl EntityIdTlv {
         Self { entity_id }
     }
 
-    pub fn len_check(buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    fn len_check(buf: &[u8]) -> Result<(), ByteConversionError> {
         if buf.len() < 2 {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
@@ -142,11 +142,32 @@ impl EntityIdTlv {
         Ok(())
     }
 
-    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    pub fn len_value(&self) -> usize {
+        self.entity_id.len()
+    }
+
+    pub fn len_full(&self) -> usize {
+        2 + self.entity_id.len()
+    }
+
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.len() as u8;
         self.entity_id.write_to_be_bytes(&mut buf[2..])
+    }
+
+    pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
+        Self::len_check(buf)?;
+        TlvType::try_from(buf[0])
+            .map_err(|_| TlvLvError::InvalidTlvTypeField((buf[0], TlvType::EntityId as u8)))?;
+        let len = buf[1];
+        if len != 1 && len != 2 && len != 4 && len != 8 {
+            return Err(TlvLvError::InvalidValueLength(len));
+        }
+        // Okay to unwrap here. The checks before make sure that the deserialization never fails
+        let entity_id = UnsignedByteField::new_from_be_bytes(len as usize, &buf[2..]).unwrap();
+        Ok(Self { entity_id })
     }
 
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {

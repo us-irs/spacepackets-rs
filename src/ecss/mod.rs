@@ -328,7 +328,7 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
         (self.pfc() / 8) as usize
     }
 
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.field.write_to_be_bytes(buf)
     }
 }

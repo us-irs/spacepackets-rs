@@ -71,7 +71,8 @@ impl ToBeBytes for u64 {
 #[allow(clippy::len_without_is_empty)]
 pub trait UnsignedEnum {
     fn len(&self) -> usize;
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError>;
+    /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
 }
 
 pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq {}
@@ -163,7 +164,7 @@ impl UnsignedEnum for UnsignedByteField {
         self.width
     }
 
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 expected: self.len(),
@@ -171,7 +172,7 @@ impl UnsignedEnum for UnsignedByteField {
             }));
         }
         match self.len() {
-            0 => Ok(()),
+            0 => Ok(0),
             1 => {
                 let u8 = UnsignedByteFieldU8::try_from(*self).unwrap();
                 u8.write_to_be_bytes(buf)
@@ -213,7 +214,7 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
         self.value.written_len()
     }
 
-    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<(), ByteConversionError> {
+    fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
@@ -221,7 +222,7 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
             }));
         }
         buf[0..self.len()].copy_from_slice(self.value.to_be_bytes().as_ref());
-        Ok(())
+        Ok(self.value.written_len())
     }
 }
 
@@ -318,8 +319,10 @@ pub mod tests {
         let u8 = UnsignedByteFieldU8::new(5);
         assert_eq!(u8.len(), 1);
         let mut buf: [u8; 8] = [0; 8];
-        u8.write_to_be_bytes(&mut buf)
+        let len = u8
+            .write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
+        assert_eq!(len, 1);
         assert_eq!(buf[0], 5);
         for i in 1..8 {
             assert_eq!(buf[i], 0);
@@ -331,8 +334,10 @@ pub mod tests {
         let u16 = UnsignedByteFieldU16::new(3823);
         assert_eq!(u16.len(), 2);
         let mut buf: [u8; 8] = [0; 8];
-        u16.write_to_be_bytes(&mut buf)
+        let len = u16
+            .write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
+        assert_eq!(len, 2);
         let raw_val = u16::from_be_bytes(buf[0..2].try_into().unwrap());
         assert_eq!(raw_val, 3823);
         for i in 2..8 {
@@ -345,8 +350,10 @@ pub mod tests {
         let u32 = UnsignedByteFieldU32::new(80932);
         assert_eq!(u32.len(), 4);
         let mut buf: [u8; 8] = [0; 8];
-        u32.write_to_be_bytes(&mut buf)
+        let len = u32
+            .write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
+        assert_eq!(len, 4);
         let raw_val = u32::from_be_bytes(buf[0..4].try_into().unwrap());
         assert_eq!(raw_val, 80932);
         for i in 4..8 {
@@ -359,8 +366,10 @@ pub mod tests {
         let u64 = UnsignedByteFieldU64::new(5999999);
         assert_eq!(u64.len(), 8);
         let mut buf: [u8; 8] = [0; 8];
-        u64.write_to_be_bytes(&mut buf)
+        let len = u64
+            .write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
+        assert_eq!(len, 8);
         let raw_val = u64::from_be_bytes(buf[0..8].try_into().unwrap());
         assert_eq!(raw_val, 5999999);
     }

@@ -45,12 +45,16 @@ pub enum PduError {
     /// The first tuple entry will be the found raw number, the second entry the expected entry
     /// type.
     InvalidDirectiveType((u8, FileDirectiveType)),
+    /// Invalid condition code. Contains the raw detected value.
+    InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
     /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/).
     InvalidChecksumType(u8),
     FileSizeTooLarge(u64),
     /// If the CRC flag for a PDU is enabled and the checksum check fails. Contains raw 16-bit CRC.
     ChecksumError(u16),
+    /// Error handling a TLV field.
+    TlvLvError(TlvLvError),
 }
 
 impl Display for PduError {
@@ -89,6 +93,9 @@ impl Display for PduError {
             PduError::WrongDirectiveType((found, expected)) => {
                 write!(f, "found directive type {found:?}, expected {expected:?}")
             }
+            PduError::InvalidConditionCode(raw_code) => {
+                write!(f, "found invalid condition code with raw value {raw_code}")
+            }
             PduError::InvalidDirectiveType((found, expected)) => {
                 write!(
                     f,
@@ -102,6 +109,9 @@ impl Display for PduError {
             PduError::ChecksumError(checksum) => {
                 write!(f, "checksum error for CRC {checksum:#04x}")
             }
+            PduError::TlvLvError(error) => {
+                write!(f, "pdu tlv error: {error}")
+            }
         }
     }
 }
@@ -111,6 +121,7 @@ impl Error for PduError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             PduError::ByteConversionError(e) => Some(e),
+            PduError::TlvLvError(e) => Some(e),
             _ => None,
         }
     }
@@ -119,6 +130,12 @@ impl Error for PduError {
 impl From<ByteConversionError> for PduError {
     fn from(value: ByteConversionError) -> Self {
         Self::ByteConversionError(value)
+    }
+}
+
+impl From<TlvLvError> for PduError {
+    fn from(e: TlvLvError) -> Self {
+        Self::TlvLvError(e)
     }
 }
 
@@ -513,6 +530,17 @@ mod tests {
     };
     use crate::ByteConversionError;
     use std::format;
+
+    pub(crate) fn common_pdu_conf(crc_flag: CrcFlag, fss: LargeFileFlag) -> CommonPduConfig {
+        let src_id = UbfU8::new(5);
+        let dest_id = UbfU8::new(10);
+        let transaction_seq_num = UbfU8::new(20);
+        let mut pdu_conf = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num)
+            .expect("Generating common PDU config");
+        pdu_conf.crc_flag = crc_flag;
+        pdu_conf.file_flag = fss;
+        pdu_conf
+    }
 
     pub(crate) fn verify_raw_header(pdu_conf: &PduHeader, buf: &[u8]) {
         assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
