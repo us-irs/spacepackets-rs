@@ -9,6 +9,7 @@ use std::error::Error;
 
 pub mod eof;
 pub mod file_data;
+pub mod finished;
 pub mod metadata;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
