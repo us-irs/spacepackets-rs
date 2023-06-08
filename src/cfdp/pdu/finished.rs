@@ -25,11 +25,35 @@ pub enum FileStatus {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FinishPdu<'fs_responses> {
+pub struct FinishedPdu<'fs_responses> {
     pdu_header: PduHeader,
     condition_code: ConditionCode,
     delivery_code: DeliveryCode,
     file_status: FileStatus,
     fs_responses: Option<&'fs_responses [u8]>,
     fault_location: Option<EntityIdTlv>,
+}
+
+impl FinishedPdu<'_> {
+    /// Default finished PDU: No error (no fault location field) and no filestore responses.
+    pub fn new_default(
+        pdu_header: PduHeader,
+        delivery_code: DeliveryCode,
+        file_status: FileStatus,
+    ) -> Self {
+        Self {
+            pdu_header,
+            condition_code: ConditionCode::NoError,
+            delivery_code,
+            file_status,
+            fs_responses: None,
+            fault_location: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_basic() {}
 }
