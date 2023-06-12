@@ -436,7 +436,8 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::tlv::{Tlv, TlvType, TlvTypeField};
+    use crate::cfdp::lv::Lv;
+    use crate::cfdp::tlv::{FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
     use crate::cfdp::TlvLvError;
     use crate::util::{UbfU8, UnsignedEnum};
 
@@ -559,5 +560,13 @@ mod tests {
         assert_eq!(tlv.tlv_type_field(), TlvTypeField::Custom(3));
         assert_eq!(tlv.len_value(), 1);
         assert_eq!(tlv.len_full(), 3);
+    }
+
+    #[test]
+    fn test_fs_request_basic() {
+        let first_name = Lv::new_from_str("hello.txt").unwrap();
+        let fs_request = FilestoreRequestTlv::new_create_file(first_name);
+        assert!(fs_request.is_ok());
+        let fs_request = fs_request.unwrap();
     }
 }
