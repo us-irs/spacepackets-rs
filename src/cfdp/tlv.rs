@@ -324,7 +324,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
     }
 
     pub fn new_deny_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
-        Self::new(FilestoreActionCode::DenyFile, dir_name, None)
+        Self::new(FilestoreActionCode::DenyDirectory, dir_name, None)
     }
 
     /// This function will return [None] if the respective action code requires two names but
@@ -574,14 +574,98 @@ mod tests {
         assert_eq!(tlv.len_full(), 3);
     }
 
-    #[test]
-    fn test_fs_request_basic() {
+    fn generic_fs_request_test_one_file(action_code: FilestoreActionCode) {
+        assert!(!FilestoreRequestTlv::has_second_filename(action_code));
         let first_name = Lv::new_from_str("hello.txt").unwrap();
-        let fs_request = FilestoreRequestTlv::new_create_file(first_name);
+        let fs_request = match action_code {
+            FilestoreActionCode::CreateFile => FilestoreRequestTlv::new_create_file(first_name),
+            FilestoreActionCode::DeleteFile => FilestoreRequestTlv::new_delete_file(first_name),
+            FilestoreActionCode::CreateDirectory => {
+                FilestoreRequestTlv::new_create_directory(first_name)
+            }
+            FilestoreActionCode::RemoveDirectory => {
+                FilestoreRequestTlv::new_remove_directory(first_name)
+            }
+            FilestoreActionCode::DenyFile => FilestoreRequestTlv::new_deny_file(first_name),
+            FilestoreActionCode::DenyDirectory => {
+                FilestoreRequestTlv::new_deny_directory(first_name)
+            }
+            _ => panic!("invalid action code"),
+        };
         assert!(fs_request.is_ok());
         let fs_request = fs_request.unwrap();
-        assert_eq!(fs_request.action_code(), FilestoreActionCode::CreateFile);
+        assert_eq!(fs_request.len_value(), 1 + first_name.len_full());
+        assert_eq!(fs_request.len_full(), fs_request.len_value() + 2);
+        assert_eq!(fs_request.action_code(), action_code);
         assert_eq!(fs_request.first_name(), first_name);
         assert_eq!(fs_request.second_name(), None);
     }
+
+    fn generic_fs_request_test_two_files(action_code: FilestoreActionCode) {
+        assert!(FilestoreRequestTlv::has_second_filename(action_code));
+        let first_name = Lv::new_from_str("hello.txt").unwrap();
+        let second_name = Lv::new_from_str("hello2.txt").unwrap();
+        let fs_request = match action_code {
+            FilestoreActionCode::ReplaceFile => {
+                FilestoreRequestTlv::new_replace_file(first_name, second_name)
+            }
+            FilestoreActionCode::AppendFile => {
+                FilestoreRequestTlv::new_append_file(first_name, second_name)
+            }
+            FilestoreActionCode::RenameFile => {
+                FilestoreRequestTlv::new_rename_file(first_name, second_name)
+            }
+            _ => panic!("invalid action code"),
+        };
+        assert!(fs_request.is_ok());
+        let fs_request = fs_request.unwrap();
+        assert_eq!(
+            fs_request.len_value(),
+            1 + first_name.len_full() + second_name.len_full()
+        );
+        assert_eq!(fs_request.len_full(), fs_request.len_value() + 2);
+        assert_eq!(fs_request.action_code(), action_code);
+        assert_eq!(fs_request.first_name(), first_name);
+        assert!(fs_request.second_name().is_some());
+        assert_eq!(fs_request.second_name().unwrap(), second_name);
+    }
+
+    #[test]
+    fn test_fs_request_basic_create_file() {
+        generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
+    }
+    #[test]
+    fn test_fs_request_basic_delete() {
+        generic_fs_request_test_one_file(FilestoreActionCode::DeleteFile);
+    }
+    #[test]
+    fn test_fs_request_basic_create_dir() {
+        generic_fs_request_test_one_file(FilestoreActionCode::CreateDirectory);
+    }
+    #[test]
+    fn test_fs_request_basic_remove_dir() {
+        generic_fs_request_test_one_file(FilestoreActionCode::RemoveDirectory);
+    }
+    #[test]
+    fn test_fs_request_basic_deny_file() {
+        generic_fs_request_test_one_file(FilestoreActionCode::DenyFile);
+    }
+    #[test]
+    fn test_fs_request_basic_deny_dir() {
+        generic_fs_request_test_one_file(FilestoreActionCode::DenyDirectory);
+    }
+    #[test]
+    fn test_fs_request_basic_append_file() {
+        generic_fs_request_test_two_files(FilestoreActionCode::AppendFile);
+    }
+    #[test]
+    fn test_fs_request_basic_rename_file() {
+        generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
+    }
+    #[test]
+    fn test_fs_request_basic_replace_file() {
+        generic_fs_request_test_two_files(FilestoreActionCode::ReplaceFile);
+    }
+    #[test]
+    fn test_fs_request_serialization() {}
 }
