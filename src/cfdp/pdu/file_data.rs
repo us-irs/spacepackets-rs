@@ -1,5 +1,6 @@
 use crate::cfdp::pdu::{
-    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, PduError, PduHeader,
+    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
+    PduError, PduHeader,
 };
 use crate::cfdp::{CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag};
 use crate::{ByteConversionError, SizeMissmatch};
@@ -185,6 +186,9 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         )?;
         buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
         current_idx += self.file_data.len();
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
         Ok(current_idx)
     }
 

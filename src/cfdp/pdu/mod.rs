@@ -549,6 +549,14 @@ pub(crate) fn generic_length_checks_pdu_deserialization(
     Ok(())
 }
 
+pub(crate) fn add_pdu_crc(buf: &mut [u8], mut current_idx: usize) -> usize {
+    let mut digest = CRC_CCITT_FALSE.digest();
+    digest.update(&buf[..current_idx]);
+    buf[current_idx..current_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+    current_idx += 2;
+    current_idx
+}
+
 #[cfg(test)]
 mod tests {
     use crate::cfdp::pdu::{CommonPduConfig, PduError, PduHeader, FIXED_HEADER_LEN};

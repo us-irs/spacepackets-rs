@@ -1,11 +1,11 @@
 use crate::cfdp::lv::Lv;
 use crate::cfdp::pdu::{
-    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, FileDirectiveType,
-    PduError, PduHeader,
+    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
+    FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::Tlv;
 use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag, PduType};
-use crate::{ByteConversionError, SizeMissmatch, CRC_CCITT_FALSE};
+use crate::{ByteConversionError, SizeMissmatch};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "serde")]
@@ -226,10 +226,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
             current_idx += opts.len();
         }
         if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
-            let mut digest = CRC_CCITT_FALSE.digest();
-            digest.update(&buf[..current_idx]);
-            buf[current_idx..current_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
-            current_idx += 2;
+            current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
     }

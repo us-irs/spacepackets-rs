@@ -1,8 +1,8 @@
 use crate::cfdp::pdu::{
-    generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
+    add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::{EntityIdTlv, Tlv, TlvType, TlvTypeField};
-use crate::cfdp::{ConditionCode, PduType, TlvLvError};
+use crate::cfdp::{ConditionCode, CrcFlag, PduType, TlvLvError};
 use crate::{ByteConversionError, SizeMissmatch};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
@@ -156,6 +156,9 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         }
         if let Some(fault_location) = self.fault_location {
             current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
+        }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
     }

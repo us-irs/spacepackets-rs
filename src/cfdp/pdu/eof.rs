@@ -1,9 +1,9 @@
 use crate::cfdp::pdu::{
-    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, FileDirectiveType,
-    PduError, PduHeader,
+    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
+    FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::EntityIdTlv;
-use crate::cfdp::{ConditionCode, LargeFileFlag};
+use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};
 use crate::{ByteConversionError, SizeMissmatch};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -86,6 +86,9 @@ impl EofPdu {
         )?;
         if let Some(fault_location) = self.fault_location {
             current_idx += fault_location.write_to_be_bytes(buf)?;
+        }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
     }
