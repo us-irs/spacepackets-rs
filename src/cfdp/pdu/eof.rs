@@ -1,4 +1,7 @@
-use crate::cfdp::pdu::{read_fss_field, write_fss_field, FileDirectiveType, PduError, PduHeader};
+use crate::cfdp::pdu::{
+    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, FileDirectiveType,
+    PduError, PduHeader,
+};
 use crate::cfdp::tlv::EntityIdTlv;
 use crate::cfdp::{ConditionCode, LargeFileFlag};
 use crate::{ByteConversionError, SizeMissmatch};
@@ -95,13 +98,7 @@ impl EofPdu {
         if is_large_file {
             min_expected_len += 4;
         }
-        if pdu_header.header_len() + min_expected_len > buf.len() {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: pdu_header.header_len() + min_expected_len,
-            })
-            .into());
-        }
+        generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::EofPdu))
         })?;

@@ -53,6 +53,8 @@ pub enum PduError {
     FileSizeTooLarge(u64),
     /// If the CRC flag for a PDU is enabled and the checksum check fails. Contains raw 16-bit CRC.
     ChecksumError(u16),
+    /// Generic error for invalid PDU formats.
+    FormatError,
     /// Error handling a TLV field.
     TlvLvError(TlvLvError),
 }
@@ -111,6 +113,9 @@ impl Display for PduError {
             }
             PduError::TlvLvError(error) => {
                 write!(f, "pdu tlv error: {error}")
+            }
+            PduError::FormatError => {
+                write!(f, "generic PDU format error")
             }
         }
     }
@@ -516,6 +521,31 @@ pub(crate) fn read_fss_field(file_flag: LargeFileFlag, buf: &[u8]) -> (usize, u6
             u32::from_be_bytes(buf[..core::mem::size_of::<u32>()].try_into().unwrap()).into(),
         )
     }
+}
+
+// This is a generic length check applicable to most PDU deserializations. It first checks whether
+// a given buffer can hold an expected minimum size, and then it checks whether the PDU datafield
+// length is larger than that expected minimum size.
+pub(crate) fn generic_length_checks_pdu_deserialization(
+    buf: &[u8],
+    min_expected_len: usize,
+    full_len_without_crc: usize,
+) -> Result<(), ByteConversionError> {
+    // Buffer too short to hold additional expected minimum datasize.
+    if buf.len() < min_expected_len {
+        return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            found: buf.len(),
+            expected: min_expected_len,
+        }));
+    }
+    // This can happen if the PDU datafield length value is invalid.
+    if full_len_without_crc < min_expected_len {
+        return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            found: full_len_without_crc,
+            expected: min_expected_len,
+        }));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

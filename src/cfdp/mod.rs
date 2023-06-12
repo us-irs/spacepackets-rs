@@ -140,8 +140,8 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 pub enum TlvLvError {
     DataTooLarge(usize),
     ByteConversionError(ByteConversionError),
-    /// First value: Found value. Second value: Expected value.
-    InvalidTlvTypeField((u8, u8)),
+    /// First value: Found value. Second value: Expected value if there is one.
+    InvalidTlvTypeField((u8, Option<u8>)),
     /// Logically invalid value length detected.
     InvalidValueLength(u8),
 }
@@ -169,7 +169,7 @@ impl Display for TlvLvError {
             TlvLvError::InvalidTlvTypeField((found, expected)) => {
                 write!(
                     f,
-                    "invalid TLV type field, found {found}, expected {expected}"
+                    "invalid TLV type field, found {found}, possibly expected {expected:?}"
                 )
             }
             TlvLvError::InvalidValueLength(len) => {

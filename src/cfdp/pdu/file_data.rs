@@ -1,4 +1,6 @@
-use crate::cfdp::pdu::{read_fss_field, write_fss_field, PduError, PduHeader};
+use crate::cfdp::pdu::{
+    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, PduError, PduHeader,
+};
 use crate::cfdp::{CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag};
 use crate::{ByteConversionError, SizeMissmatch};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -188,15 +190,8 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
     ) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
-        let mut min_expected_len = current_idx + core::mem::size_of::<u32>();
-        min_expected_len = core::cmp::max(min_expected_len, pdu_header.pdu_len());
-        if buf.len() < min_expected_len {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: min_expected_len,
-            })
-            .into());
-        }
+        let min_expected_len = current_idx + core::mem::size_of::<u32>();
+        generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let mut segment_metadata = None;
         if pdu_header.seg_metadata_flag == SegmentMetadataFlag::Present {
             segment_metadata = Some(SegmentMetadata::from_bytes(&buf[current_idx..])?);

@@ -1,5 +1,8 @@
 use crate::cfdp::lv::Lv;
-use crate::cfdp::pdu::{read_fss_field, write_fss_field, FileDirectiveType, PduError, PduHeader};
+use crate::cfdp::pdu::{
+    generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field, FileDirectiveType,
+    PduError, PduHeader,
+};
 use crate::cfdp::tlv::Tlv;
 use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag, PduType};
 use crate::{ByteConversionError, SizeMissmatch, CRC_CCITT_FALSE};
@@ -242,14 +245,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         if is_large_file {
             min_expected_len += 4;
         }
-        min_expected_len = core::cmp::max(min_expected_len, pdu_header.pdu_len());
-        if buf.len() < min_expected_len {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
-                found: buf.len(),
-                expected: min_expected_len,
-            })
-            .into());
-        }
+        generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::MetadataPdu))
         })?;

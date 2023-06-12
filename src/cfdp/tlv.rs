@@ -159,8 +159,9 @@ impl EntityIdTlv {
 
     pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
         Self::len_check(buf)?;
-        TlvType::try_from(buf[0])
-            .map_err(|_| TlvLvError::InvalidTlvTypeField((buf[0], TlvType::EntityId as u8)))?;
+        TlvType::try_from(buf[0]).map_err(|_| {
+            TlvLvError::InvalidTlvTypeField((buf[0], Some(TlvType::EntityId as u8)))
+        })?;
         let len = buf[1];
         if len != 1 && len != 2 && len != 4 && len != 8 {
             return Err(TlvLvError::InvalidValueLength(len));
@@ -191,14 +192,14 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
                 if tlv_type != TlvType::EntityId {
                     return Err(TlvLvError::InvalidTlvTypeField((
                         tlv_type as u8,
-                        TlvType::EntityId as u8,
+                        Some(TlvType::EntityId as u8),
                     )));
                 }
             }
             TlvTypeField::Custom(val) => {
                 return Err(TlvLvError::InvalidTlvTypeField((
                     val,
-                    TlvType::EntityId as u8,
+                    Some(TlvType::EntityId as u8),
                 )));
             }
         }
