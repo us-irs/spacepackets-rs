@@ -30,6 +30,21 @@ pub enum TlvTypeField {
     Custom(u8),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum FsRequestActionCode {
+    CreateFile = 0b0000,
+    DeleteFile = 0b0001,
+    RenameFile = 0b0010,
+    AppendFile = 0b0011,
+    ReplaceFile = 0b0100,
+    CreateDirectory = 0b0101,
+    RemoveDirectory = 0b0110,
+    DenyFile = 0b0111,
+    DenyDirectory = 0b1000,
+}
+
 impl From<u8> for TlvTypeField {
     fn from(value: u8) -> Self {
         match TlvType::try_from(value) {
