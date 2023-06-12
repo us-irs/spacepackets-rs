@@ -143,8 +143,14 @@ pub enum TlvLvError {
     ByteConversionError(ByteConversionError),
     /// First value: Found value. Second value: Expected value if there is one.
     InvalidTlvTypeField((u8, Option<u8>)),
-    /// Logically invalid value length detected.
-    InvalidValueLength(u8),
+    /// Logically invalid value length detected. The value length may not exceed 255 bytes.
+    /// Depending on the concrete TLV type, the value length may also be logically invalid.
+    InvalidValueLength(usize),
+    /// Only applies to filestore requests and responses. Second name was missing where one is
+    /// expected.
+    SecondNameMissing,
+    /// Invalid action code for filestore requests or responses.
+    InvalidFilestoreActionCode(u8),
 }
 
 impl From<ByteConversionError> for TlvLvError {
@@ -175,6 +181,12 @@ impl Display for TlvLvError {
             }
             TlvLvError::InvalidValueLength(len) => {
                 write!(f, "invalid value length {len} detected")
+            }
+            TlvLvError::SecondNameMissing => {
+                write!(f, "second name missing for filestore request or response")
+            }
+            TlvLvError::InvalidFilestoreActionCode(raw) => {
+                write!(f, "invalid filestore action code with raw value {raw}")
             }
         }
     }

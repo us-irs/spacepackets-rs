@@ -33,11 +33,16 @@ pub enum TlvTypeField {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum FsRequestActionCode {
+pub enum FilestoreActionCode {
     CreateFile = 0b0000,
     DeleteFile = 0b0001,
     RenameFile = 0b0010,
+    /// This operation appends one file to another. The first specified name will form the first
+    /// part of the new file and the name of the new file. This function can be used to get
+    /// similar functionality to the UNIX cat utility (albeit for only two files).
     AppendFile = 0b0011,
+    /// This operation replaces the content of the first specified file with the content of
+    /// the secondly specified file.
     ReplaceFile = 0b0100,
     CreateDirectory = 0b0101,
     RemoveDirectory = 0b0110,
@@ -136,6 +141,18 @@ impl<'data> Tlv<'data> {
     }
 }
 
+pub(crate) fn verify_tlv_type(raw_type: u8, expected_tlv_type: TlvType) -> Result<(), TlvLvError> {
+    let tlv_type = TlvType::try_from(raw_type)
+        .map_err(|_| TlvLvError::InvalidTlvTypeField((raw_type, Some(expected_tlv_type as u8))))?;
+    if tlv_type != expected_tlv_type {
+        return Err(TlvLvError::InvalidTlvTypeField((
+            tlv_type as u8,
+            Some(expected_tlv_type as u8),
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EntityIdTlv {
@@ -174,18 +191,17 @@ impl EntityIdTlv {
 
     pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
         Self::len_check(buf)?;
-        TlvType::try_from(buf[0]).map_err(|_| {
-            TlvLvError::InvalidTlvTypeField((buf[0], Some(TlvType::EntityId as u8)))
-        })?;
+        verify_tlv_type(buf[0], TlvType::EntityId)?;
         let len = buf[1];
         if len != 1 && len != 2 && len != 4 && len != 8 {
-            return Err(TlvLvError::InvalidValueLength(len));
+            return Err(TlvLvError::InvalidValueLength(len as usize));
         }
         // Okay to unwrap here. The checks before make sure that the deserialization never fails
         let entity_id = UnsignedByteField::new_from_be_bytes(len as usize, &buf[2..]).unwrap();
         Ok(Self { entity_id })
     }
 
+    /// Convert to a generic [Tlv], which also erases the programmatic type information.
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
         Self::len_check(buf)?;
         self.entity_id
@@ -223,7 +239,7 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
             && value.len_value() != 4
             && value.len_value() != 8
         {
-            return Err(TlvLvError::InvalidValueLength(value.len_value() as u8));
+            return Err(TlvLvError::InvalidValueLength(value.len_value()));
         }
         Ok(Self::new(
             UnsignedByteField::new_from_be_bytes(value.len_value(), value.value().unwrap())
@@ -234,6 +250,187 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
                     _ => panic!("unexpected error"),
                 })?,
         ))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FilestoreRequestTlv<'first_name, 'second_name> {
+    action_code: FilestoreActionCode,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    first_name: Lv<'first_name>,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    second_name: Option<Lv<'second_name>>,
+}
+
+impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
+    pub fn new_create_file(first_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::CreateFile, first_name, None)
+    }
+
+    pub fn new_delete_file(first_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::DeleteFile, first_name, None)
+    }
+
+    pub fn new_rename_file(
+        source_name: Lv<'first_name>,
+        target_name: Lv<'second_name>,
+    ) -> Result<Self, TlvLvError> {
+        Self::new(
+            FilestoreActionCode::RenameFile,
+            source_name,
+            Some(target_name),
+        )
+    }
+
+    /// This operation appends one file to another. The first specified name will form the first
+    /// part of the new file and the name of the new file. This function can be used to get
+    /// similar functionality to the UNIX cat utility (albeit for only two files).
+    pub fn new_append_file(
+        first_file: Lv<'first_name>,
+        second_file: Lv<'second_name>,
+    ) -> Result<Self, TlvLvError> {
+        Self::new(
+            FilestoreActionCode::AppendFile,
+            first_file,
+            Some(second_file),
+        )
+    }
+
+    /// This operation replaces the content of the first specified file with the content of
+    /// the secondly specified file. This function can be used to get similar functionality to
+    /// the UNIX copy (cp) utility if the target file already exists.
+    pub fn new_replace_file(
+        replaced_file: Lv<'first_name>,
+        new_file: Lv<'second_name>,
+    ) -> Result<Self, TlvLvError> {
+        Self::new(
+            FilestoreActionCode::ReplaceFile,
+            replaced_file,
+            Some(new_file),
+        )
+    }
+
+    pub fn new_create_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::CreateDirectory, dir_name, None)
+    }
+
+    pub fn new_remove_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::RemoveDirectory, dir_name, None)
+    }
+
+    pub fn new_deny_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::DenyFile, file_name, None)
+    }
+
+    pub fn new_deny_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::DenyFile, dir_name, None)
+    }
+
+    /// This function will return [None] if the respective action code requires two names but
+    /// only one is passed. It will also returns [None] if the cumulative length of the first
+    /// name and the second name exceeds 255 bytes.
+    ///
+    /// This is the case for the rename, append and replace filestore request.
+    pub fn new(
+        action_code: FilestoreActionCode,
+        first_name: Lv<'first_name>,
+        second_name: Option<Lv<'second_name>>,
+    ) -> Result<Self, TlvLvError> {
+        let mut base_value_len = first_name.len_full();
+        if Self::has_second_filename(action_code) {
+            if second_name.is_none() {
+                return Err(TlvLvError::SecondNameMissing);
+            }
+            base_value_len += second_name.as_ref().unwrap().len_full();
+        }
+        if base_value_len > u8::MAX as usize {
+            return Err(TlvLvError::InvalidValueLength(base_value_len));
+        }
+        Ok(Self {
+            action_code,
+            first_name,
+            second_name,
+        })
+    }
+
+    pub fn has_second_filename(action_code: FilestoreActionCode) -> bool {
+        if action_code == FilestoreActionCode::RenameFile
+            || action_code == FilestoreActionCode::AppendFile
+            || action_code == FilestoreActionCode::ReplaceFile
+        {
+            return true;
+        }
+        false
+    }
+
+    pub fn len_value(&self) -> usize {
+        let mut len = 1 + self.first_name.len_full();
+        if let Some(second_name) = self.second_name {
+            len += second_name.len_full();
+        }
+        len
+    }
+
+    pub fn len_full(&self) -> usize {
+        2 + self.len_value()
+    }
+
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        if buf.len() < self.len_full() {
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: self.len_full(),
+            }));
+        }
+        buf[0] = TlvType::FilestoreRequest as u8;
+        buf[1] = self.len_value() as u8;
+        buf[2] = (self.action_code as u8) << 4;
+        let mut current_idx = 2;
+        // Length checks were already performed.
+        self.first_name.write_to_be_bytes_no_len_check(
+            &mut buf[current_idx..current_idx + self.first_name.len_full()],
+        );
+        current_idx += self.first_name.len_full();
+        if let Some(second_name) = self.second_name {
+            second_name.write_to_be_bytes_no_len_check(
+                &mut buf[current_idx..current_idx + second_name.len_full()],
+            );
+            current_idx += second_name.len_full();
+        }
+        Ok(current_idx)
+    }
+
+    pub fn from_bytes<'longest: 'first_name + 'second_name>(
+        buf: &'longest [u8],
+    ) -> Result<Self, TlvLvError> {
+        if buf.len() < 2 {
+            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                found: buf.len(),
+                expected: 2,
+            })
+            .into());
+        }
+        verify_tlv_type(buf[0], TlvType::FilestoreRequest)?;
+        let len = buf[1] as usize;
+        let mut current_idx = 2;
+        let action_code = FilestoreActionCode::try_from((buf[2] >> 4) & 0b1111)
+            .map_err(|_| TlvLvError::InvalidFilestoreActionCode((buf[2] >> 4) & 0b1111))?;
+        let first_name = Lv::from_bytes(&buf[current_idx..])?;
+        let mut second_name = None;
+
+        current_idx += first_name.len_full();
+        if Self::has_second_filename(action_code) {
+            if current_idx >= 2 + len {
+                return Err(TlvLvError::SecondNameMissing);
+            }
+            second_name = Some(Lv::from_bytes(&buf[current_idx..])?);
+        }
+        Ok(Self {
+            action_code,
+            first_name,
+            second_name,
+        })
     }
 }
 
