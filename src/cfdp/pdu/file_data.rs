@@ -81,6 +81,9 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
     }
 }
 
+/// File Data PDU abstraction.
+///
+/// For more information, refer to CFDP chapter 5.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FileDataPdu<'seg_meta, 'file_data> {

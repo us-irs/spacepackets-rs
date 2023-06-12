@@ -26,6 +26,9 @@ pub enum FileStatus {
     Unreported = 0b11,
 }
 
+/// Finished PDU abstraction.
+///
+/// For more information, refer to CFDP chapter 5.2.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FinishedPdu<'fs_responses> {
