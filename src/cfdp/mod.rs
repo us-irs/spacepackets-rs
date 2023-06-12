@@ -1,3 +1,4 @@
+//! Low-level CCSDS File Delivery Protocol (CFDP) support according to [CCSDS 727.0-B-5](https://public.ccsds.org/Pubs/727x0b5.pdf).
 use crate::ByteConversionError;
 use core::fmt::{Display, Formatter};
 use num_enum::{IntoPrimitive, TryFromPrimitive};

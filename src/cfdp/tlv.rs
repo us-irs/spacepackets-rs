@@ -126,7 +126,7 @@ impl<'data> Tlv<'data> {
     /// Creates a TLV give a raw bytestream. Please note that is is not necessary to pass the
     /// bytestream with the exact size of the expected TLV. This function will take care
     /// of parsing the length byte, and the length of the parsed TLV can be retrieved using
-    /// [len_full].
+    /// [Self::len_full].
     pub fn from_bytes(buf: &'data [u8]) -> Result<Tlv<'data>, TlvLvError> {
         generic_len_check_deserialization(buf, MIN_TLV_LEN)?;
         Ok(Self {

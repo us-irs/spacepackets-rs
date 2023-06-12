@@ -392,7 +392,8 @@ impl PduHeader {
     /// and 4.1.2 because performing the CRC procedure requires the buffer to be large enough
     /// to hold the full PDU.
     ///
-    /// Both functions can however be performed with the [verify_length_and_checksum] function.
+    /// Both functions can however be performed with the [Self::verify_length_and_checksum]
+    /// function.
     pub fn from_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
         if buf.len() < FIXED_HEADER_LEN {
             return Err(PduError::ByteConversionError(

@@ -13,6 +13,8 @@ Currently, this includes the following components:
 
 - Space Packet implementation according to
   [CCSDS Blue Book 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf)
+- CCSDS File Delivery Protocol (CFDP) packet implementations according to
+  [CCSDS Blue Book 727.0-B-5](https://public.ccsds.org/Pubs/727x0b5.pdf)
 - PUS Telecommand and PUS Telemetry implementation according to the
   [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 - CUC (CCSDS Unsegmented Time Code) implementation according to
