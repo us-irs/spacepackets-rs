@@ -364,6 +364,18 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         false
     }
 
+    pub fn action_code(&self) -> FilestoreActionCode {
+        self.action_code
+    }
+
+    pub fn first_name(&self) -> Lv<'first_name> {
+        self.first_name
+    }
+
+    pub fn second_name(&self) -> Option<Lv<'second_name>> {
+        self.second_name
+    }
+
     pub fn len_value(&self) -> usize {
         let mut len = 1 + self.first_name.len_full();
         if let Some(second_name) = self.second_name {
@@ -437,7 +449,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 #[cfg(test)]
 mod tests {
     use crate::cfdp::lv::Lv;
-    use crate::cfdp::tlv::{FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
+    use crate::cfdp::tlv::{FilestoreActionCode, FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
     use crate::cfdp::TlvLvError;
     use crate::util::{UbfU8, UnsignedEnum};
 
@@ -568,5 +580,8 @@ mod tests {
         let fs_request = FilestoreRequestTlv::new_create_file(first_name);
         assert!(fs_request.is_ok());
         let fs_request = fs_request.unwrap();
+        assert_eq!(fs_request.action_code(), FilestoreActionCode::CreateFile);
+        assert_eq!(fs_request.first_name(), first_name);
+        assert_eq!(fs_request.second_name(), None);
     }
 }
