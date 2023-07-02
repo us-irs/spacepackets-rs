@@ -48,7 +48,7 @@ pub enum CrcFlag {
     WithCrc = 1,
 }
 
-/// Always 0 and ignores for File Directive PDUs (CCSDS 727.0-B-5 P.75)
+/// Always 0 and ignored for File Directive PDUs (CCSDS 727.0-B-5 P.75)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
@@ -57,7 +57,7 @@ pub enum SegmentMetadataFlag {
     Present = 1,
 }
 
-/// Always 0 and ignores for File Directive PDUs (CCSDS 727.0-B-5 P.75)
+/// Always 0 and ignored for File Directive PDUs (CCSDS 727.0-B-5 P.75)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
