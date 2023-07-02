@@ -253,17 +253,6 @@ impl<'raw_data> PusTm<'raw_data> {
         pus_tm
     }
 
-    pub fn len_packed(&self) -> usize {
-        let mut length = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-        if let Some(timestamp) = self.sec_header.timestamp {
-            length += timestamp.len();
-        }
-        if let Some(src_data) = self.source_data {
-            length += src_data.len();
-        }
-        length
-    }
-
     pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
         self.sec_header.timestamp
     }
@@ -411,6 +400,16 @@ impl<'raw_data> PusTm<'raw_data> {
 }
 
 impl SerializablePusPacket for PusTm<'_> {
+    fn len_packed(&self) -> usize {
+        let mut length = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
+        if let Some(timestamp) = self.sec_header.timestamp {
+            length += timestamp.len();
+        }
+        if let Some(src_data) = self.source_data {
+            length += src_data.len();
+        }
+        length
+    }
     /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;

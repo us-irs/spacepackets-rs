@@ -350,6 +350,7 @@ pub type EcssEnumU32 = GenericEcssEnumWrapper<u32>;
 pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 
 pub trait SerializablePusPacket {
+    fn len_packed(&self) -> usize;
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
 }
 

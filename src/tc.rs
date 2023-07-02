@@ -290,14 +290,6 @@ impl<'raw_data> PusTc<'raw_data> {
         &self.sp_header
     }
 
-    pub fn len_packed(&self) -> usize {
-        let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-        if let Some(app_data) = self.app_data {
-            length += app_data.len();
-        }
-        length
-    }
-
     pub fn set_ack_field(&mut self, ack: u8) -> bool {
         if ack > 0b1111 {
             return false;
@@ -419,6 +411,14 @@ impl<'raw_data> PusTc<'raw_data> {
 }
 
 impl SerializablePusPacket for PusTc<'_> {
+    fn len_packed(&self) -> usize {
+        let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
+        if let Some(app_data) = self.app_data {
+            length += app_data.len();
+        }
+        length
+    }
+
     /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
