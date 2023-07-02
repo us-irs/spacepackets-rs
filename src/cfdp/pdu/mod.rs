@@ -171,26 +171,26 @@ impl CommonPduConfig {
         let source_id = source_id.into();
         let dest_id = dest_id.into();
         let transaction_seq_num = transaction_seq_num.into();
-        if source_id.len() != dest_id.len() {
+        if source_id.size() != dest_id.size() {
             return Err(PduError::SourceDestIdLenMissmatch((
-                source_id.len(),
-                dest_id.len(),
+                source_id.size(),
+                dest_id.size(),
             )));
         }
-        if source_id.len() != 1
-            && source_id.len() != 2
-            && source_id.len() != 4
-            && source_id.len() != 8
+        if source_id.size() != 1
+            && source_id.size() != 2
+            && source_id.size() != 4
+            && source_id.size() != 8
         {
-            return Err(PduError::InvalidEntityLen(source_id.len() as u8));
+            return Err(PduError::InvalidEntityLen(source_id.size() as u8));
         }
-        if transaction_seq_num.len() != 1
-            && transaction_seq_num.len() != 2
-            && transaction_seq_num.len() != 4
-            && transaction_seq_num.len() != 8
+        if transaction_seq_num.size() != 1
+            && transaction_seq_num.size() != 2
+            && transaction_seq_num.size() != 4
+            && transaction_seq_num.size() != 8
         {
             return Err(PduError::InvalidTransactionSeqNumLen(
-                transaction_seq_num.len() as u8,
+                transaction_seq_num.size() as u8,
             ));
         }
         Ok(Self {
@@ -298,9 +298,9 @@ impl PduHeader {
     /// Returns only the length of the PDU header when written to a raw buffer.
     pub fn header_len(&self) -> usize {
         FIXED_HEADER_LEN
-            + self.pdu_conf.source_entity_id.len()
-            + self.pdu_conf.transaction_seq_num.len()
-            + self.pdu_conf.dest_entity_id.len()
+            + self.pdu_conf.source_entity_id.size()
+            + self.pdu_conf.transaction_seq_num.size()
+            + self.pdu_conf.dest_entity_id.size()
     }
 
     /// Returns the full length of the PDU when written to a raw buffer, which is the header length
@@ -312,16 +312,16 @@ impl PduHeader {
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         // Internal note: There is currently no way to pass a PDU configuration like this, but
         // this check is still kept for defensive programming.
-        if self.pdu_conf.source_entity_id.len() != self.pdu_conf.dest_entity_id.len() {
+        if self.pdu_conf.source_entity_id.size() != self.pdu_conf.dest_entity_id.size() {
             return Err(PduError::SourceDestIdLenMissmatch((
-                self.pdu_conf.source_entity_id.len(),
-                self.pdu_conf.dest_entity_id.len(),
+                self.pdu_conf.source_entity_id.size(),
+                self.pdu_conf.dest_entity_id.size(),
             )));
         }
         if buf.len()
             < FIXED_HEADER_LEN
-                + self.pdu_conf.source_entity_id.len()
-                + self.pdu_conf.transaction_seq_num.len()
+                + self.pdu_conf.source_entity_id.size()
+                + self.pdu_conf.transaction_seq_num.size()
         {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
@@ -340,22 +340,22 @@ impl PduHeader {
         buf[current_idx..current_idx + 2].copy_from_slice(&self.pdu_datafield_len.to_be_bytes());
         current_idx += 2;
         buf[current_idx] = ((self.seg_ctrl as u8) << 7)
-            | (((self.pdu_conf.source_entity_id.len() - 1) as u8) << 4)
+            | (((self.pdu_conf.source_entity_id.size() - 1) as u8) << 4)
             | ((self.seg_metadata_flag as u8) << 3)
-            | ((self.pdu_conf.transaction_seq_num.len() - 1) as u8);
+            | ((self.pdu_conf.transaction_seq_num.size() - 1) as u8);
         current_idx += 1;
         self.pdu_conf.source_entity_id.write_to_be_bytes(
-            &mut buf[current_idx..current_idx + self.pdu_conf.source_entity_id.len()],
+            &mut buf[current_idx..current_idx + self.pdu_conf.source_entity_id.size()],
         )?;
-        current_idx += self.pdu_conf.source_entity_id.len();
+        current_idx += self.pdu_conf.source_entity_id.size();
         self.pdu_conf.transaction_seq_num.write_to_be_bytes(
-            &mut buf[current_idx..current_idx + self.pdu_conf.transaction_seq_num.len()],
+            &mut buf[current_idx..current_idx + self.pdu_conf.transaction_seq_num.size()],
         )?;
-        current_idx += self.pdu_conf.transaction_seq_num.len();
+        current_idx += self.pdu_conf.transaction_seq_num.size();
         self.pdu_conf.dest_entity_id.write_to_be_bytes(
-            &mut buf[current_idx..current_idx + self.pdu_conf.dest_entity_id.len()],
+            &mut buf[current_idx..current_idx + self.pdu_conf.dest_entity_id.size()],
         )?;
-        current_idx += self.pdu_conf.dest_entity_id.len();
+        current_idx += self.pdu_conf.dest_entity_id.size();
         Ok(current_idx)
     }
 

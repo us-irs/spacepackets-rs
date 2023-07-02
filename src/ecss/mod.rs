@@ -324,7 +324,7 @@ impl<TYPE> GenericEcssEnumWrapper<TYPE> {
 }
 
 impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
-    fn len(&self) -> usize {
+    fn size(&self) -> usize {
         (self.pfc() / 8) as usize
     }
 

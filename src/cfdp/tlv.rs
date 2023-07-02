@@ -175,17 +175,17 @@ impl EntityIdTlv {
     }
 
     pub fn len_value(&self) -> usize {
-        self.entity_id.len()
+        self.entity_id.size()
     }
 
     pub fn len_full(&self) -> usize {
-        2 + self.entity_id.len()
+        2 + self.entity_id.size()
     }
 
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
-        buf[1] = self.entity_id.len() as u8;
+        buf[1] = self.entity_id.size() as u8;
         self.entity_id.write_to_be_bytes(&mut buf[2..])
     }
 
@@ -205,8 +205,8 @@ impl EntityIdTlv {
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
         Self::len_check(buf)?;
         self.entity_id
-            .write_to_be_bytes(&mut buf[2..2 + self.entity_id.len()])?;
-        Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.len()]).map_err(|e| match e {
+            .write_to_be_bytes(&mut buf[2..2 + self.entity_id.size()])?;
+        Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).map_err(|e| match e {
             TlvLvError::ByteConversionError(e) => e,
             // All other errors are impossible.
             _ => panic!("unexpected TLV error"),

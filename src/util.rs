@@ -68,9 +68,9 @@ impl ToBeBytes for u64 {
     }
 }
 
-#[allow(clippy::len_without_is_empty)]
 pub trait UnsignedEnum {
-    fn len(&self) -> usize;
+    /// Size of the unsigned enumeration in bytes.
+    fn size(&self) -> usize;
     /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
 }
@@ -160,18 +160,18 @@ impl UnsignedByteField {
 }
 
 impl UnsignedEnum for UnsignedByteField {
-    fn len(&self) -> usize {
+    fn size(&self) -> usize {
         self.width
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        if buf.len() < self.len() {
+        if buf.len() < self.size() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
-                expected: self.len(),
+                expected: self.size(),
                 found: buf.len(),
             }));
         }
-        match self.len() {
+        match self.size() {
             0 => Ok(0),
             1 => {
                 let u8 = UnsignedByteFieldU8::try_from(*self).unwrap();
@@ -210,18 +210,18 @@ impl<TYPE> GenericUnsignedByteField<TYPE> {
 }
 
 impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
-    fn len(&self) -> usize {
+    fn size(&self) -> usize {
         self.value.written_len()
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        if buf.len() < self.len() {
+        if buf.len() < self.size() {
             return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                 found: buf.len(),
-                expected: self.len(),
+                expected: self.size(),
             }));
         }
-        buf[0..self.len()].copy_from_slice(self.value.to_be_bytes().as_ref());
+        buf[0..self.size()].copy_from_slice(self.value.to_be_bytes().as_ref());
         Ok(self.value.written_len())
     }
 }
