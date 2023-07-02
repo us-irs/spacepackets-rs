@@ -398,7 +398,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         buf[0] = TlvType::FilestoreRequest as u8;
         buf[1] = self.len_value() as u8;
         buf[2] = (self.action_code as u8) << 4;
-        let mut current_idx = 2;
+        let mut current_idx = 3;
         // Length checks were already performed.
         self.first_name.write_to_be_bytes_no_len_check(
             &mut buf[current_idx..current_idx + self.first_name.len_full()],
@@ -428,6 +428,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         let mut current_idx = 2;
         let action_code = FilestoreActionCode::try_from((buf[2] >> 4) & 0b1111)
             .map_err(|_| TlvLvError::InvalidFilestoreActionCode((buf[2] >> 4) & 0b1111))?;
+        current_idx += 1;
         let first_name = Lv::from_bytes(&buf[current_idx..])?;
         let mut second_name = None;
 
@@ -452,6 +453,9 @@ mod tests {
     use crate::cfdp::tlv::{FilestoreActionCode, FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
     use crate::cfdp::TlvLvError;
     use crate::util::{UbfU8, UnsignedEnum};
+
+    const TLV_TEST_STR_0: &'static str = "hello.txt";
+    const TLV_TEST_STR_1: &'static str = "hello2.txt";
 
     #[test]
     fn test_basic() {
@@ -574,9 +578,11 @@ mod tests {
         assert_eq!(tlv.len_full(), 3);
     }
 
-    fn generic_fs_request_test_one_file(action_code: FilestoreActionCode) {
+    fn generic_fs_request_test_one_file(
+        action_code: FilestoreActionCode,
+    ) -> FilestoreRequestTlv<'static, 'static> {
         assert!(!FilestoreRequestTlv::has_second_filename(action_code));
-        let first_name = Lv::new_from_str("hello.txt").unwrap();
+        let first_name = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
         let fs_request = match action_code {
             FilestoreActionCode::CreateFile => FilestoreRequestTlv::new_create_file(first_name),
             FilestoreActionCode::DeleteFile => FilestoreRequestTlv::new_delete_file(first_name),
@@ -599,12 +605,15 @@ mod tests {
         assert_eq!(fs_request.action_code(), action_code);
         assert_eq!(fs_request.first_name(), first_name);
         assert_eq!(fs_request.second_name(), None);
+        fs_request
     }
 
-    fn generic_fs_request_test_two_files(action_code: FilestoreActionCode) {
+    fn generic_fs_request_test_two_files(
+        action_code: FilestoreActionCode,
+    ) -> FilestoreRequestTlv<'static, 'static> {
         assert!(FilestoreRequestTlv::has_second_filename(action_code));
-        let first_name = Lv::new_from_str("hello.txt").unwrap();
-        let second_name = Lv::new_from_str("hello2.txt").unwrap();
+        let first_name = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
+        let second_name = Lv::new_from_str(TLV_TEST_STR_1).unwrap();
         let fs_request = match action_code {
             FilestoreActionCode::ReplaceFile => {
                 FilestoreRequestTlv::new_replace_file(first_name, second_name)
@@ -628,44 +637,129 @@ mod tests {
         assert_eq!(fs_request.first_name(), first_name);
         assert!(fs_request.second_name().is_some());
         assert_eq!(fs_request.second_name().unwrap(), second_name);
+        fs_request
     }
 
     #[test]
     fn test_fs_request_basic_create_file() {
         generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
     }
+
     #[test]
     fn test_fs_request_basic_delete() {
         generic_fs_request_test_one_file(FilestoreActionCode::DeleteFile);
     }
+
     #[test]
     fn test_fs_request_basic_create_dir() {
         generic_fs_request_test_one_file(FilestoreActionCode::CreateDirectory);
     }
+
     #[test]
     fn test_fs_request_basic_remove_dir() {
         generic_fs_request_test_one_file(FilestoreActionCode::RemoveDirectory);
     }
+
     #[test]
     fn test_fs_request_basic_deny_file() {
         generic_fs_request_test_one_file(FilestoreActionCode::DenyFile);
     }
+
     #[test]
     fn test_fs_request_basic_deny_dir() {
         generic_fs_request_test_one_file(FilestoreActionCode::DenyDirectory);
     }
+
     #[test]
     fn test_fs_request_basic_append_file() {
         generic_fs_request_test_two_files(FilestoreActionCode::AppendFile);
     }
+
     #[test]
     fn test_fs_request_basic_rename_file() {
         generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
     }
+
     #[test]
     fn test_fs_request_basic_replace_file() {
         generic_fs_request_test_two_files(FilestoreActionCode::ReplaceFile);
     }
+
+    fn check_fs_request_first_part(
+        buf: &[u8],
+        action_code: FilestoreActionCode,
+        expected_val_len: u8,
+    ) -> usize {
+        assert_eq!(buf[0], TlvType::FilestoreRequest as u8);
+        assert_eq!(buf[1], expected_val_len);
+        assert_eq!((buf[2] >> 4) & 0b1111, action_code as u8);
+        let lv = Lv::from_bytes(&buf[3..]);
+        assert!(lv.is_ok());
+        let lv = lv.unwrap();
+        assert_eq!(lv.value_as_str().unwrap().unwrap(), TLV_TEST_STR_0);
+        3 + lv.len_full()
+    }
+
     #[test]
-    fn test_fs_request_serialization() {}
+    fn test_fs_request_serialization_one_file() {
+        let req = generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
+        let mut buf: [u8; 64] = [0; 64];
+        let res = req.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, 3 + 1 + TLV_TEST_STR_0.len());
+        assert_eq!(written, req.len_full());
+        check_fs_request_first_part(
+            &buf,
+            FilestoreActionCode::CreateFile,
+            1 + 1 + TLV_TEST_STR_0.len() as u8,
+        );
+    }
+
+    #[test]
+    fn test_fs_request_deserialization_one_file() {
+        let req = generic_fs_request_test_one_file(FilestoreActionCode::CreateFile);
+        let mut buf: [u8; 64] = [0; 64];
+        let res = req.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let req_conv_back = FilestoreRequestTlv::from_bytes(&buf);
+        assert!(req_conv_back.is_ok());
+        let req_conv_back = req_conv_back.unwrap();
+        assert_eq!(req_conv_back, req);
+    }
+
+    #[test]
+    fn test_fs_request_serialization_two_files() {
+        let req = generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
+        let mut buf: [u8; 64] = [0; 64];
+        let res = req.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, req.len_full());
+        assert_eq!(
+            written,
+            3 + 1 + TLV_TEST_STR_0.len() + 1 + TLV_TEST_STR_1.len()
+        );
+        let current_idx = check_fs_request_first_part(
+            &buf,
+            FilestoreActionCode::RenameFile,
+            1 + 1 + TLV_TEST_STR_0.len() as u8 + 1 + TLV_TEST_STR_1.len() as u8,
+        );
+        let second_lv = Lv::from_bytes(&buf[current_idx..]);
+        assert!(second_lv.is_ok());
+        let second_lv = second_lv.unwrap();
+        assert_eq!(second_lv.value_as_str().unwrap().unwrap(), TLV_TEST_STR_1);
+        assert_eq!(current_idx + second_lv.len_full(), req.len_full());
+    }
+
+    #[test]
+    fn test_fs_request_deserialization_two_files() {
+        let req = generic_fs_request_test_two_files(FilestoreActionCode::RenameFile);
+        let mut buf: [u8; 64] = [0; 64];
+        req.write_to_bytes(&mut buf).unwrap();
+        let req_conv_back = FilestoreRequestTlv::from_bytes(&buf);
+        assert!(req_conv_back.is_ok());
+        let req_conv_back = req_conv_back.unwrap();
+        assert_eq!(req_conv_back, req);
+    }
 }

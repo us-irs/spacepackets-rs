@@ -1,6 +1,7 @@
 //! Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
 use crate::cfdp::TlvLvError;
 use crate::{ByteConversionError, SizeMissmatch};
+use core::str::Utf8Error;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
@@ -93,6 +94,13 @@ impl<'data> Lv<'data> {
 
     pub fn value(&self) -> Option<&[u8]> {
         self.data
+    }
+
+    /// Convenience function to extract the value as a [str]. This is useful if the LV is
+    /// known to contain a [str], for example being a file name.
+    pub fn value_as_str(&self) -> Option<Result<&'data str, Utf8Error>> {
+        self.data?;
+        Some(std::str::from_utf8(self.data.unwrap()))
     }
 
     /// Writes the LV to a raw buffer. Please note that the first byte will contain the length
