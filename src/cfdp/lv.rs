@@ -100,7 +100,7 @@ impl<'data> Lv<'data> {
     /// known to contain a [str], for example being a file name.
     pub fn value_as_str(&self) -> Option<Result<&'data str, Utf8Error>> {
         self.data?;
-        Some(std::str::from_utf8(self.data.unwrap()))
+        Some(core::str::from_utf8(self.data.unwrap()))
     }
 
     /// Writes the LV to a raw buffer. Please note that the first byte will contain the length
