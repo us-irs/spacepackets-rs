@@ -349,6 +349,9 @@ pub type EcssEnumU16 = GenericEcssEnumWrapper<u16>;
 pub type EcssEnumU32 = GenericEcssEnumWrapper<u32>;
 pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 
+/// Generic trait for PUS packet abstractions which can written to a raw slice as their raw
+/// byte representation. This is especially useful for generic abstractions which depend only
+/// on the serialization of those packets.
 pub trait SerializablePusPacket {
     fn len_packed(&self) -> usize;
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
