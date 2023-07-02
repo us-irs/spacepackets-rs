@@ -349,6 +349,10 @@ pub type EcssEnumU16 = GenericEcssEnumWrapper<u16>;
 pub type EcssEnumU32 = GenericEcssEnumWrapper<u32>;
 pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 
+pub trait SerializablePusPacket {
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, UnsignedEnum};

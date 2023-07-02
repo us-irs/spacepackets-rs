@@ -34,6 +34,7 @@
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw, CrcType, PusError, PusPacket, PusVersion,
+    SerializablePusPacket,
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN,
@@ -342,42 +343,6 @@ impl<'raw_data> PusTc<'raw_data> {
         self.calc_own_crc16();
     }
 
-    /// Write the raw PUS byte representation to a provided buffer.
-    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = 0;
-        let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
-        let total_size = self.len_packed();
-        if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
-                found: slice.len(),
-                expected: total_size,
-            })
-            .into());
-        }
-        self.sp_header.write_to_be_bytes(slice)?;
-        curr_idx += CCSDS_HEADER_LEN;
-        let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-        sec_header
-            .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
-
-        curr_idx += tc_header_len;
-        if let Some(app_data) = self.app_data {
-            slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
-            curr_idx += app_data.len();
-        }
-        let crc16 = crc_procedure(
-            self.calc_crc_on_serialization,
-            &self.crc16,
-            0,
-            curr_idx,
-            slice,
-        )?;
-        slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
-        curr_idx += 2;
-        Ok(curr_idx)
-    }
-
     #[cfg(feature = "alloc")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
@@ -450,6 +415,44 @@ impl<'raw_data> PusTc<'raw_data> {
     /// constructed from. Otherwise, [None] will be returned.
     pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
         self.raw_data
+    }
+}
+
+impl SerializablePusPacket for PusTc<'_> {
+    /// Write the raw PUS byte representation to a provided buffer.
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = 0;
+        let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
+        let total_size = self.len_packed();
+        if total_size > slice.len() {
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: slice.len(),
+                expected: total_size,
+            })
+            .into());
+        }
+        self.sp_header.write_to_be_bytes(slice)?;
+        curr_idx += CCSDS_HEADER_LEN;
+        let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
+        sec_header
+            .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
+
+        curr_idx += tc_header_len;
+        if let Some(app_data) = self.app_data {
+            slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
+            curr_idx += app_data.len();
+        }
+        let crc16 = crc_procedure(
+            self.calc_crc_on_serialization,
+            &self.crc16,
+            0,
+            curr_idx,
+            slice,
+        )?;
+        slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
+        curr_idx += 2;
+        Ok(curr_idx)
     }
 }
 

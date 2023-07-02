@@ -16,7 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   - `GenericUnsignedByteField<TYPE>` and helper typedefs `UnsignedU8`, `UnsignedU16`, `UnsignedU32`
     and `UnsignedU64` as helper types implementing `UnsignedEnum`
   - `UnsignedByteField` as a type-erased helper.
-- Initial CFDP support: Added PDU packet implementation.
+- Added `SerializablePusPacket` as a generic abstraction for PUS packets which are
+  writable.
 
 ## Changed
  

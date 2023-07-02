@@ -3,6 +3,7 @@
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw, CrcType, PusError, PusPacket, PusVersion,
+    SerializablePusPacket,
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, SpHeader,
@@ -318,47 +319,6 @@ impl<'raw_data> PusTm<'raw_data> {
         self.calc_own_crc16();
     }
 
-    /// Write the raw PUS byte representation to a provided buffer.
-    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = 0;
-        let total_size = self.len_packed();
-        if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
-                found: slice.len(),
-                expected: total_size,
-            })
-            .into());
-        }
-        self.sp_header
-            .write_to_be_bytes(&mut slice[0..CCSDS_HEADER_LEN])?;
-        curr_idx += CCSDS_HEADER_LEN;
-        let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
-        let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
-        sec_header
-            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
-        curr_idx += sec_header_len;
-        if let Some(timestamp) = self.sec_header.timestamp {
-            let timestamp_len = timestamp.len();
-            slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
-            curr_idx += timestamp_len;
-        }
-        if let Some(src_data) = self.source_data {
-            slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
-            curr_idx += src_data.len();
-        }
-        let crc16 = crc_procedure(
-            self.calc_crc_on_serialization,
-            &self.crc16,
-            0,
-            curr_idx,
-            slice,
-        )?;
-        slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
-        curr_idx += 2;
-        Ok(curr_idx)
-    }
-
     /// Append the raw PUS byte representation to a provided [alloc::vec::Vec]
     #[cfg(feature = "alloc")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
@@ -447,6 +407,49 @@ impl<'raw_data> PusTm<'raw_data> {
     /// constructed from. Otherwise, [None] will be returned.
     pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
         self.raw_data
+    }
+}
+
+impl SerializablePusPacket for PusTm<'_> {
+    /// Write the raw PUS byte representation to a provided buffer.
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = 0;
+        let total_size = self.len_packed();
+        if total_size > slice.len() {
+            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                found: slice.len(),
+                expected: total_size,
+            })
+            .into());
+        }
+        self.sp_header
+            .write_to_be_bytes(&mut slice[0..CCSDS_HEADER_LEN])?;
+        curr_idx += CCSDS_HEADER_LEN;
+        let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
+        let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
+        sec_header
+            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
+        curr_idx += sec_header_len;
+        if let Some(timestamp) = self.sec_header.timestamp {
+            let timestamp_len = timestamp.len();
+            slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
+            curr_idx += timestamp_len;
+        }
+        if let Some(src_data) = self.source_data {
+            slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
+            curr_idx += src_data.len();
+        }
+        let crc16 = crc_procedure(
+            self.calc_crc_on_serialization,
+            &self.crc16,
+            0,
+            curr_idx,
+            slice,
+        )?;
+        slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
+        curr_idx += 2;
+        Ok(curr_idx)
     }
 }
 
