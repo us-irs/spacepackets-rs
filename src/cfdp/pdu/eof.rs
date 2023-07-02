@@ -8,6 +8,9 @@ use crate::{ByteConversionError, SizeMissmatch};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Finished PDU abstraction.
+///
+/// For more information, refer to CFDP chapter 5.2.2.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EofPdu {
