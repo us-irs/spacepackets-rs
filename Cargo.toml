@@ -18,7 +18,7 @@ crc = "3"
 delegate = ">=0.8, <0.10"
 
 [dependencies.num_enum]
-version = "0.5"
+version = "0.6"
 default-features = false
 
 [dependencies.serde]

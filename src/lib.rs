@@ -7,6 +7,8 @@
 //!
 //!  - Space Packet implementation according to
 //!    [CCSDS Blue Book 133.0-B-2](https://public.ccsds.org/Pubs/133x0b2e1.pdf)
+//!  - CCSDS File Delivery Protocol (CFDP) packet implementations according to
+//!    [CCSDS Blue Book 727.0-B-5](https://public.ccsds.org/Pubs/727x0b5.pdf)
 //!  - PUS Telecommand and PUS Telemetry implementation according to the
 //!    [ECSS-E-ST-70-41C standard](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 //!  - CUC (CCSDS Unsegmented Time Code) implementation according to
@@ -60,22 +62,30 @@ extern crate alloc;
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
-use core::fmt::{Display, Formatter};
+use core::fmt::{Debug, Display, Formatter};
+use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
+#[cfg(not(feature = "std"))]
+use num_traits::Unsigned;
 #[cfg(feature = "std")]
 use std::error::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod cfdp;
 pub mod ecss;
 pub mod tc;
 pub mod time;
 pub mod tm;
+pub mod util;
 
 mod private {
     pub trait Sealed {}
 }
+
+/// CRC algorithm used by the PUS standard, the CCSDS TC standard and the CFDP standard.
+pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
