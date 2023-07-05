@@ -452,7 +452,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
 
     /// Set the sequence count. Returns false and does not update the value if the passed value
     /// exceeds [MAX_SEQ_COUNT].
-    pub fn set_seq_count_in_place(&mut self, seq_count: u16) -> bool {
+    pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
         if seq_count > MAX_SEQ_COUNT {
             return false;
         }
