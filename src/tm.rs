@@ -806,7 +806,7 @@ mod tests {
             .expect("Creating zero copy writer failed");
         writer.set_destination_id(55);
         writer.set_msg_count(100);
-        writer.set_seq_count_in_place(MAX_SEQ_COUNT);
+        writer.set_seq_count(MAX_SEQ_COUNT);
         writer.set_apid(MAX_APID);
         writer.finish();
         // This performs all necessary checks, including the CRC check.

@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   - `GenericUnsignedByteField<TYPE>` and helper typedefs `UnsignedU8`, `UnsignedU16`, `UnsignedU32`
     and `UnsignedU64` as helper types implementing `UnsignedEnum`
   - `UnsignedByteField` as a type-erased helper.
+- Initial CFDP support: Added PDU packet implementation.
 - Added `SerializablePusPacket` as a generic abstraction for PUS packets which are
   writable.
 - Added new `PusTmZeroCopyWriter` class which allows to set fields on a raw TM packet,
@@ -26,7 +27,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
  
 - The `EcssEnumeration` now requires the `UnsignedEnum` trait and only adds the `pfc` method to it.
-- Renamed `byte_width` usages to `len` (part of new `UnsignedEnum` trait)
+- Renamed `byte_width` usages to `size` (part of new `UnsignedEnum` trait)
 - Moved `ecss::CRC_CCITT_FALSE` CRC constant to the root module. This CRC type is not just used by
   the PUS standard, but by the CCSDS Telecommand standard and the CFDP standard as well.
 
