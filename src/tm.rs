@@ -7,7 +7,7 @@ use crate::ecss::{
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, SpHeader,
-    CCSDS_HEADER_LEN, CRC_CCITT_FALSE, MAX_SEQ_COUNT,
+    CCSDS_HEADER_LEN, CRC_CCITT_FALSE, MAX_APID, MAX_SEQ_COUNT,
 };
 use core::mem::size_of;
 #[cfg(feature = "serde")]
@@ -427,6 +427,19 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         Some(Self { raw_tm })
     }
 
+    /// Set the sequence count. Returns false and does not update the value if the passed value
+    /// exceeds [MAX_APID].
+    pub fn set_apid(&mut self, apid: u16) -> bool {
+        if apid > MAX_APID {
+            return false;
+        }
+        // Clear APID part of the raw packet ID
+        let updated_apid =
+            ((((self.raw_tm[0] as u16) << 8) | self.raw_tm[1] as u16) & !MAX_APID) | apid;
+        self.raw_tm[0..2].copy_from_slice(&updated_apid.to_be_bytes());
+        true
+    }
+
     /// This function sets the message counter in the PUS TM secondary header.
     pub fn set_msg_count(&mut self, msg_count: u16) {
         self.raw_tm[9..11].copy_from_slice(&msg_count.to_be_bytes());
@@ -785,14 +798,16 @@ mod tests {
             .expect("Creating zero copy writer failed");
         writer.set_destination_id(55);
         writer.set_msg_count(100);
-        writer.set_seq_count_in_place(MAX_SEQ_COUNT - 1);
-        writer.finalize();
+        writer.set_seq_count_in_place(MAX_SEQ_COUNT);
+        writer.set_apid(MAX_APID);
+        writer.finish();
         // This performs all necessary checks, including the CRC check.
         let (tm_read_back, tm_size_read_back) =
             PusTm::from_bytes(&buf, 7).expect("Re-creating PUS TM failed");
         assert_eq!(tm_size_read_back, tm_size);
         assert_eq!(tm_read_back.msg_counter(), 100);
         assert_eq!(tm_read_back.dest_id(), 55);
-        assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT - 1);
+        assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT);
+        assert_eq!(tm_read_back.apid(), MAX_APID);
     }
 }

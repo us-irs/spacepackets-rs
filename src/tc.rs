@@ -6,7 +6,7 @@
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::tc::{PusTc, PusTcSecondaryHeader};
-//! use spacepackets::ecss::PusPacket;
+//! use spacepackets::ecss::{PusPacket, SerializablePusPacket};
 //!
 //! // Create a ping telecommand with no user application data
 //! let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
