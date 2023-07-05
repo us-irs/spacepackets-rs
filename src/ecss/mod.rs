@@ -257,16 +257,22 @@ pub(crate) fn user_data_from_raw(
     }
 }
 
-pub(crate) fn verify_crc16_ccitt_false_from_raw(
+pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
     raw_data: &[u8],
     crc16: u16,
 ) -> Result<(), PusError> {
+    verify_crc16_ccitt_false_from_raw(raw_data)
+        .then(|| ())
+        .ok_or(PusError::IncorrectCrc(crc16))
+}
+
+pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
     let mut digest = CRC_CCITT_FALSE.digest();
     digest.update(raw_data);
     if digest.finalize() == 0 {
-        return Ok(());
+        return true;
     }
-    Err(PusError::IncorrectCrc(crc16))
+    false
 }
 
 macro_rules! ccsds_impl {

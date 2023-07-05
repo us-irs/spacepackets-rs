@@ -1,13 +1,13 @@
 //! This module contains all components required to create a ECSS PUS C telemetry packets according
 //! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
 use crate::ecss::{
-    ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw, CrcType, PusError, PusPacket, PusVersion,
-    SerializablePusPacket,
+    calc_pus_crc16, ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls,
+    user_data_from_raw, verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError,
+    PusPacket, PusVersion, SerializablePusPacket,
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, SpHeader,
-    CCSDS_HEADER_LEN, CRC_CCITT_FALSE,
+    CCSDS_HEADER_LEN, CRC_CCITT_FALSE, MAX_SEQ_COUNT,
 };
 use core::mem::size_of;
 #[cfg(feature = "serde")]
@@ -388,7 +388,10 @@ impl<'raw_data> PusTm<'raw_data> {
             calc_crc_on_serialization: false,
             crc16: Some(crc_from_raw_data(raw_data)?),
         };
-        verify_crc16_ccitt_false_from_raw(raw_data, pus_tm.crc16.expect("CRC16 invalid"))?;
+        verify_crc16_ccitt_false_from_raw_to_pus_error(
+            raw_data,
+            pus_tm.crc16.expect("CRC16 invalid"),
+        )?;
         Ok((pus_tm, total_len))
     }
 
@@ -396,6 +399,62 @@ impl<'raw_data> PusTm<'raw_data> {
     /// constructed from. Otherwise, [None] will be returned.
     pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
         self.raw_data
+    }
+}
+
+/// This is a helper class to update certain fields in a raw PUS telemetry packet directly in place.
+/// This can be more efficient than creating a full [PusTm], modifying the fields and then writing
+/// it back to another buffer.
+///
+/// Please note that the [Self::finish] method has to be called for the PUS TM CRC16 to be valid
+/// after changing fields of the TM packet. Furthermore, the constructor of this class will not
+/// do any checks except a length check to ensure that all relevant fields can be updated without
+/// a panic. If a full validity check of the PUS TM packet is required, it is recommended
+/// to construct a full [PusTm] object from the raw bytestream first.
+pub struct PusTmZeroCopyWriter<'raw> {
+    raw_tm: &'raw mut [u8],
+}
+
+impl<'raw> PusTmZeroCopyWriter<'raw> {
+    /// This function will not do any other checks on the raw data other than a length check
+    /// for all internal fields which can be updated. It is the responsibility of the user to ensure
+    /// the raw slice contains a valid telemetry packet. The slice should have the exact length
+    /// of the telemetry packet for this class to work properly.
+    pub fn new(raw_tm: &'raw mut [u8]) -> Option<Self> {
+        if raw_tm.len() < 13 {
+            return None;
+        }
+        Some(Self { raw_tm })
+    }
+
+    /// This function sets the message counter in the PUS TM secondary header.
+    pub fn set_msg_count(&mut self, msg_count: u16) {
+        self.raw_tm[9..11].copy_from_slice(&msg_count.to_be_bytes());
+    }
+
+    /// This function sets the destination ID in the PUS TM secondary header.
+    pub fn set_destination_id(&mut self, dest_id: u16) {
+        self.raw_tm[11..13].copy_from_slice(&dest_id.to_be_bytes())
+    }
+
+    /// Set the sequence count. Returns false and does not update the value if the passed value
+    /// exceeds [MAX_SEQ_COUNT].
+    pub fn set_seq_count_in_place(&mut self, seq_count: u16) -> bool {
+        if seq_count > MAX_SEQ_COUNT {
+            return false;
+        }
+        let new_psc =
+            (u16::from_be_bytes(self.raw_tm[2..4].try_into().unwrap()) & 0xC000) | seq_count;
+        self.raw_tm[2..4].copy_from_slice(&new_psc.to_be_bytes());
+        true
+    }
+
+    /// This method has to be called after modifying fields to ensure the CRC16 of the telemetry
+    /// packet remains valid.
+    pub fn finish(self) {
+        let slice_len = self.raw_tm.len();
+        let crc16 = calc_pus_crc16(&self.raw_tm[..slice_len - 2]);
+        self.raw_tm[slice_len - 2..].copy_from_slice(&crc16.to_be_bytes());
     }
 }
 
@@ -713,5 +772,27 @@ mod tests {
         let mut buf = [0; 32];
         pus_tm.write_to_bytes(&mut buf).unwrap();
         assert_eq!(pus_tm, PusTm::from_bytes(&buf, timestamp.len()).unwrap().0);
+    }
+
+    #[test]
+    fn test_zero_copy_writer() {
+        let ping_tm = base_ping_reply_full_ctor(dummy_timestamp());
+        let mut buf: [u8; 64] = [0; 64];
+        let tm_size = ping_tm
+            .write_to_bytes(&mut buf)
+            .expect("writing PUS ping TM failed");
+        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size])
+            .expect("Creating zero copy writer failed");
+        writer.set_destination_id(55);
+        writer.set_msg_count(100);
+        writer.set_seq_count_in_place(MAX_SEQ_COUNT - 1);
+        writer.finalize();
+        // This performs all necessary checks, including the CRC check.
+        let (tm_read_back, tm_size_read_back) =
+            PusTm::from_bytes(&buf, 7).expect("Re-creating PUS TM failed");
+        assert_eq!(tm_size_read_back, tm_size);
+        assert_eq!(tm_read_back.msg_counter(), 100);
+        assert_eq!(tm_read_back.dest_id(), 55);
+        assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT - 1);
     }
 }

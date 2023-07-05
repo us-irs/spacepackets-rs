@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   - `UnsignedByteField` as a type-erased helper.
 - Added `SerializablePusPacket` as a generic abstraction for PUS packets which are
   writable.
+- Added new `PusTmZeroCopyWriter` class which allows to set fields on a raw TM packet,
+  which might be more efficient that modification and re-writing a packet with the
+  `PusTm` object.
 
 ## Changed
  

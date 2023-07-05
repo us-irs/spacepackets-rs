@@ -598,12 +598,12 @@ mod tests {
         // No record boundary preservation
         assert_eq!((buf[3] >> 7) & 1, pdu_conf.seg_ctrl as u8);
         // Entity ID length raw value is actual number of octets - 1 => 0
-        let entity_id_len = pdu_conf.pdu_conf.source_entity_id.len();
+        let entity_id_len = pdu_conf.pdu_conf.source_entity_id.size();
         assert_eq!((buf[3] >> 4) & 0b111, entity_id_len as u8 - 1);
         // No segment metadata
         assert_eq!((buf[3] >> 3) & 0b1, pdu_conf.seg_metadata_flag as u8);
         // Transaction Sequence ID length raw value is actual number of octets - 1 => 0
-        let seq_num_len = pdu_conf.pdu_conf.transaction_seq_num.len();
+        let seq_num_len = pdu_conf.pdu_conf.transaction_seq_num.size();
         assert_eq!(buf[3] & 0b111, seq_num_len as u8 - 1);
         let mut current_idx = 4;
         let mut byte_field_check = |field_len: usize, ubf: &UnsignedByteField| {

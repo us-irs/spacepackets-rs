@@ -33,7 +33,7 @@
 //! ```
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw, CrcType, PusError, PusPacket, PusVersion,
+    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
     SerializablePusPacket,
 };
 use crate::{
@@ -394,7 +394,10 @@ impl<'raw_data> PusTc<'raw_data> {
             calc_crc_on_serialization: false,
             crc16: Some(crc_from_raw_data(raw_data)?),
         };
-        verify_crc16_ccitt_false_from_raw(raw_data, pus_tc.crc16.expect("CRC16 invalid"))?;
+        verify_crc16_ccitt_false_from_raw_to_pus_error(
+            raw_data,
+            pus_tc.crc16.expect("CRC16 invalid"),
+        )?;
         Ok((pus_tc, total_len))
     }
 
@@ -500,7 +503,7 @@ impl GenericPusTcSecondaryHeader for PusTc<'_> {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::ecss::PusVersion::PusC;
-    use crate::ecss::{PusError, PusPacket};
+    use crate::ecss::{PusError, PusPacket, SerializablePusPacket};
     use crate::tc::ACK_ALL;
     use crate::tc::{GenericPusTcSecondaryHeader, PusTc, PusTcSecondaryHeader};
     use crate::{ByteConversionError, SpHeader};

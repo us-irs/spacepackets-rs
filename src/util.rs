@@ -317,7 +317,7 @@ pub mod tests {
     #[test]
     fn test_simple_u8() {
         let u8 = UnsignedByteFieldU8::new(5);
-        assert_eq!(u8.len(), 1);
+        assert_eq!(u8.size(), 1);
         let mut buf: [u8; 8] = [0; 8];
         let len = u8
             .write_to_be_bytes(&mut buf)
@@ -332,7 +332,7 @@ pub mod tests {
     #[test]
     fn test_simple_u16() {
         let u16 = UnsignedByteFieldU16::new(3823);
-        assert_eq!(u16.len(), 2);
+        assert_eq!(u16.size(), 2);
         let mut buf: [u8; 8] = [0; 8];
         let len = u16
             .write_to_be_bytes(&mut buf)
@@ -348,7 +348,7 @@ pub mod tests {
     #[test]
     fn test_simple_u32() {
         let u32 = UnsignedByteFieldU32::new(80932);
-        assert_eq!(u32.len(), 4);
+        assert_eq!(u32.size(), 4);
         let mut buf: [u8; 8] = [0; 8];
         let len = u32
             .write_to_be_bytes(&mut buf)
@@ -364,7 +364,7 @@ pub mod tests {
     #[test]
     fn test_simple_u64() {
         let u64 = UnsignedByteFieldU64::new(5999999);
-        assert_eq!(u64.len(), 8);
+        assert_eq!(u64.size(), 8);
         let mut buf: [u8; 8] = [0; 8];
         let len = u64
             .write_to_be_bytes(&mut buf)
@@ -493,7 +493,7 @@ pub mod tests {
     #[test]
     fn type_erased_u8_write() {
         let u8 = UnsignedByteField::new(1, 5);
-        assert_eq!(u8.len(), 1);
+        assert_eq!(u8.size(), 1);
         let mut buf: [u8; 8] = [0; 8];
         u8.write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
@@ -506,7 +506,7 @@ pub mod tests {
     #[test]
     fn type_erased_u16_write() {
         let u16 = UnsignedByteField::new(2, 3823);
-        assert_eq!(u16.len(), 2);
+        assert_eq!(u16.size(), 2);
         let mut buf: [u8; 8] = [0; 8];
         u16.write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
@@ -520,7 +520,7 @@ pub mod tests {
     #[test]
     fn type_erased_u32_write() {
         let u32 = UnsignedByteField::new(4, 80932);
-        assert_eq!(u32.len(), 4);
+        assert_eq!(u32.size(), 4);
         let mut buf: [u8; 8] = [0; 8];
         u32.write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
@@ -534,7 +534,7 @@ pub mod tests {
     #[test]
     fn type_erased_u64_write() {
         let u64 = UnsignedByteField::new(8, 5999999);
-        assert_eq!(u64.len(), 8);
+        assert_eq!(u64.size(), 8);
         let mut buf: [u8; 8] = [0; 8];
         u64.write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
