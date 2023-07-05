@@ -427,6 +427,14 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         Some(Self { raw_tm })
     }
 
+    pub fn service(&self) -> u8 {
+        self.raw_tm[7]
+    }
+
+    pub fn subservice(&self) -> u8 {
+        self.raw_tm[8]
+    }
+
     /// Set the sequence count. Returns false and does not update the value if the passed value
     /// exceeds [MAX_APID].
     pub fn set_apid(&mut self, apid: u16) -> bool {
