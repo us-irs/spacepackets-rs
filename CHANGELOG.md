@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.6.0] 2023-07-06
+
 ## Added
 
 - Added new `util` module which contains the following (new) helper modules:
