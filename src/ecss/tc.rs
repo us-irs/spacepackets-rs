@@ -533,7 +533,7 @@ pub mod legacy_tc {
 }
 
 /// This class can be used to create PUS C telecommand packet. It is the primary data structure to
-/// generate theraw byte representation of a PUS telecommand.
+/// generate the raw byte representation of a PUS telecommand.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
 /// [serde] feature is used, which allows to send around TC packets in a raw byte format using a
@@ -757,7 +757,7 @@ pub mod alloc_mod {
     use delegate::delegate;
     use zerocopy::AsBytes;
 
-    /// This is the owned variant of [PusTcCreator] where the application data is copied to
+    /// This is the owned variant of [super::PusTcCreator] where the application data is copied to
     /// an internal field and is then an owned field of the creator.
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -778,7 +778,7 @@ pub mod alloc_mod {
         ///     and subservice type
         /// * `app_data` - Custom application data
         /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-        ///     field. If this is not set to true, [PusTc::update_ccsds_data_len] can be called to set
+        ///     field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
         ///     the correct value to this field manually
         pub fn new(
             sp_header: &mut SpHeader,
@@ -800,7 +800,7 @@ pub mod alloc_mod {
             pus_tc
         }
 
-        /// Simplified version of the [PusTcCreator::new] function which allows to only specify service
+        /// Simplified version of the [Self::new] function which allows to only specify service
         /// and subservice instead of the full PUS TC secondary header.
         pub fn new_simple(
             sph: &mut SpHeader,
@@ -836,7 +836,7 @@ pub mod alloc_mod {
         sp_header_impls!();
 
         /// Calculate the CCSDS space packet data length field and sets it
-        /// This is called automatically if the `set_ccsds_len` argument in the [PusTc::new] call was
+        /// This is called automatically if the `set_ccsds_len` argument in the [Self::new] call was
         /// used.
         /// If this was not done or the application data is set or changed after construction,
         /// this function needs to be called to ensure that the data length field of the CCSDS header
@@ -846,8 +846,8 @@ pub mod alloc_mod {
                 self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
         }
 
-        /// This function should be called before the TC packet is serialized if
-        /// [PusTc::calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
+        /// This function can be called to calculate the CRC16 of the packet before it was
+        /// serialized.
         pub fn calc_own_crc16(&self) -> u16 {
             let mut digest = CRC_CCITT_FALSE.digest();
             let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -935,8 +935,7 @@ pub mod alloc_mod {
     }
 }
 
-/// This class models the PUS C telecommand packet. It is the primary data structure to generate the
-/// raw byte representation of a PUS telecommand or to deserialize from one from raw bytes.
+/// This class can be used to read a PUS TC telecommand from raw memory.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
 /// [serde] feature is used, which allows to send around TC packets in a raw byte format using a
@@ -946,9 +945,7 @@ pub mod alloc_mod {
 ///
 /// # Lifetimes
 ///
-/// * `'raw_data` - If the TC is not constructed from a raw slice, this will be the life time of
-///    a buffer where the user provided application data will be serialized into. If it
-///    is, this is the lifetime of the raw byte slice it is constructed from.
+/// * `'raw_data` - Lifetime of the provided raw slice.
 #[derive(Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PusTcReader<'raw_data> {
