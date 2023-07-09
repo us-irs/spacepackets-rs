@@ -17,9 +17,6 @@ use core::ops::{Add, AddAssign};
 use core::time::Duration;
 use delegate::delegate;
 
-#[cfg(feature = "std")]
-use std_mod::*;
-
 /// Base value for the preamble field for a time field parser to determine the time field type.
 pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
 pub const MIN_CDS_FIELD_LEN: usize = 7;
