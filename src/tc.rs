@@ -659,7 +659,7 @@ mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            PusError::ByteConversionError(err) => match err {
+            PusError::ByteConversion(err) => match err {
                 ByteConversionError::ToSliceTooSmall(missmatch) => {
                     assert_eq!(missmatch.expected, pus_tc.len_packed());
                     assert_eq!(missmatch.found, 12);

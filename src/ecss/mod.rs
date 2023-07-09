@@ -149,7 +149,7 @@ pub enum PusError {
     NoRawData,
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
-    ByteConversionError(ByteConversionError),
+    ByteConversion(ByteConversionError),
 }
 
 impl Display for PusError {
@@ -173,7 +173,7 @@ impl Display for PusError {
             PusError::CrcCalculationMissing => {
                 write!(f, "crc16 was not calculated")
             }
-            PusError::ByteConversionError(e) => {
+            PusError::ByteConversion(e) => {
                 write!(f, "low level byte conversion error: {e}")
             }
         }
@@ -183,7 +183,7 @@ impl Display for PusError {
 #[cfg(feature = "std")]
 impl Error for PusError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        if let PusError::ByteConversionError(e) = self {
+        if let PusError::ByteConversion(e) = self {
             return Some(e);
         }
         None
@@ -192,7 +192,7 @@ impl Error for PusError {
 
 impl From<ByteConversionError> for PusError {
     fn from(e: ByteConversionError) -> Self {
-        PusError::ByteConversionError(e)
+        PusError::ByteConversion(e)
     }
 }
 
