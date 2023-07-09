@@ -511,7 +511,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         days_len: LengthOfDaySegment,
     ) -> Result<SubmillisPrecision, TimestampError> {
         if buf.len() < MIN_CDS_FIELD_LEN {
-            return Err(TimestampError::ByteConversionError(
+            return Err(TimestampError::ByteConversion(
                 ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                     expected: MIN_CDS_FIELD_LEN,
                     found: buf.len(),
@@ -545,7 +545,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         }
         let stamp_len = Self::calc_stamp_len(pfield);
         if buf.len() < stamp_len {
-            return Err(TimestampError::ByteConversionError(
+            return Err(TimestampError::ByteConversion(
                 ByteConversionError::FromSliceTooSmall(SizeMissmatch {
                     expected: stamp_len,
                     found: buf.len(),
@@ -602,7 +602,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
 
     fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), TimestampError> {
         if buf.len() < len_as_bytes {
-            return Err(TimestampError::ByteConversionError(
+            return Err(TimestampError::ByteConversion(
                 ByteConversionError::ToSliceTooSmall(SizeMissmatch {
                     expected: len_as_bytes,
                     found: buf.len(),
@@ -671,21 +671,21 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     fn from_now_generic(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
-            .map_err(StdTimestampError::TimestampError)
+            .map_err(StdTimestampError::Timestamp)
     }
 
     #[cfg(feature = "std")]
     fn from_now_generic_us_prec(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new_with_submillis_us_prec()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
-            .map_err(StdTimestampError::TimestampError)
+            .map_err(StdTimestampError::Timestamp)
     }
 
     #[cfg(feature = "std")]
     fn from_now_generic_ps_prec(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new_with_submillis_ps_prec()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
-            .map_err(StdTimestampError::TimestampError)
+            .map_err(StdTimestampError::Timestamp)
     }
 
     fn generic_from_conversion<C: CdsConverter>(
@@ -694,7 +694,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     ) -> Result<Self, TimestampError> {
         let ccsds_days: ProvidesDaysLen::FieldType =
             converter.ccsds_days_as_u32().try_into().map_err(|_| {
-                TimestampError::CdsError(CdsError::InvalidCcsdsDays(
+                TimestampError::Cds(CdsError::InvalidCcsdsDays(
                     converter.ccsds_days_as_u32().into(),
                 ))
             })?;
@@ -750,7 +750,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             .ccsds_days
             .try_into()
             .map_err(|_| {
-                StdTimestampError::TimestampError(
+                StdTimestampError::Timestamp(
                     CdsError::InvalidCcsdsDays(
                         conversion_from_now.unix_conversion.ccsds_days as i64,
                     )
@@ -788,7 +788,7 @@ impl TimeProvider<DaysLen24Bits> {
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_dt_with_u24_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Long24Bits)
@@ -799,7 +799,7 @@ impl TimeProvider<DaysLen24Bits> {
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u24_days(
         unix_stamp: &UnixTimestamp,
@@ -864,7 +864,7 @@ impl TimeProvider<DaysLen16Bits> {
     /// Create a provider from a [`DateTime<Utc>`] struct.
     ///
     /// This function will return a [TimestampError::DateBeforeCcsdsEpoch] or a
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
+    /// [TimestampError::Cds] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
     /// the CCSDS days value exceeds the allowed bit width (16 bits).
     pub fn from_dt_with_u16_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Short16Bits)
@@ -882,7 +882,7 @@ impl TimeProvider<DaysLen16Bits> {
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::CdsError] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
+    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
     pub fn from_unix_secs_with_u16_days(
         unix_stamp: &UnixTimestamp,
@@ -1302,7 +1302,7 @@ impl TryFrom<TimeProvider<DaysLen24Bits>> for TimeProvider<DaysLen16Bits> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::TimestampError::{ByteConversionError, InvalidTimeCode};
+    use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
     use chrono::{Datelike, NaiveDate, Timelike};
     #[cfg(feature = "serde")]
@@ -1400,8 +1400,7 @@ mod tests {
         let faulty_ctor = TimeProvider::<DaysLen16Bits>::from_bytes(&buf);
         assert!(faulty_ctor.is_err());
         let error = faulty_ctor.unwrap_err();
-        if let TimestampError::CdsError(CdsError::InvalidCtorForDaysOfLenInPreamble(len_of_day)) =
-            error
+        if let TimestampError::Cds(CdsError::InvalidCtorForDaysOfLenInPreamble(len_of_day)) = error
         {
             assert_eq!(len_of_day, LengthOfDaySegment::Long24Bits);
         } else {
@@ -1446,7 +1445,7 @@ mod tests {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
             match res.unwrap_err() {
-                ByteConversionError(ToSliceTooSmall(missmatch)) => {
+                ByteConversion(ToSliceTooSmall(missmatch)) => {
                     assert_eq!(missmatch.found, i);
                     assert_eq!(missmatch.expected, 7);
                 }
@@ -1466,7 +1465,7 @@ mod tests {
             assert!(res.is_err());
             let err = res.unwrap_err();
             match err {
-                ByteConversionError(e) => match e {
+                ByteConversion(e) => match e {
                     FromSliceTooSmall(missmatch) => {
                         assert_eq!(missmatch.found, i);
                         assert_eq!(missmatch.expected, 7);
@@ -1943,7 +1942,7 @@ mod tests {
                 panic!("creation should not succeed")
             }
             Err(e) => {
-                if let TimestampError::CdsError(CdsError::InvalidCcsdsDays(days)) = e {
+                if let TimestampError::Cds(CdsError::InvalidCcsdsDays(days)) = e {
                     assert_eq!(
                         days,
                         unix_to_ccsds_days(invalid_unix_secs / SECONDS_PER_DAY as i64)

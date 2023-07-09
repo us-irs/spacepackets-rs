@@ -686,9 +686,9 @@ mod tests {
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        assert!(matches!(error, PusError::ByteConversionError { .. }));
+        assert!(matches!(error, PusError::ByteConversion { .. }));
         match error {
-            PusError::ByteConversionError(err) => match err {
+            PusError::ByteConversion(err) => match err {
                 ByteConversionError::ToSliceTooSmall(size_missmatch) => {
                     assert_eq!(size_missmatch.expected, 22);
                     assert_eq!(size_missmatch.found, 16);
