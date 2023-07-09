@@ -52,9 +52,9 @@ pub mod zc {
         pub(crate) timestamp: Option<&'slice [u8]>,
     }
 
-    impl TryFrom<crate::tm::PusTmSecondaryHeader<'_>> for PusTmSecHeaderWithoutTimestamp {
+    impl TryFrom<crate::ecss::tm::PusTmSecondaryHeader<'_>> for PusTmSecHeaderWithoutTimestamp {
         type Error = PusError;
-        fn try_from(header: crate::tm::PusTmSecondaryHeader) -> Result<Self, Self::Error> {
+        fn try_from(header: crate::ecss::tm::PusTmSecondaryHeader) -> Result<Self, Self::Error> {
             if header.pus_version != PusVersion::PusC {
                 return Err(PusError::VersionNotSupported(header.pus_version));
             }

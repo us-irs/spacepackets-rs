@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0]
+
+## Changed
+
+- Moved ECSS TC components from `tc` to `ecss.tc`.
+- Moved ECSS TM components from `tm` to `ecss.tm`.
+- Converted `PusTc` class to specialized `PusTcCreator` and `PusTcReader`
+  classes. The old `PusTc` is deprecated now.
+
 # [v0.6.0] 2023-07-06
 
 ## Added
