@@ -64,9 +64,9 @@ pub enum TimestampError {
     /// Contains tuple where first value is the expected time code and the second
     /// value is the found raw value
     InvalidTimeCode(CcsdsTimeCodes, u8),
-    ByteConversionError(ByteConversionError),
-    CdsError(cds::CdsError),
-    CucError(cuc::CucError),
+    ByteConversion(ByteConversionError),
+    Cds(cds::CdsError),
+    Cuc(cuc::CucError),
     DateBeforeCcsdsEpoch(DateTime<Utc>),
     CustomEpochNotSupported,
 }
@@ -80,13 +80,13 @@ impl Display for TimestampError {
                     "invalid raw time code value {raw_val} for time code {time_code:?}"
                 )
             }
-            TimestampError::CdsError(e) => {
+            TimestampError::Cds(e) => {
                 write!(f, "cds error {e}")
             }
-            TimestampError::CucError(e) => {
+            TimestampError::Cuc(e) => {
                 write!(f, "cuc error {e}")
             }
-            TimestampError::ByteConversionError(e) => {
+            TimestampError::ByteConversion(e) => {
                 write!(f, "byte conversion error {e}")
             }
             TimestampError::DateBeforeCcsdsEpoch(e) => {
@@ -103,22 +103,22 @@ impl Display for TimestampError {
 impl Error for TimestampError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            TimestampError::ByteConversionError(e) => Some(e),
-            TimestampError::CdsError(e) => Some(e),
-            TimestampError::CucError(e) => Some(e),
+            TimestampError::ByteConversion(e) => Some(e),
+            TimestampError::Cds(e) => Some(e),
+            TimestampError::Cuc(e) => Some(e),
             _ => None,
         }
     }
 }
 impl From<cds::CdsError> for TimestampError {
     fn from(e: cds::CdsError) -> Self {
-        TimestampError::CdsError(e)
+        TimestampError::Cds(e)
     }
 }
 
 impl From<cuc::CucError> for TimestampError {
     fn from(e: cuc::CucError) -> Self {
-        TimestampError::CucError(e)
+        TimestampError::Cuc(e)
     }
 }
 
@@ -132,9 +132,9 @@ pub mod std_mod {
     #[derive(Debug, Clone, Error)]
     pub enum StdTimestampError {
         #[error("system time error: {0}")]
-        SystemTimeError(#[from] SystemTimeError),
+        SystemTime(#[from] SystemTimeError),
         #[error("timestamp error: {0}")]
-        TimestampError(#[from] TimestampError),
+        Timestamp(#[from] TimestampError),
     }
 }
 

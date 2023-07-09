@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- Implement `Display` and `Error` for `StdTimestampError` properly.
+- Implement some redundant `Error` suffixes for enum error variants.
+
 # [v0.6.0] 2023-07-06
 
 ## Added
