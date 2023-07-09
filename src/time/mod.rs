@@ -71,40 +71,6 @@ pub enum TimestampError {
     CustomEpochNotSupported,
 }
 
-impl From<cds::CdsError> for TimestampError {
-    fn from(e: cds::CdsError) -> Self {
-        TimestampError::CdsError(e)
-    }
-}
-
-impl From<cuc::CucError> for TimestampError {
-    fn from(e: cuc::CucError) -> Self {
-        TimestampError::CucError(e)
-    }
-}
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-#[derive(Debug, Clone)]
-pub enum StdTimestampError {
-    SystemTimeError(SystemTimeError),
-    TimestampError(TimestampError),
-}
-
-#[cfg(feature = "std")]
-impl From<TimestampError> for StdTimestampError {
-    fn from(v: TimestampError) -> Self {
-        Self::TimestampError(v)
-    }
-}
-
-#[cfg(feature = "std")]
-impl From<SystemTimeError> for StdTimestampError {
-    fn from(v: SystemTimeError) -> Self {
-        Self::SystemTimeError(v)
-    }
-}
-
 impl Display for TimestampError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -142,6 +108,33 @@ impl Error for TimestampError {
             TimestampError::CucError(e) => Some(e),
             _ => None,
         }
+    }
+}
+impl From<cds::CdsError> for TimestampError {
+    fn from(e: cds::CdsError) -> Self {
+        TimestampError::CdsError(e)
+    }
+}
+
+impl From<cuc::CucError> for TimestampError {
+    fn from(e: cuc::CucError) -> Self {
+        TimestampError::CucError(e)
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub mod std_mod {
+    use crate::time::TimestampError;
+    use std::time::SystemTimeError;
+    use thiserror::Error;
+
+    #[derive(Debug, Clone, Error)]
+    pub enum StdTimestampError {
+        #[error("system time error: {0}")]
+        SystemTimeError(#[from] SystemTimeError),
+        #[error("timestamp error: {0}")]
+        TimestampError(#[from] TimestampError),
     }
 }
 
