@@ -17,7 +17,7 @@ use std::error::Error;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, SystemTimeError};
 #[cfg(feature = "std")]
-use std_mod::*;
+pub use std_mod::*;
 
 pub mod ascii;
 pub mod cds;
