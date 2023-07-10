@@ -14,8 +14,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Moved ECSS TC components from `tc` to `ecss.tc`.
 - Moved ECSS TM components from `tm` to `ecss.tm`.
-- Converted `PusTc` class to specialized `PusTcCreator` and `PusTcReader`
-  classes. The old `PusTc` is deprecated now.
+- Converted `PusTc` class to more specialized `PusTcCreator` and `PusTcReader`
+  classes. The old `PusTc` class is deprecated now.
+- Converted `PusTm` class to more specialized `PusTmCreator` and `PusTmReader`
+  classes. The old `PusTm` class is deprecated now.
 - Implement `Display` and `Error` for `StdTimestampError` properly.
 - Remove some redundant `Error` suffixes for enum error variants.
 
