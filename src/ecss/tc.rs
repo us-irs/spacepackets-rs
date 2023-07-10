@@ -57,6 +57,9 @@ pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize =
     CCSDS_HEADER_LEN + PUC_TC_SECONDARY_HEADER_LEN + size_of::<CrcType>();
 const PUS_VERSION: PusVersion = PusVersion::PusC;
 
+/// Marker trait for PUS telecommand structures.
+pub trait IsPusTelecommand {}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum AckOpts {
     Acceptance = 0b1000,
@@ -736,6 +739,8 @@ impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
     });
 }
 
+impl IsPusTelecommand for PusTcCreator<'_> {}
+
 /// This class can be used to read a PUS TC telecommand from raw memory.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
@@ -838,6 +843,8 @@ impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
         fn ack_flags(&self) -> u8;
     });
 }
+
+impl IsPusTelecommand for PusTcReader<'_> {}
 
 impl PartialEq<PusTcCreator<'_>> for PusTcReader<'_> {
     fn eq(&self, other: &PusTcCreator) -> bool {

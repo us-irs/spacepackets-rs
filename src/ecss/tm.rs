@@ -20,6 +20,8 @@ use delegate::delegate;
 
 pub use legacy_tm::*;
 
+pub trait IsPusTelemetry {}
+
 /// Length without timestamp
 pub const PUC_TM_MIN_SEC_HEADER_LEN: usize = 7;
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize =
@@ -754,6 +756,8 @@ impl GenericPusTmSecondaryHeader for PusTmCreator<'_> {
     });
 }
 
+impl IsPusTelemetry for PusTmCreator<'_> {}
+
 /// This class models the PUS C telemetry packet. It is the primary data structure to read
 /// a telemetry packet from raw bytes.
 ///
@@ -870,6 +874,8 @@ impl GenericPusTmSecondaryHeader for PusTmReader<'_> {
         fn sc_time_ref_status(&self) -> u8;
     });
 }
+
+impl IsPusTelemetry for PusTmReader<'_> {}
 
 impl PartialEq<PusTmCreator<'_>> for PusTmReader<'_> {
     fn eq(&self, other: &PusTmCreator<'_>) -> bool {
