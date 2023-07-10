@@ -3,7 +3,6 @@
 //!
 //! The core data structure to do this is the [TimeProviderCcsdsEpoch] struct.
 use super::*;
-use crate::time::std_mod::StdTimestampError;
 use chrono::Datelike;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign};

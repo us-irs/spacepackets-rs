@@ -65,8 +65,7 @@ use crate::ecss::CCSDS_HEADER_LEN;
 use core::fmt::{Debug, Display, Formatter};
 use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
-#[cfg(not(feature = "std"))]
-use num_traits::Unsigned;
+
 #[cfg(feature = "std")]
 use std::error::Error;
 
