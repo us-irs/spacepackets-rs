@@ -16,7 +16,10 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 zerocopy = "0.6"
 crc = "3"
 delegate = ">=0.8, <0.11"
-thiserror = "1"
+
+[dependencies.thiserror]
+version = "1"
+optional = true
 
 [dependencies.num_enum]
 version = "0.6"
@@ -41,7 +44,7 @@ version = "1"
 
 [features]
 default = ["std"]
-std = ["chrono/std", "chrono/clock", "alloc"]
+std = ["chrono/std", "chrono/clock", "alloc", "thiserror"]
 serde = ["dep:serde", "chrono/serde"]
 alloc = ["postcard/alloc", "chrono/alloc"]
 
