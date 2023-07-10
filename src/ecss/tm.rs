@@ -18,10 +18,6 @@ use zerocopy::AsBytes;
 use alloc::vec::Vec;
 use delegate::delegate;
 
-#[deprecated(
-    since = "0.7.0",
-    note = "Use specialized PusTmCreator or PusTmReader classes instead"
-)]
 pub use legacy_tm::*;
 
 /// Length without timestamp
@@ -262,6 +258,10 @@ pub mod legacy_tm {
         /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
         ///     field. If this is not set to true, [PusTm::update_ccsds_data_len] can be called to set
         ///     the correct value to this field manually
+        #[deprecated(
+            since = "0.7.0",
+            note = "Use specialized PusTmCreator or PusTmReader classes instead"
+        )]
         pub fn new(
             sp_header: &mut SpHeader,
             sec_header: PusTmSecondaryHeader<'raw_data>,

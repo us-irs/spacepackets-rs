@@ -263,8 +263,8 @@ pub mod legacy_tc {
 
     impl<'raw_data> PusTc<'raw_data> {
         #[deprecated(
-        since = "0.7.0",
-        note = "Use specialized PusTcCreator or PusTcReader classes instead"
+            since = "0.7.0",
+            note = "Use specialized PusTcCreator or PusTcReader classes instead"
         )]
         /// Generates a new struct instance.
         ///
@@ -301,8 +301,8 @@ pub mod legacy_tc {
         }
 
         #[deprecated(
-        since = "0.7.0",
-        note = "Use specialized PusTcCreator or PusTcReader classes instead"
+            since = "0.7.0",
+            note = "Use specialized PusTcCreator or PusTcReader classes instead"
         )]
         /// Simplified version of the [PusTc::new] function which allows to only specify service and
         /// subservice instead of the full PUS TC secondary header.
@@ -854,7 +854,8 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::ecss::tc::{
-        GenericPusTcSecondaryHeader, PusTcCreator, PusTcReader, PusTcSecondaryHeader, ACK_ALL,
+        GenericPusTcSecondaryHeader, PusTc, PusTcCreator, PusTcReader, PusTcSecondaryHeader,
+        ACK_ALL,
     };
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket, SerializablePusPacket};
