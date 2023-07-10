@@ -378,6 +378,10 @@ pub mod legacy_tm {
         /// Create a [PusTm] instance from a raw slice. On success, it returns a tuple containing
         /// the instance and the found byte length of the packet. The timestamp length needs to be
         /// known beforehand.
+        #[deprecated(
+            since = "0.7.0",
+            note = "Use specialized PusTmCreator or PusTmReader classes instead"
+        )]
         pub fn from_bytes(
             slice: &'raw_data [u8],
             timestamp_len: usize,
@@ -1209,7 +1213,7 @@ mod tests {
         writer.finish();
         // This performs all necessary checks, including the CRC check.
         let (tm_read_back, tm_size_read_back) =
-            PusTm::from_bytes(&buf, 7).expect("Re-creating PUS TM failed");
+            PusTmReader::new(&buf, 7).expect("Re-creating PUS TM failed");
         assert_eq!(tm_size_read_back, tm_size);
         assert_eq!(tm_read_back.msg_counter(), 100);
         assert_eq!(tm_read_back.dest_id(), 55);

@@ -265,10 +265,6 @@ pub mod legacy_tc {
     }
 
     impl<'raw_data> PusTc<'raw_data> {
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTcCreator or PusTcReader classes instead"
-        )]
         /// Generates a new struct instance.
         ///
         /// # Arguments
@@ -281,6 +277,10 @@ pub mod legacy_tc {
         /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
         ///     field. If this is not set to true, [PusTc::update_ccsds_data_len] can be called to set
         ///     the correct value to this field manually
+        #[deprecated(
+            since = "0.7.0",
+            note = "Use specialized PusTcCreator or PusTcReader classes instead"
+        )]
         pub fn new(
             sp_header: &mut SpHeader,
             sec_header: PusTcSecondaryHeader,
@@ -303,12 +303,12 @@ pub mod legacy_tc {
             pus_tc
         }
 
+        /// Simplified version of the [PusTc::new] function which allows to only specify service and
+        /// subservice instead of the full PUS TC secondary header.
         #[deprecated(
             since = "0.7.0",
             note = "Use specialized PusTcCreator or PusTcReader classes instead"
         )]
-        /// Simplified version of the [PusTc::new] function which allows to only specify service and
-        /// subservice instead of the full PUS TC secondary header.
         pub fn new_simple(
             sph: &mut SpHeader,
             service: u8,
@@ -402,6 +402,10 @@ pub mod legacy_tc {
 
         /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
         /// the instance and the found byte length of the packet.
+        #[deprecated(
+            since = "0.7.0",
+            note = "Use specialized PusTcCreator or PusTcReader classes instead"
+        )]
         pub fn from_bytes(slice: &'raw_data [u8]) -> Result<(Self, usize), PusError> {
             let raw_data_len = slice.len();
             if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
