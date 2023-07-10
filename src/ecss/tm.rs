@@ -196,8 +196,8 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 
 pub mod legacy_tm {
     use crate::ecss::tm::{
-        zc, GenericPusTmSecondaryHeader, PusTmSecondaryHeader, PUC_TM_MIN_SEC_HEADER_LEN,
-        PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+        zc, GenericPusTmSecondaryHeader, IsPusTelemetry, PusTmSecondaryHeader,
+        PUC_TM_MIN_SEC_HEADER_LEN, PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
     };
     use crate::ecss::PusVersion;
     use crate::ecss::{
@@ -517,6 +517,8 @@ pub mod legacy_tm {
             fn sc_time_ref_status(&self) -> u8;
         });
     }
+
+    impl IsPusTelemetry for PusTm<'_> {}
 }
 
 /// This class models the PUS C telemetry packet. It is the primary data structure to generate the

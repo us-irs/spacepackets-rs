@@ -213,7 +213,7 @@ impl PusTcSecondaryHeader {
 
 pub mod legacy_tc {
     use crate::ecss::tc::{
-        zc, GenericPusTcSecondaryHeader, PusTcSecondaryHeader, ACK_ALL,
+        zc, GenericPusTcSecondaryHeader, IsPusTelecommand, PusTcSecondaryHeader, ACK_ALL,
         PUC_TC_SECONDARY_HEADER_LEN, PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
     };
     use crate::ecss::{
@@ -524,6 +524,8 @@ pub mod legacy_tc {
             fn ack_flags(&self) -> u8;
         });
     }
+
+    impl IsPusTelecommand for PusTc<'_> {}
 }
 
 /// This class can be used to create PUS C telecommand packet. It is the primary data structure to
