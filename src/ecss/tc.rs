@@ -6,12 +6,12 @@
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::ecss::{PusPacket, SerializablePusPacket};
-//! use spacepackets::ecss::tc::{PusTc, PusTcSecondaryHeader};
+//! use spacepackets::ecss::tc::{PusTcCreator, PusTcSecondaryHeader};
 //!
 //! // Create a ping telecommand with no user application data
 //! let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
 //! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-//! let pus_tc = PusTc::new(&mut sph, tc_header, None, true);
+//! let pus_tc = PusTcCreator::new(&mut sph, tc_header, None, true);
 //! println!("{:?}", pus_tc);
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
@@ -26,7 +26,7 @@
 //! println!("{:?}", &test_buf[0..size]);
 //!
 //! // Deserialize from the raw byte representation
-//! let pus_tc_deserialized = PusTc::from_bytes(&test_buf).expect("Deserialization failed");
+//! let pus_tc_deserialized = PusTcCreator::from_bytes(&test_buf).expect("Deserialization failed");
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
 //! assert_eq!(pus_tc.apid(), 0x02);
@@ -49,10 +49,6 @@ use zerocopy::AsBytes;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-#[deprecated(
-    since = "0.7.0",
-    note = "Use specialized PusTcCreator or PusTcReader classes instead"
-)]
 pub use legacy_tc::*;
 
 /// PUS C secondary header length is fixed
@@ -266,6 +262,10 @@ pub mod legacy_tc {
     }
 
     impl<'raw_data> PusTc<'raw_data> {
+        #[deprecated(
+        since = "0.7.0",
+        note = "Use specialized PusTcCreator or PusTcReader classes instead"
+        )]
         /// Generates a new struct instance.
         ///
         /// # Arguments
@@ -286,7 +286,7 @@ pub mod legacy_tc {
         ) -> Self {
             sp_header.set_packet_type(PacketType::Tc);
             sp_header.set_sec_header_flag();
-            let mut pus_tc = PusTc {
+            let mut pus_tc = Self {
                 sp_header: *sp_header,
                 raw_data: None,
                 app_data,
@@ -300,6 +300,10 @@ pub mod legacy_tc {
             pus_tc
         }
 
+        #[deprecated(
+        since = "0.7.0",
+        note = "Use specialized PusTcCreator or PusTcReader classes instead"
+        )]
         /// Simplified version of the [PusTc::new] function which allows to only specify service and
         /// subservice instead of the full PUS TC secondary header.
         pub fn new_simple(
@@ -309,6 +313,7 @@ pub mod legacy_tc {
             app_data: Option<&'raw_data [u8]>,
             set_ccsds_len: bool,
         ) -> Self {
+            #[allow(deprecated)]
             Self::new(
                 sph,
                 PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
@@ -417,7 +422,7 @@ pub mod legacy_tc {
             .ok_or(ByteConversionError::ZeroCopyFromError)?;
             current_idx += PUC_TC_SECONDARY_HEADER_LEN;
             let raw_data = &slice[0..total_len];
-            let pus_tc = PusTc {
+            let pus_tc = Self {
                 sp_header,
                 sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
                 raw_data: Some(raw_data),
@@ -848,7 +853,6 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
-    //use crate::ecss::tc::{GenericPusTcSecondaryHeader, PusTc, PusTcSecondaryHeader, ACK_ALL};
     use crate::ecss::tc::{
         GenericPusTcSecondaryHeader, PusTcCreator, PusTcReader, PusTcSecondaryHeader, ACK_ALL,
     };
