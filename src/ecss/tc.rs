@@ -790,6 +790,10 @@ impl<'raw_data> PusTcReader<'raw_data> {
         Ok((pus_tc, total_len))
     }
 
+    pub fn raw_data(&self) -> &[u8] {
+        self.raw_data
+    }
+
     pub fn len_packed(&self) -> usize {
         self.sp_header.total_len()
     }
@@ -854,8 +858,7 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use crate::ecss::tc::{
-        GenericPusTcSecondaryHeader, PusTc, PusTcCreator, PusTcReader, PusTcSecondaryHeader,
-        ACK_ALL,
+        GenericPusTcSecondaryHeader, PusTcCreator, PusTcReader, PusTcSecondaryHeader, ACK_ALL,
     };
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket, SerializablePusPacket};

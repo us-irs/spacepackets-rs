@@ -829,7 +829,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
     /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
     /// constructed from. Otherwise, [None] will be returned.
-    pub fn raw_bytes(&self) -> &'raw_data [u8] {
+    pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
 }
@@ -1051,13 +1051,10 @@ mod tests {
     fn test_manual_field_update() {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_timestamp());
-        let mut tm = PusTm::new(&mut sph, tc_header, None, false);
+        let mut tm = PusTmCreator::new(&mut sph, tc_header, None, false);
         tm.calc_crc_on_serialization = false;
         assert_eq!(tm.data_len(), 0x00);
         let mut buf: [u8; 32] = [0; 32];
-        let res = tm.write_to_bytes(&mut buf);
-        assert!(res.is_err());
-        assert!(matches!(res.unwrap_err(), PusError::CrcCalculationMissing));
         tm.update_ccsds_data_len();
         assert_eq!(tm.data_len(), 15);
         tm.calc_own_crc16();
