@@ -243,7 +243,7 @@ pub mod legacy_tm {
         pub calc_crc_on_serialization: bool,
         #[cfg_attr(feature = "serde", serde(skip))]
         raw_data: Option<&'raw_data [u8]>,
-        source_data: Option<&'raw_data [u8]>,
+        source_data: &'raw_data [u8],
         crc16: Option<u16>,
     }
 
@@ -275,7 +275,7 @@ pub mod legacy_tm {
             let mut pus_tm = PusTm {
                 sp_header: *sp_header,
                 raw_data: None,
-                source_data,
+                source_data: source_data.unwrap_or(&[]),
                 sec_header,
                 calc_crc_on_serialization: true,
                 crc16: None,
@@ -290,7 +290,7 @@ pub mod legacy_tm {
             self.sec_header.timestamp
         }
 
-        pub fn source_data(&self) -> Option<&'raw_data [u8]> {
+        pub fn source_data(&self) -> &'raw_data [u8] {
             self.source_data
         }
 
@@ -330,9 +330,7 @@ pub mod legacy_tm {
             if let Some(stamp) = self.sec_header.timestamp {
                 digest.update(stamp);
             }
-            if let Some(src_data) = self.source_data {
-                digest.update(src_data);
-            }
+            digest.update(self.source_data);
             self.crc16 = Some(digest.finalize())
         }
 
@@ -351,9 +349,7 @@ pub mod legacy_tm {
             if let Some(timestamp) = self.sec_header.timestamp {
                 appended_len += timestamp.len();
             }
-            if let Some(src_data) = self.source_data {
-                appended_len += src_data.len();
-            };
+            appended_len += self.source_data.len();
             let start_idx = vec.len();
             let mut ser_len = 0;
             vec.extend_from_slice(sph_zc.as_bytes());
@@ -366,10 +362,8 @@ pub mod legacy_tm {
                 ser_len += timestamp.len();
                 vec.extend_from_slice(timestamp);
             }
-            if let Some(src_data) = self.source_data {
-                vec.extend_from_slice(src_data);
-                ser_len += src_data.len();
-            }
+            vec.extend_from_slice(self.source_data);
+            ser_len += self.source_data.len();
             let crc16 = crc_procedure(
                 self.calc_crc_on_serialization,
                 &self.crc16,
@@ -442,9 +436,7 @@ pub mod legacy_tm {
             if let Some(timestamp) = self.sec_header.timestamp {
                 length += timestamp.len();
             }
-            if let Some(src_data) = self.source_data {
-                length += src_data.len();
-            }
+            length += self.source_data.len();
             length
         }
         /// Write the raw PUS byte representation to a provided buffer.
@@ -472,10 +464,8 @@ pub mod legacy_tm {
                 slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
                 curr_idx += timestamp_len;
             }
-            if let Some(src_data) = self.source_data {
-                slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
-                curr_idx += src_data.len();
-            }
+            slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
+            curr_idx += self.source_data.len();
             let crc16 = crc_procedure(
                 self.calc_crc_on_serialization,
                 &self.crc16,
@@ -508,7 +498,7 @@ pub mod legacy_tm {
             fn subservice(&self) -> u8;
         });
 
-        fn user_data(&self) -> Option<&[u8]> {
+        fn user_data(&self) -> &[u8] {
             self.source_data
         }
 
@@ -546,7 +536,7 @@ pub mod legacy_tm {
 pub struct PusTmCreator<'raw_data> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'raw_data>,
-    source_data: Option<&'raw_data [u8]>,
+    source_data: &'raw_data [u8],
     /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
     /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
@@ -575,7 +565,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         sp_header.set_sec_header_flag();
         let mut pus_tm = Self {
             sp_header: *sp_header,
-            source_data,
+            source_data: source_data.unwrap_or(&[]),
             sec_header,
             calc_crc_on_serialization: true,
         };
@@ -589,7 +579,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         self.sec_header.timestamp
     }
 
-    pub fn source_data(&self) -> Option<&'raw_data [u8]> {
+    pub fn source_data(&self) -> &[u8] {
         self.source_data
     }
 
@@ -628,9 +618,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         if let Some(stamp) = self.sec_header.timestamp {
             digest.update(stamp);
         }
-        if let Some(src_data) = self.source_data {
-            digest.update(src_data);
-        }
+        digest.update(self.source_data);
         digest.finalize()
     }
 
@@ -648,9 +636,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         if let Some(timestamp) = self.sec_header.timestamp {
             appended_len += timestamp.len();
         }
-        if let Some(src_data) = self.source_data {
-            appended_len += src_data.len();
-        };
+        appended_len += self.source_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
@@ -659,9 +645,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         if let Some(timestamp) = self.sec_header.timestamp {
             vec.extend_from_slice(timestamp);
         }
-        if let Some(src_data) = self.source_data {
-            vec.extend_from_slice(src_data);
-        }
+        vec.extend_from_slice(self.source_data);
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
@@ -675,9 +659,7 @@ impl SerializablePusPacket for PusTmCreator<'_> {
         if let Some(timestamp) = self.sec_header.timestamp {
             length += timestamp.len();
         }
-        if let Some(src_data) = self.source_data {
-            length += src_data.len();
-        }
+        length += self.source_data.len();
         length
     }
     /// Write the raw PUS byte representation to a provided buffer.
@@ -705,10 +687,8 @@ impl SerializablePusPacket for PusTmCreator<'_> {
             slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
             curr_idx += timestamp_len;
         }
-        if let Some(src_data) = self.source_data {
-            slice[curr_idx..curr_idx + src_data.len()].copy_from_slice(src_data);
-            curr_idx += src_data.len();
-        }
+        slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
+        curr_idx += self.source_data.len();
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&slice[0..curr_idx]);
         slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
@@ -736,7 +716,7 @@ impl PusPacket for PusTmCreator<'_> {
         fn subservice(&self) -> u8;
     });
 
-    fn user_data(&self) -> Option<&[u8]> {
+    fn user_data(&self) -> &[u8] {
         self.source_data
     }
 
@@ -777,7 +757,7 @@ pub struct PusTmReader<'raw_data> {
     pub sec_header: PusTmSecondaryHeader<'raw_data>,
     #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: &'raw_data [u8],
-    source_data: Option<&'raw_data [u8]>,
+    source_data: &'raw_data [u8],
     crc16: u16,
 }
 
@@ -827,6 +807,10 @@ impl<'raw_data> PusTmReader<'raw_data> {
         self.sp_header.total_len()
     }
 
+    pub fn source_data(&self) -> &[u8] {
+        self.user_data()
+    }
+
     pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
         self.sec_header.timestamp
     }
@@ -855,7 +839,7 @@ impl PusPacket for PusTmReader<'_> {
         fn subservice(&self) -> u8;
     });
 
-    fn user_data(&self) -> Option<&[u8]> {
+    fn user_data(&self) -> &[u8] {
         self.source_data
     }
 
@@ -1179,7 +1163,7 @@ mod tests {
         assert_eq!(PusPacket::subservice(tm), 2);
         assert!(tm.sec_header_flag());
         if has_user_data {
-            assert!(!tm.user_data().is_none());
+            assert!(!tm.user_data().is_empty());
         }
         assert_eq!(PusPacket::pus_version(tm), PusC);
         assert_eq!(tm.apid(), 0x123);

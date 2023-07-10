@@ -6,7 +6,7 @@
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::ecss::{PusPacket, SerializablePusPacket};
-//! use spacepackets::ecss::tc::{PusTcCreator, PusTcSecondaryHeader};
+//! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
 //!
 //! // Create a ping telecommand with no user application data
 //! let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
@@ -26,7 +26,7 @@
 //! println!("{:?}", &test_buf[0..size]);
 //!
 //! // Deserialize from the raw byte representation
-//! let pus_tc_deserialized = PusTcCreator::from_bytes(&test_buf).expect("Deserialization failed");
+//! let pus_tc_deserialized = PusTcReader::new(&test_buf).expect("Deserialization failed");
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
 //! assert_eq!(pus_tc.apid(), 0x02);
@@ -216,12 +216,12 @@ pub mod legacy_tc {
         zc, GenericPusTcSecondaryHeader, PusTcSecondaryHeader, ACK_ALL,
         PUC_TC_SECONDARY_HEADER_LEN, PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
     };
-    use crate::ecss::PusVersion;
     use crate::ecss::{
-        ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
+        ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls,
         verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, SerializablePusPacket,
         CCSDS_HEADER_LEN,
     };
+    use crate::ecss::{user_data_from_raw, PusVersion};
     use crate::SequenceFlags;
     use crate::{
         ByteConversionError, CcsdsPacket, PacketType, SizeMissmatch, SpHeader, CRC_CCITT_FALSE,
@@ -260,7 +260,7 @@ pub mod legacy_tc {
         pub calc_crc_on_serialization: bool,
         #[cfg_attr(feature = "serde", serde(skip))]
         raw_data: Option<&'raw_data [u8]>,
-        app_data: Option<&'raw_data [u8]>,
+        app_data: &'raw_data [u8],
         crc16: Option<u16>,
     }
 
@@ -292,7 +292,7 @@ pub mod legacy_tc {
             let mut pus_tc = Self {
                 sp_header: *sp_header,
                 raw_data: None,
-                app_data,
+                app_data: app_data.unwrap_or(&[]),
                 sec_header,
                 calc_crc_on_serialization: true,
                 crc16: None,
@@ -362,8 +362,8 @@ pub mod legacy_tc {
             digest.update(sph_zc.as_bytes());
             let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
             digest.update(pus_tc_header.as_bytes());
-            if let Some(app_data) = self.app_data {
-                digest.update(app_data);
+            if !self.app_data.is_empty() {
+                digest.update(self.app_data);
             }
             self.crc16 = Some(digest.finalize())
         }
@@ -378,10 +378,7 @@ pub mod legacy_tc {
         #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
             let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-            let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-            if let Some(app_data) = self.app_data {
-                appended_len += app_data.len();
-            };
+            let appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len();
             let start_idx = vec.len();
             let mut ser_len = 0;
             vec.extend_from_slice(sph_zc.as_bytes());
@@ -390,10 +387,8 @@ pub mod legacy_tc {
             let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
             vec.extend_from_slice(pus_tc_header.as_bytes());
             ser_len += pus_tc_header.as_bytes().len();
-            if let Some(app_data) = self.app_data {
-                vec.extend_from_slice(app_data);
-                ser_len += app_data.len();
-            }
+            vec.extend_from_slice(self.app_data);
+            ser_len += self.app_data.len();
             let crc16 = crc_procedure(
                 self.calc_crc_on_serialization,
                 &self.crc16,
@@ -454,11 +449,7 @@ pub mod legacy_tc {
 
     impl SerializablePusPacket for PusTc<'_> {
         fn len_packed(&self) -> usize {
-            let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-            if let Some(app_data) = self.app_data {
-                length += app_data.len();
-            }
-            length
+            PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
         }
 
         /// Write the raw PUS byte representation to a provided buffer.
@@ -481,10 +472,8 @@ pub mod legacy_tc {
                 .ok_or(ByteConversionError::ZeroCopyToError)?;
 
             curr_idx += tc_header_len;
-            if let Some(app_data) = self.app_data {
-                slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
-                curr_idx += app_data.len();
-            }
+            slice[curr_idx..curr_idx + self.app_data.len()].copy_from_slice(self.app_data);
+            curr_idx += self.app_data.len();
             let crc16 = crc_procedure(
                 self.calc_crc_on_serialization,
                 &self.crc16,
@@ -517,7 +506,7 @@ pub mod legacy_tc {
             fn subservice(&self) -> u8;
         });
 
-        fn user_data(&self) -> Option<&[u8]> {
+        fn user_data(&self) -> &[u8] {
             self.app_data
         }
 
@@ -550,7 +539,7 @@ pub mod legacy_tc {
 pub struct PusTcCreator<'raw_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
-    app_data: Option<&'raw_data [u8]>,
+    app_data: &'raw_data [u8],
 }
 
 impl<'raw_data> PusTcCreator<'raw_data> {
@@ -576,7 +565,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         sp_header.set_sec_header_flag();
         let mut pus_tc = Self {
             sp_header: *sp_header,
-            app_data,
+            app_data: app_data.unwrap_or(&[]),
             sec_header,
         };
         if set_ccsds_len {
@@ -639,9 +628,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         digest.update(sph_zc.as_bytes());
         let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         digest.update(pus_tc_header.as_bytes());
-        if let Some(app_data) = self.app_data {
-            digest.update(app_data);
-        }
+        digest.update(self.app_data);
         digest.finalize()
     }
 
@@ -650,17 +637,13 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-        if let Some(app_data) = self.app_data {
-            appended_len += app_data.len();
-        };
+        appended_len += self.app_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
         let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(pus_tc_header.as_bytes());
-        if let Some(app_data) = self.app_data {
-            vec.extend_from_slice(app_data);
-        }
+        vec.extend_from_slice(self.app_data);
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
@@ -670,11 +653,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
 
 impl SerializablePusPacket for PusTcCreator<'_> {
     fn len_packed(&self) -> usize {
-        let mut length = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-        if let Some(app_data) = self.app_data {
-            length += app_data.len();
-        }
-        length
+        PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
@@ -697,10 +676,8 @@ impl SerializablePusPacket for PusTcCreator<'_> {
             .ok_or(ByteConversionError::ZeroCopyToError)?;
 
         curr_idx += tc_header_len;
-        if let Some(app_data) = self.app_data {
-            slice[curr_idx..curr_idx + app_data.len()].copy_from_slice(app_data);
-            curr_idx += app_data.len();
-        }
+        slice[curr_idx..curr_idx + self.app_data.len()].copy_from_slice(self.app_data);
+        curr_idx += self.app_data.len();
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&slice[0..curr_idx]);
         slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
@@ -720,7 +697,7 @@ impl PusPacket for PusTcCreator<'_> {
         fn subservice(&self) -> u8;
     });
 
-    fn user_data(&self) -> Option<&[u8]> {
+    fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
@@ -759,7 +736,7 @@ pub struct PusTcReader<'raw_data> {
     raw_data: &'raw_data [u8],
     sp_header: SpHeader,
     sec_header: PusTcSecondaryHeader,
-    app_data: Option<&'raw_data [u8]>,
+    app_data: &'raw_data [u8],
     crc16: u16,
 }
 
@@ -795,6 +772,10 @@ impl<'raw_data> PusTcReader<'raw_data> {
         Ok((pus_tc, total_len))
     }
 
+    pub fn app_data(&self) -> &[u8] {
+        self.user_data()
+    }
+
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
@@ -825,7 +806,7 @@ impl PusPacket for PusTcReader<'_> {
         fn subservice(&self) -> u8;
     });
 
-    fn user_data(&self) -> Option<&[u8]> {
+    fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
@@ -917,7 +898,7 @@ mod tests {
             PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 13);
         verify_test_tc_with_reader(&tc_from_raw, false, 13);
-        assert!(tc_from_raw.user_data().is_none());
+        assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
     }
@@ -942,7 +923,7 @@ mod tests {
             PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(size, 16);
         verify_test_tc_with_reader(&tc_from_raw, true, 16);
-        let user_data = tc_from_raw.user_data().unwrap();
+        let user_data = tc_from_raw.user_data();
         assert_eq!(user_data[0], 1);
         assert_eq!(user_data[1], 2);
         assert_eq!(user_data[2], 3);
@@ -1064,7 +1045,7 @@ mod tests {
     fn verify_test_tc(tc: &PusTcCreator, has_user_data: bool, exp_full_len: usize) {
         verify_test_tc_generic(tc);
         if !has_user_data {
-            assert_eq!(tc.user_data(), None);
+            assert!(tc.user_data().is_empty());
         }
         let mut comp_header = SpHeader::tc_unseg(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
         comp_header.set_sec_header_flag();
@@ -1074,7 +1055,7 @@ mod tests {
     fn verify_test_tc_with_reader(tc: &PusTcReader, has_user_data: bool, exp_full_len: usize) {
         verify_test_tc_generic(tc);
         if !has_user_data {
-            assert_eq!(tc.user_data(), None);
+            assert!(tc.user_data().is_empty());
         }
         assert_eq!(tc.len_packed(), exp_full_len);
         let mut comp_header = SpHeader::tc_unseg(0x02, 0x34, exp_full_len as u16 - 7).unwrap();

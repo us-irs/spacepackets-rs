@@ -206,8 +206,7 @@ pub trait PusPacket: CcsdsPacket {
     fn pus_version(&self) -> PusVersion;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
-
-    fn user_data(&self) -> Option<&[u8]>;
+    fn user_data(&self) -> &[u8];
     fn crc16(&self) -> Option<u16>;
 }
 
@@ -251,11 +250,10 @@ pub(crate) fn user_data_from_raw(
     total_len: usize,
     raw_data_len: usize,
     slice: &[u8],
-) -> Result<Option<&[u8]>, PusError> {
+) -> Result<&[u8], PusError> {
     match current_idx {
-        _ if current_idx == total_len - 2 => Ok(None),
         _ if current_idx > total_len - 2 => Err(PusError::RawDataTooShort(raw_data_len)),
-        _ => Ok(Some(&slice[current_idx..total_len - 2])),
+        _ => Ok(&slice[current_idx..total_len - 2]),
     }
 }
 
