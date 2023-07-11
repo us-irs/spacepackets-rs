@@ -18,7 +18,7 @@ use zerocopy::AsBytes;
 use alloc::vec::Vec;
 use delegate::delegate;
 
-use crate::time::{CcsdsTimeProvider, TimeWriter, TimestampError};
+use crate::time::{TimeWriter, TimestampError};
 pub use legacy_tm::*;
 
 pub trait IsPusTelemetry {}
@@ -121,7 +121,7 @@ pub struct PusTmSecondaryHeader<'stamp> {
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub timestamp: &'stamp [u8]
+    pub timestamp: &'stamp [u8],
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
@@ -190,7 +190,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
             subservice: sec_header.zc_header.subservice(),
             msg_counter: sec_header.zc_header.msg_counter(),
             dest_id: sec_header.zc_header.dest_id(),
-            timestamp: sec_header.timestamp
+            timestamp: sec_header.timestamp,
         })
     }
 }
@@ -397,13 +397,9 @@ pub mod legacy_tm {
             )
             .ok_or(ByteConversionError::ZeroCopyFromError)?;
             current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
-            let mut timestamp = None;
-            if timestamp_len > 0 {
-                timestamp = Some(&slice[current_idx..current_idx + timestamp_len]);
-            }
             let zc_sec_header_wrapper = zc::PusTmSecHeader {
                 zc_header: sec_header_zc,
-                timestamp,
+                timestamp: &slice[current_idx..current_idx + timestamp_len],
             };
             current_idx += timestamp_len;
             let raw_data = &slice[0..total_len];
@@ -431,12 +427,9 @@ pub mod legacy_tm {
 
     impl SerializablePusPacket for PusTm<'_> {
         fn len_packed(&self) -> usize {
-            let mut length = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-            if let Some(timestamp) = self.sec_header.timestamp {
-                length += timestamp.len();
-            }
-            length += self.source_data.len();
-            length
+            PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
+                + self.sec_header.timestamp.len()
+                + self.source_data.len()
         }
         /// Write the raw PUS byte representation to a provided buffer.
         fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
@@ -458,11 +451,9 @@ pub mod legacy_tm {
                 .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
                 .ok_or(ByteConversionError::ZeroCopyToError)?;
             curr_idx += sec_header_len;
-            if let Some(timestamp) = self.sec_header.timestamp {
-                let timestamp_len = timestamp.len();
-                slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
-                curr_idx += timestamp_len;
-            }
+            slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
+                .copy_from_slice(self.sec_header.timestamp);
+            curr_idx += self.sec_header.timestamp.len();
             slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
             curr_idx += self.source_data.len();
             let crc16 = crc_procedure(
@@ -580,21 +571,17 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         sp_header: &mut SpHeader,
         service: u8,
         subservice: u8,
-        time_provider_with_buf: Option<(&impl TimeWriter, &'raw_data mut [u8])>,
+        time_provider: &impl TimeWriter,
+        stamp_buf: &'raw_data mut [u8],
         source_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Result<Self, TimestampError> {
-        if let Some((time_provider, buf)) = time_provider_with_buf {
-            time_provider.write_to_bytes(buf)?;
-        }
-        let sec_header = PusTmSecondaryHeader::new_simple(
-            service,
-            subservice,
-            time_provider_with_buf.map(|v| v.1).unwrap_or(&mut []),
-        );
+        let stamp_size = time_provider.write_to_bytes(stamp_buf)?;
+        let sec_header =
+            PusTmSecondaryHeader::new_simple(service, subservice, &stamp_buf[0..stamp_size]);
         Ok(Self::new(sp_header, sec_header, source_data, set_ccsds_len))
     }
-    pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
+    pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
@@ -634,9 +621,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         digest.update(sph_zc.as_bytes());
         let pus_tc_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         digest.update(pus_tc_header.as_bytes());
-        if let Some(stamp) = self.sec_header.timestamp {
-            digest.update(stamp);
-        }
+        digest.update(self.sec_header.timestamp);
         digest.update(self.source_data);
         digest.finalize()
     }
@@ -651,19 +636,14 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-        if let Some(timestamp) = self.sec_header.timestamp {
-            appended_len += timestamp.len();
-        }
+        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.timestamp.len();
         appended_len += self.source_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(sec_header.as_bytes());
-        if let Some(timestamp) = self.sec_header.timestamp {
-            vec.extend_from_slice(timestamp);
-        }
+        vec.extend_from_slice(self.sec_header.timestamp);
         vec.extend_from_slice(self.source_data);
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
@@ -674,12 +654,9 @@ impl<'raw_data> PusTmCreator<'raw_data> {
 
 impl SerializablePusPacket for PusTmCreator<'_> {
     fn len_packed(&self) -> usize {
-        let mut length = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-        if let Some(timestamp) = self.sec_header.timestamp {
-            length += timestamp.len();
-        }
-        length += self.source_data.len();
-        length
+        PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
+            + self.sec_header.timestamp.len()
+            + self.source_data.len()
     }
     /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
@@ -701,11 +678,9 @@ impl SerializablePusPacket for PusTmCreator<'_> {
             .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
             .ok_or(ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
-        if let Some(timestamp) = self.sec_header.timestamp {
-            let timestamp_len = timestamp.len();
-            slice[curr_idx..curr_idx + timestamp_len].copy_from_slice(timestamp);
-            curr_idx += timestamp_len;
-        }
+        slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
+            .copy_from_slice(self.sec_header.timestamp);
+        curr_idx += self.sec_header.timestamp.len();
         slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
         curr_idx += self.source_data.len();
         let mut digest = CRC_CCITT_FALSE.digest();
@@ -801,13 +776,9 @@ impl<'raw_data> PusTmReader<'raw_data> {
         )
         .ok_or(ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
-        let mut timestamp = None;
-        if timestamp_len > 0 {
-            timestamp = Some(&slice[current_idx..current_idx + timestamp_len]);
-        }
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
-            timestamp,
+            timestamp: &slice[current_idx..current_idx + timestamp_len],
         };
         current_idx += timestamp_len;
         let raw_data = &slice[0..total_len];
@@ -830,7 +801,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         self.user_data()
     }
 
-    pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
+    pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
@@ -1157,7 +1128,7 @@ mod tests {
         exp_timestamp: &[u8],
     ) {
         assert_eq!(tm.len_packed(), exp_full_len);
-        assert_eq!(tm.timestamp().unwrap(), exp_timestamp);
+        assert_eq!(tm.timestamp(), exp_timestamp);
         verify_ping_reply_generic(tm, has_user_data, exp_full_len);
     }
 
@@ -1168,7 +1139,7 @@ mod tests {
         exp_timestamp: &[u8],
     ) {
         assert_eq!(tm.len_packed(), exp_full_len);
-        assert_eq!(tm.timestamp().unwrap(), exp_timestamp);
+        assert_eq!(tm.timestamp(), exp_timestamp);
         verify_ping_reply_generic(tm, has_user_data, exp_full_len);
     }
 
