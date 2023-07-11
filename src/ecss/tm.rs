@@ -18,6 +18,7 @@ use zerocopy::AsBytes;
 use alloc::vec::Vec;
 use delegate::delegate;
 
+use crate::time::{CcsdsTimeProvider, TimeWriter, TimestampError};
 pub use legacy_tm::*;
 
 pub trait IsPusTelemetry {}
@@ -53,7 +54,7 @@ pub mod zc {
 
     pub struct PusTmSecHeader<'slice> {
         pub(crate) zc_header: PusTmSecHeaderWithoutTimestamp,
-        pub(crate) timestamp: Option<&'slice [u8]>,
+        pub(crate) timestamp: &'slice [u8],
     }
 
     impl TryFrom<crate::ecss::tm::PusTmSecondaryHeader<'_>> for PusTmSecHeaderWithoutTimestamp {
@@ -120,7 +121,7 @@ pub struct PusTmSecondaryHeader<'stamp> {
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub timestamp: Option<&'stamp [u8]>,
+    pub timestamp: &'stamp [u8]
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
@@ -147,7 +148,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             subservice,
             msg_counter,
             dest_id,
-            timestamp,
+            timestamp: timestamp.unwrap_or(&[]),
         }
     }
 }
@@ -189,7 +190,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
             subservice: sec_header.zc_header.subservice(),
             msg_counter: sec_header.zc_header.msg_counter(),
             dest_id: sec_header.zc_header.dest_id(),
-            timestamp: sec_header.timestamp,
+            timestamp: sec_header.timestamp
         })
     }
 }
@@ -286,11 +287,11 @@ pub mod legacy_tm {
             pus_tm
         }
 
-        pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
+        pub fn timestamp(&self) -> &[u8] {
             self.sec_header.timestamp
         }
 
-        pub fn source_data(&self) -> &'raw_data [u8] {
+        pub fn source_data(&self) -> &[u8] {
             self.source_data
         }
 
@@ -327,9 +328,7 @@ pub mod legacy_tm {
             let pus_tc_header =
                 zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
             digest.update(pus_tc_header.as_bytes());
-            if let Some(stamp) = self.sec_header.timestamp {
-                digest.update(stamp);
-            }
+            digest.update(self.sec_header.timestamp);
             digest.update(self.source_data);
             self.crc16 = Some(digest.finalize())
         }
@@ -346,9 +345,7 @@ pub mod legacy_tm {
         pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
             let sph_zc = crate::zc::SpHeader::from(self.sp_header);
             let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-            if let Some(timestamp) = self.sec_header.timestamp {
-                appended_len += timestamp.len();
-            }
+            appended_len += self.sec_header.timestamp.len();
             appended_len += self.source_data.len();
             let start_idx = vec.len();
             let mut ser_len = 0;
@@ -358,10 +355,8 @@ pub mod legacy_tm {
             let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
             vec.extend_from_slice(sec_header.as_bytes());
             ser_len += sec_header.as_bytes().len();
-            if let Some(timestamp) = self.sec_header.timestamp {
-                ser_len += timestamp.len();
-                vec.extend_from_slice(timestamp);
-            }
+            ser_len += self.sec_header.timestamp.len();
+            vec.extend_from_slice(self.sec_header.timestamp);
             vec.extend_from_slice(self.source_data);
             ser_len += self.source_data.len();
             let crc16 = crc_procedure(
@@ -581,6 +576,24 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         pus_tm
     }
 
+    pub fn new_simple(
+        sp_header: &mut SpHeader,
+        service: u8,
+        subservice: u8,
+        time_provider_with_buf: Option<(&impl TimeWriter, &'raw_data mut [u8])>,
+        source_data: Option<&'raw_data [u8]>,
+        set_ccsds_len: bool,
+    ) -> Result<Self, TimestampError> {
+        if let Some((time_provider, buf)) = time_provider_with_buf {
+            time_provider.write_to_bytes(buf)?;
+        }
+        let sec_header = PusTmSecondaryHeader::new_simple(
+            service,
+            subservice,
+            time_provider_with_buf.map(|v| v.1).unwrap_or(&mut []),
+        );
+        Ok(Self::new(sp_header, sec_header, source_data, set_ccsds_len))
+    }
     pub fn timestamp(&self) -> Option<&'raw_data [u8]> {
         self.sec_header.timestamp
     }
