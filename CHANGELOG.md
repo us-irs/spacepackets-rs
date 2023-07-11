@@ -8,10 +8,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0]
+
 ## Changed
 
+- `PusPacket` trait: `user_data` now returns `&[u8]` instead of `Option<&[u8]>`. Empty user data
+  can simply be an empty slice.
+- Moved ECSS TC components from `tc` to `ecss.tc`.
+- Moved ECSS TM components from `tm` to `ecss.tm`.
+- Converted `PusTc` class to more specialized `PusTcCreator` and `PusTcReader`
+  classes. The old `PusTc` class is deprecated now.
+- Converted `PusTm` class to more specialized `PusTmCreator` and `PusTmReader`
+  classes. The old `PusTm` class is deprecated now.
 - Implement `Display` and `Error` for `StdTimestampError` properly.
 - Remove some redundant `Error` suffixes for enum error variants.
+
+## Added
+
+- `source_data` and `app_data` API provided for PUS TM and PUS TC reader classes. These simply
+  call `user_data` but are also in line with the PUS packet standard names for those fields.
+- Added new marker trait `IsPusTelemetry` implemented by `PusTmCreator` and `PusTmReader`.
+- Added new marker trait `IsPusTelecommand` implemented by `PusTcCreator` and `PusTcReader`.
 
 # [v0.6.0] 2023-07-06
 

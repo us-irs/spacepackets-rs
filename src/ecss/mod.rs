@@ -1,8 +1,8 @@
 //! Common definitions and helpers required to create PUS TMTC packets according to
 //! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
 //!
-//! You can find the PUS telecommand definitions in the [crate::tc] module and ithe PUS telemetry definitions
-//! inside the [crate::tm] module.
+//! You can find the PUS telecommand definitions in the [tc] module and ithe PUS telemetry definitions
+//! inside the [tm] module.
 use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
@@ -15,6 +15,8 @@ use std::error::Error;
 pub mod event;
 pub mod hk;
 pub mod scheduling;
+pub mod tc;
+pub mod tm;
 pub mod verification;
 
 pub type CrcType = u16;
@@ -204,8 +206,7 @@ pub trait PusPacket: CcsdsPacket {
     fn pus_version(&self) -> PusVersion;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
-
-    fn user_data(&self) -> Option<&[u8]>;
+    fn user_data(&self) -> &[u8];
     fn crc16(&self) -> Option<u16>;
 }
 
@@ -249,11 +250,10 @@ pub(crate) fn user_data_from_raw(
     total_len: usize,
     raw_data_len: usize,
     slice: &[u8],
-) -> Result<Option<&[u8]>, PusError> {
+) -> Result<&[u8], PusError> {
     match current_idx {
-        _ if current_idx == total_len - 2 => Ok(None),
         _ if current_idx > total_len - 2 => Err(PusError::RawDataTooShort(raw_data_len)),
-        _ => Ok(Some(&slice[current_idx..total_len - 2])),
+        _ => Ok(&slice[current_idx..total_len - 2]),
     }
 }
 

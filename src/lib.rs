@@ -74,9 +74,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod cfdp;
 pub mod ecss;
-pub mod tc;
 pub mod time;
-pub mod tm;
 pub mod util;
 
 mod private {
