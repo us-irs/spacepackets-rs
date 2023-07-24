@@ -1,6 +1,6 @@
 //! CFDP Packet Data Unit (PDU) support.
 use crate::cfdp::*;
-use crate::util::{UnsignedByteField, UnsignedEnum};
+use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
 use crate::CRC_CCITT_FALSE;
 use crate::{ByteConversionError, SizeMissmatch};
 use core::fmt::{Display, Formatter};
@@ -204,7 +204,7 @@ impl CommonPduConfig {
         })
     }
 
-    pub fn new_with_defaults(
+    pub fn new_with_byte_fields(
         source_id: impl Into<UnsignedByteField>,
         dest_id: impl Into<UnsignedByteField>,
         transaction_seq_num: impl Into<UnsignedByteField>,
@@ -213,6 +213,20 @@ impl CommonPduConfig {
             source_id,
             dest_id,
             transaction_seq_num,
+            TransmissionMode::Acknowledged,
+            LargeFileFlag::Normal,
+            CrcFlag::NoCrc,
+            Direction::TowardsReceiver,
+        )
+    }
+
+    /// The defaults for the source ID, destination ID and the transaction sequence number is the
+    /// [UnsignedByteFieldU8] with an intitial value of 0
+    pub fn new_with_defaults() -> Result<Self, PduError> {
+        Self::new(
+            UnsignedByteFieldU8::new(0),
+            UnsignedByteFieldU8::new(0),
+            UnsignedByteFieldU8::new(0),
             TransmissionMode::Acknowledged,
             LargeFileFlag::Normal,
             CrcFlag::NoCrc,
@@ -574,8 +588,9 @@ mod tests {
         let src_id = UbfU8::new(5);
         let dest_id = UbfU8::new(10);
         let transaction_seq_num = UbfU8::new(20);
-        let mut pdu_conf = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num)
-            .expect("Generating common PDU config");
+        let mut pdu_conf =
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num)
+                .expect("Generating common PDU config");
         pdu_conf.crc_flag = crc_flag;
         pdu_conf.file_flag = fss;
         pdu_conf
@@ -647,7 +662,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         assert_eq!(pdu_header.pdu_type(), PduType::FileDirective);
@@ -671,7 +686,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
@@ -687,7 +702,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
@@ -706,7 +721,7 @@ mod tests {
         let dest_id = UnsignedByteFieldU16::new(0x0203);
         let transaction_id = UnsignedByteFieldU16::new(0x0405);
         let mut common_pdu_cfg =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
                 .expect("common config creation failed");
         common_pdu_cfg.crc_flag = CrcFlag::WithCrc;
         common_pdu_cfg.direction = Direction::TowardsSender;
@@ -733,7 +748,7 @@ mod tests {
         let dest_id = UnsignedByteFieldU16::new(0x0203);
         let transaction_id = UnsignedByteFieldU16::new(0x0405);
         let mut common_pdu_cfg =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
                 .expect("common config creation failed");
         common_pdu_cfg.crc_flag = CrcFlag::WithCrc;
         common_pdu_cfg.direction = Direction::TowardsSender;
@@ -760,7 +775,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
@@ -799,7 +814,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
@@ -822,7 +837,8 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_id = UbfU8::new(3);
         let invalid_byte_field = UnsignedByteField::new(3, 5);
-        let pdu_conf_res = CommonPduConfig::new_with_defaults(src_id, dest_id, invalid_byte_field);
+        let pdu_conf_res =
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, invalid_byte_field);
         assert!(pdu_conf_res.is_err());
         let error = pdu_conf_res.unwrap_err();
         if let PduError::InvalidTransactionSeqNumLen(len) = error {
@@ -830,7 +846,7 @@ mod tests {
         } else {
             panic!("Invalid exception: {}", error)
         }
-        let pdu_conf_res = CommonPduConfig::new_with_defaults(
+        let pdu_conf_res = CommonPduConfig::new_with_byte_fields(
             invalid_byte_field,
             invalid_byte_field,
             transaction_seq_id,
@@ -848,7 +864,8 @@ mod tests {
         let src_id = UnsignedByteField::new(1, 5);
         let dest_id = UnsignedByteField::new(2, 5);
         let transaction_seq_id = UbfU8::new(3);
-        let pdu_conf_res = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_id);
+        let pdu_conf_res =
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_id);
         assert!(pdu_conf_res.is_err());
         let error = pdu_conf_res.unwrap_err();
         if let PduError::SourceDestIdLenMissmatch((src_len, dest_len)) = error {
@@ -862,7 +879,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
@@ -886,7 +903,7 @@ mod tests {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
-        let common_pdu_cfg = CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+        let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
         let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];

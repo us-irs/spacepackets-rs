@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   classes. The old `PusTm` class is deprecated now.
 - Implement `Display` and `Error` for `StdTimestampError` properly.
 - Remove some redundant `Error` suffixes for enum error variants.
+- `CommonPduConfig`: `new_with_defaults` replaced by `new_with_byte_fields`
+  and `new_with_defaults` has not empty argument list.
 
 ## Added
 
