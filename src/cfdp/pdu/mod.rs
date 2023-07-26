@@ -222,7 +222,8 @@ impl CommonPduConfig {
 
     /// The defaults for the source ID, destination ID and the transaction sequence number is the
     /// [UnsignedByteFieldU8] with an intitial value of 0
-    pub fn new_with_defaults() -> Result<Self, PduError> {
+    pub fn new_with_defaults() -> Self {
+        // new can not fail for these input parameters
         Self::new(
             UnsignedByteFieldU8::new(0),
             UnsignedByteFieldU8::new(0),
@@ -231,7 +232,7 @@ impl CommonPduConfig {
             LargeFileFlag::Normal,
             CrcFlag::NoCrc,
             Direction::TowardsReceiver,
-        )
+        ).unwrap()
     }
 
     pub fn source_id(&self) -> UnsignedByteField {
