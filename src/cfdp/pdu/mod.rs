@@ -232,7 +232,8 @@ impl CommonPduConfig {
             LargeFileFlag::Normal,
             CrcFlag::NoCrc,
             Direction::TowardsReceiver,
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     pub fn source_id(&self) -> UnsignedByteField {

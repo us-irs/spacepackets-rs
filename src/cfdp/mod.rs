@@ -134,6 +134,12 @@ pub enum ChecksumType {
     NullChecksum = 15,
 }
 
+impl Default for ChecksumType {
+    fn default() -> Self {
+        Self::NullChecksum
+    }
+}
+
 pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
