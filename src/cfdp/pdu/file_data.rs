@@ -235,7 +235,7 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -254,7 +254,7 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -289,7 +289,7 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -307,7 +307,7 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
         let pdu_header = PduHeader::new_for_file_data(
             common_conf,
             0,
@@ -372,7 +372,7 @@ mod tests {
         let dest_id = UbfU8::new(2);
         let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
         let pdu_header = PduHeader::new_for_file_data(
             common_conf,
             0,

@@ -11,12 +11,12 @@ use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataGenericParams {
-    closure_requested: bool,
-    checksum_type: ChecksumType,
-    file_size: u64,
+    pub closure_requested: bool,
+    pub checksum_type: ChecksumType,
+    pub file_size: u64,
 }
 
 impl MetadataGenericParams {
@@ -143,6 +143,10 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         };
         pdu.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
         pdu
+    }
+
+    pub fn metadata_params(&self) -> &MetadataGenericParams {
+        &self.metadata_params
     }
 
     pub fn src_file_name(&self) -> Lv<'src_name> {
