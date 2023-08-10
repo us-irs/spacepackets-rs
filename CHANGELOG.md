@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added new marker trait `IsPusTelemetry` implemented by `PusTmCreator` and `PusTmReader`.
 - Added new marker trait `IsPusTelecommand` implemented by `PusTcCreator` and `PusTcReader`.
 - `metadata_param` getter method for the `MetadataPdu` object.
+- `Default` impl for CFDP `ChecksumType`
 
 ## Fixed
 
