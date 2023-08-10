@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Fixed
 
 - All `MetadataGenericParam` fields are now public.
+- New setter method `set_source_and_dest_id` for `CommonPduConfig`.
 
 # [v0.6.0] 2023-07-06
 
