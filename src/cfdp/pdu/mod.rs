@@ -723,7 +723,7 @@ mod tests {
         let dest_id = UnsignedByteFieldU8::new(2);
         let transaction_id = UnsignedByteFieldU8::new(3);
         let mut common_pdu_cfg =
-            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
                 .expect("common config creation failed");
         let other_src_id = UnsignedByteFieldU16::new(5);
         let other_dest_id = UnsignedByteFieldU16::new(6);
