@@ -22,8 +22,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   classes. The old `PusTm` class is deprecated now.
 - Implement `Display` and `Error` for `StdTimestampError` properly.
 - Remove some redundant `Error` suffixes for enum error variants.
-- `CommonPduConfig`: `new_with_defaults` replaced by `new_with_byte_fields`
-  and `new_with_defaults` has now empty argument list.
+- `CommonPduConfig`: `new_with_defaults` replaced by `new_with_byte_fields`.
 
 ## Added
 
@@ -33,6 +32,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added new marker trait `IsPusTelecommand` implemented by `PusTcCreator` and `PusTcReader`.
 - `metadata_param` getter method for the `MetadataPdu` object.
 - `Default` impl for CFDP `ChecksumType`
+- `Default` impl for CFDP `CommonPduConfig`
 
 ## Fixed
 

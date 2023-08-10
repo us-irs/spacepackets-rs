@@ -220,10 +220,20 @@ impl CommonPduConfig {
         )
     }
 
+    pub fn source_id(&self) -> UnsignedByteField {
+        self.source_entity_id
+    }
+
+    pub fn dest_id(&self) -> UnsignedByteField {
+        self.dest_entity_id
+    }
+}
+
+impl Default for CommonPduConfig {
     /// The defaults for the source ID, destination ID and the transaction sequence number is the
     /// [UnsignedByteFieldU8] with an intitial value of 0
-    pub fn new_with_defaults() -> Self {
-        // new can not fail for these input parameters
+    fn default() -> Self {
+        // The new function can not fail for these input parameters.
         Self::new(
             UnsignedByteFieldU8::new(0),
             UnsignedByteFieldU8::new(0),
@@ -234,14 +244,6 @@ impl CommonPduConfig {
             Direction::TowardsReceiver,
         )
         .unwrap()
-    }
-
-    pub fn source_id(&self) -> UnsignedByteField {
-        self.source_entity_id
-    }
-
-    pub fn dest_id(&self) -> UnsignedByteField {
-        self.dest_entity_id
     }
 }
 
@@ -681,6 +683,18 @@ mod tests {
         );
         assert_eq!(pdu_header.pdu_datafield_len, 5);
         assert_eq!(pdu_header.header_len(), 7);
+    }
+
+    #[test]
+    fn test_basic_state_default() {
+        let default_conf = CommonPduConfig::default();
+        assert_eq!(default_conf.source_id(), UnsignedByteFieldU8::new(0).into());
+        assert_eq!(default_conf.dest_id(), UnsignedByteFieldU8::new(0).into());
+        assert_eq!(default_conf.transaction_seq_num, UnsignedByteFieldU8::new(0).into());
+        assert_eq!(default_conf.trans_mode, TransmissionMode::Acknowledged);
+        assert_eq!(default_conf.direction, Direction::TowardsReceiver);
+        assert_eq!(default_conf.crc_flag, CrcFlag::NoCrc);
+        assert_eq!(default_conf.file_flag, LargeFileFlag::Normal);
     }
 
     #[test]
