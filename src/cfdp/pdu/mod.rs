@@ -168,22 +168,8 @@ impl CommonPduConfig {
         crc_flag: CrcFlag,
         direction: Direction,
     ) -> Result<Self, PduError> {
-        let source_id = source_id.into();
-        let dest_id = dest_id.into();
+        let (source_id, dest_id) = Self::source_dest_id_check(source_id, dest_id)?;
         let transaction_seq_num = transaction_seq_num.into();
-        if source_id.size() != dest_id.size() {
-            return Err(PduError::SourceDestIdLenMissmatch((
-                source_id.size(),
-                dest_id.size(),
-            )));
-        }
-        if source_id.size() != 1
-            && source_id.size() != 2
-            && source_id.size() != 4
-            && source_id.size() != 8
-        {
-            return Err(PduError::InvalidEntityLen(source_id.size() as u8));
-        }
         if transaction_seq_num.size() != 1
             && transaction_seq_num.size() != 2
             && transaction_seq_num.size() != 4
@@ -222,6 +208,39 @@ impl CommonPduConfig {
 
     pub fn source_id(&self) -> UnsignedByteField {
         self.source_entity_id
+    }
+
+    fn source_dest_id_check(
+        source_id: impl Into<UnsignedByteField>,
+        dest_id: impl Into<UnsignedByteField>,
+    ) -> Result<(UnsignedByteField, UnsignedByteField), PduError> {
+        let source_id = source_id.into();
+        let dest_id = dest_id.into();
+        if source_id.size() != dest_id.size() {
+            return Err(PduError::SourceDestIdLenMissmatch((
+                source_id.size(),
+                dest_id.size(),
+            )));
+        }
+        if source_id.size() != 1
+            && source_id.size() != 2
+            && source_id.size() != 4
+            && source_id.size() != 8
+        {
+            return Err(PduError::InvalidEntityLen(source_id.size() as u8));
+        }
+        Ok((source_id, dest_id))
+    }
+
+    pub fn set_source_and_dest_id(
+        &mut self,
+        source_id: impl Into<UnsignedByteField>,
+        dest_id: impl Into<UnsignedByteField>,
+    ) -> Result<(), PduError> {
+        let (source_id, dest_id) = Self::source_dest_id_check(source_id, dest_id)?;
+        self.source_entity_id = source_id;
+        self.dest_entity_id = dest_id;
+        Ok(())
     }
 
     pub fn dest_id(&self) -> UnsignedByteField {
@@ -664,6 +683,22 @@ mod tests {
         );
         assert_eq!(pdu_header.pdu_datafield_len, 5);
         assert_eq!(pdu_header.header_len(), 7);
+    }
+
+    #[test]
+    fn test_pdu_header_setter() {
+        let src_id = UnsignedByteFieldU8::new(1);
+        let dest_id = UnsignedByteFieldU8::new(2);
+        let transaction_id = UnsignedByteFieldU8::new(3);
+        let mut common_pdu_cfg =
+            CommonPduConfig::new_with_defaults(src_id, dest_id, transaction_id)
+                .expect("common config creation failed");
+        let other_src_id = UnsignedByteFieldU16::new(5);
+        let other_dest_id = UnsignedByteFieldU16::new(6);
+        let set_result = common_pdu_cfg.set_source_and_dest_id(other_src_id, other_dest_id);
+        assert!(set_result.is_ok());
+        assert_eq!(common_pdu_cfg.source_id(), other_src_id.into());
+        assert_eq!(common_pdu_cfg.dest_id(), other_dest_id.into());
     }
 
     #[test]
