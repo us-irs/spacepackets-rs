@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Implement `Display` and `Error` for `StdTimestampError` properly.
 - Remove some redundant `Error` suffixes for enum error variants.
 - `CommonPduConfig`: `new_with_defaults` replaced by `new_with_byte_fields`
-  and `new_with_defaults` has not empty argument list.
+  and `new_with_defaults` has now empty argument list.
 
 ## Added
 
