@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.7.0]
 
+- Moved MSRV from v1.60 to v1.61.
+
 ## Changed
 
 - `PusPacket` trait: `user_data` now returns `&[u8]` instead of `Option<&[u8]>`. Empty user data
