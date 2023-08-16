@@ -11,6 +11,9 @@ pub const MIN_LV_LEN: usize = 1;
 
 /// Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
 ///
+/// Please note that this class is zero-copy and does not generate a copy of the value data for
+/// both the regular [new] constructor and the [Self::from_bytes] constructor.
+///
 /// # Lifetimes
 ///  * `data`: If the LV is generated from a raw bytestream, this will be the lifetime of
 ///    the raw bytestream. If the LV is generated from a raw slice or a similar data reference,
