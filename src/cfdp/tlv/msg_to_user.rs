@@ -1,7 +1,7 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
-use delegate::delegate;
+use super::{Tlv, TlvLvError, TlvType, TlvTypeField};
 use crate::ByteConversionError;
-use super::{TlvLvError, Tlv, TlvType, TlvTypeField};
+use delegate::delegate;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct MsgToUserTlv<'data> {
@@ -9,11 +9,10 @@ pub struct MsgToUserTlv<'data> {
 }
 
 impl<'data> MsgToUserTlv<'data> {
-
     /// Create a new message to user TLV where the type field is set correctly.
     pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvError> {
         Ok(Self {
-            tlv: Tlv::new(TlvType::MsgToUser, value)?
+            tlv: Tlv::new(TlvType::MsgToUser, value)?,
         })
     }
 

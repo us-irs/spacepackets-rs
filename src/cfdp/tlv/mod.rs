@@ -269,10 +269,7 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
             }
         }
         let len_value = value.value().len();
-        if len_value != 1
-            && len_value != 2
-            && len_value != 4
-            && len_value != 8 {
+        if len_value != 1 && len_value != 2 && len_value != 4 && len_value != 8 {
             return Err(TlvLvError::InvalidValueLength(len_value));
         }
         Ok(Self::new(
