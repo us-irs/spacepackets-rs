@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- The `Tlv` and `Lv` API return `&[u8]` instead of `Option<&[u8]>`.
+
+## Added
+
+- Added `raw_data` API for `Tlv` and `Lv` to retrieve the whole `Lv`/`Tlv` slice if the object
+  was created from a raw bytestream.
+
 # [v0.7.0-beta.0] 2023-08-16
 
 - Moved MSRV from v1.60 to v1.61.
