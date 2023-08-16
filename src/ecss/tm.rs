@@ -805,8 +805,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         self.sec_header.timestamp
     }
 
-    /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
-    /// constructed from. Otherwise, [None] will be returned.
+    /// This function will return the slice [Self] was constructed from.
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
