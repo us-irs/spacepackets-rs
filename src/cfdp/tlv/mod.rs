@@ -9,6 +9,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod msg_to_user;
+
 pub const MIN_TLV_LEN: usize = 2;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
@@ -98,12 +100,30 @@ impl<'data> Tlv<'data> {
         }
     }
 
+    /// Checks whether the type field contains one of the standard types specified in the CFDP
+    /// standard and is part of the [TlvType] enum.
+    pub fn is_standard_tlv(&self) -> bool {
+        if let TlvTypeField::Standard(_) = self.tlv_type_field {
+            return true;
+        }
+        false
+    }
+
+    /// Returns the standard TLV type if the TLV field is not a custom field
+    pub fn tlv_type(&self) -> Option<TlvType> {
+        if let TlvTypeField::Standard(tlv_type) = self.tlv_type_field {
+            Some(tlv_type)
+        } else {
+            None
+        }
+    }
+
     pub fn tlv_type_field(&self) -> TlvTypeField {
         self.tlv_type_field
     }
 
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        generic_len_check_data_serialization(buf, self.len_value(), MIN_TLV_LEN)?;
+        generic_len_check_data_serialization(buf, self.value().len(), MIN_TLV_LEN)?;
         buf[0] = self.tlv_type_field.into();
         self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
         Ok(self.len_full())
@@ -113,7 +133,8 @@ impl<'data> Tlv<'data> {
         self.lv.value()
     }
 
-    /// Returns the length of the value part, not including the length byte.
+    /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
+    /// [Self::value]
     pub fn len_value(&self) -> usize {
         self.lv.len_value()
     }
@@ -244,15 +265,15 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
                 )));
             }
         }
-        if value.len_value() != 1
-            && value.len_value() != 2
-            && value.len_value() != 4
-            && value.len_value() != 8
-        {
-            return Err(TlvLvError::InvalidValueLength(value.len_value()));
+        let len_value = value.value().len();
+        if len_value != 1
+            && len_value != 2
+            && len_value != 4
+            && len_value != 8 {
+            return Err(TlvLvError::InvalidValueLength(len_value));
         }
         Ok(Self::new(
-            UnsignedByteField::new_from_be_bytes(value.len_value(), value.value()).map_err(
+            UnsignedByteField::new_from_be_bytes(len_value, value.value()).map_err(
                 |e| match e {
                     UnsignedByteFieldError::ByteConversionError(e) => e,
                     // This can not happen, we checked for the length validity, and the data is always smaller than
@@ -481,6 +502,7 @@ mod tests {
             TlvTypeField::Standard(TlvType::EntityId)
         );
         assert_eq!(tlv_res.len_full(), 3);
+        assert_eq!(tlv_res.value().len(), 1);
         assert_eq!(tlv_res.len_value(), 1);
         assert!(!tlv_res.is_empty());
         assert_eq!(tlv_res.value()[0], 5);
@@ -517,7 +539,7 @@ mod tests {
             tlv_from_raw.tlv_type_field(),
             TlvTypeField::Standard(TlvType::EntityId)
         );
-        assert_eq!(tlv_from_raw.len_value(), 1);
+        assert_eq!(tlv_from_raw.value().len(), 1);
         assert_eq!(tlv_from_raw.len_full(), 3);
         assert_eq!(tlv_from_raw.value()[0], 5);
     }
@@ -528,7 +550,7 @@ mod tests {
         assert_eq!(tlv_empty.value().len(), 0);
         assert!(tlv_empty.is_empty());
         assert_eq!(tlv_empty.len_full(), 2);
-        assert_eq!(tlv_empty.len_value(), 0);
+        assert!(tlv_empty.value().is_empty());
         assert_eq!(
             tlv_empty.tlv_type_field(),
             TlvTypeField::Standard(TlvType::MsgToUser)
@@ -559,7 +581,7 @@ mod tests {
             TlvTypeField::Standard(TlvType::MsgToUser)
         );
         assert_eq!(tlv_empty.len_full(), 2);
-        assert_eq!(tlv_empty.len_value(), 0);
+        assert!(tlv_empty.value().is_empty());
     }
 
     #[test]
@@ -585,7 +607,7 @@ mod tests {
         assert!(tlv.is_ok());
         let tlv = tlv.unwrap();
         assert_eq!(tlv.tlv_type_field(), TlvTypeField::Custom(3));
-        assert_eq!(tlv.len_value(), 1);
+        assert_eq!(tlv.value().len(), 1);
         assert_eq!(tlv.len_full(), 3);
     }
 
