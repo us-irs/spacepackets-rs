@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Added `raw_data` API for `Tlv` and `Lv` to retrieve the whole `Lv`/`Tlv` slice if the object
   was created from a raw bytestream.
+- Added `MsgToUserTlv` helper class which wraps a regular `Tlv` and adds some useful functionality.
 
 # [v0.7.0-beta.0] 2023-08-16
 
