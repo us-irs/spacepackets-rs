@@ -99,4 +99,13 @@ mod tests {
         assert!(msg_to_user.raw_data().is_none());
         assert!(!msg_to_user.is_reserved_cfdp_msg());
     }
+
+    #[test]
+    fn test_reserved_msg() {
+        let reserved_str = "cfdp";
+        let msg_to_user = MsgToUserTlv::new(reserved_str.as_bytes());
+        assert!(msg_to_user.is_ok());
+        let msg_to_user = msg_to_user.unwrap();
+        assert!(msg_to_user.is_reserved_cfdp_msg());
+    }
 }
