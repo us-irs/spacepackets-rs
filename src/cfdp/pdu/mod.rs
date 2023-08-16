@@ -718,6 +718,8 @@ mod tests {
         assert_eq!(default_conf.crc_flag, CrcFlag::NoCrc);
         assert_eq!(default_conf.file_flag, LargeFileFlag::Normal);
     }
+
+    #[test]
     fn test_pdu_header_setter() {
         let src_id = UnsignedByteFieldU8::new(1);
         let dest_id = UnsignedByteFieldU8::new(2);

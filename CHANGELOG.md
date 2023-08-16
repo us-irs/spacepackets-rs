@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- `UnsignedByteField` and `GenericUnsignedByteField` `new` methods are `const` now.
+
 # [v0.7.0-beta.0] 2023-08-16
 
 - Moved MSRV from v1.60 to v1.61.

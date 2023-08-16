@@ -123,7 +123,7 @@ pub struct UnsignedByteField {
 }
 
 impl UnsignedByteField {
-    pub fn new(width: usize, value: u64) -> Self {
+    pub const fn new(width: usize, value: u64) -> Self {
         Self { width, value }
     }
 
@@ -204,7 +204,7 @@ pub struct GenericUnsignedByteField<TYPE> {
 }
 
 impl<TYPE> GenericUnsignedByteField<TYPE> {
-    pub fn new(val: TYPE) -> Self {
+    pub const fn new(val: TYPE) -> Self {
         Self { value: val }
     }
 }
