@@ -1,7 +1,6 @@
+//! Abstractions for the Message to User CFDP TLV subtype.
 use delegate::delegate;
-
 use crate::ByteConversionError;
-
 use super::{TlvLvError, Tlv, TlvType, TlvTypeField};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -44,6 +43,18 @@ impl<'data> MsgToUserTlv<'data> {
         Some(TlvType::MsgToUser)
     }
 
+    /// Check whether this message is a reserved CFDP message like a Proxy Operation Message.
+    pub fn is_reserved_cfdp_msg(&self) -> bool {
+        if self.value().len() < 4 {
+            return false;
+        }
+        let value = self.value();
+        if value[0] == b'c' && value[1] == b'f' && value[2] == b'd' && value[3] == b'p' {
+            return true;
+        }
+        false
+    }
+
     /// This is a thin wrapper around [Tlv::from_bytes] with the additional type check.
     pub fn from_bytes(buf: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvError> {
         let msg_to_user = Self {
@@ -83,8 +94,9 @@ mod tests {
         assert_eq!(msg_to_user.value(), custom_value);
         assert_eq!(msg_to_user.value().len(), 4);
         assert_eq!(msg_to_user.len_value(), 4);
-        assert_eq!(msg_to_user.len_full(), 5);
+        assert_eq!(msg_to_user.len_full(), 6);
         assert!(!msg_to_user.is_empty());
         assert!(msg_to_user.raw_data().is_none());
+        assert!(!msg_to_user.is_reserved_cfdp_msg());
     }
 }
