@@ -73,7 +73,7 @@ impl From<TlvTypeField> for u8 {
 /// Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
 ///
 /// Please note that this class is zero-copy and does not generate a copy of the value data for
-/// both the regular [new] constructor and the [Self::from_bytes] constructor.
+/// both the regular [Self::new] constructor and the [Self::from_bytes] constructor.
 ///
 /// # Lifetimes
 ///  * `data`: If the TLV is generated from a raw bytestream, this will be the lifetime of
