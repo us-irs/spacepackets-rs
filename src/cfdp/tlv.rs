@@ -508,16 +508,17 @@ mod tests {
         assert!(entity_id.write_to_be_bytes(&mut buf[2..]).is_ok());
         buf[0] = TlvType::EntityId as u8;
         buf[1] = 1;
-        let tlv_from_raw = Tlv::from_bytes(&mut buf);
+        let tlv_from_raw = Tlv::from_bytes(&buf);
         assert!(tlv_from_raw.is_ok());
         let tlv_from_raw = tlv_from_raw.unwrap();
+        assert!(tlv_from_raw.raw_data().is_some());
+        assert_eq!(tlv_from_raw.raw_data().unwrap(), buf);
         assert_eq!(
             tlv_from_raw.tlv_type_field(),
             TlvTypeField::Standard(TlvType::EntityId)
         );
         assert_eq!(tlv_from_raw.len_value(), 1);
         assert_eq!(tlv_from_raw.len_full(), 3);
-        assert!(tlv_from_raw.value().len() > 0);
         assert_eq!(tlv_from_raw.value()[0], 5);
     }
 

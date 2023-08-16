@@ -230,6 +230,8 @@ pub mod tests {
         assert!(!lv.is_empty());
         assert_eq!(lv.len_value(), 4);
         assert_eq!(lv.len_full(), 5);
+        assert!(lv.raw_data().is_some());
+        assert_eq!(lv.raw_data().unwrap(), buf);
         let val = lv.value();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);
