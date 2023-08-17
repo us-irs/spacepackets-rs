@@ -248,13 +248,16 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         }
         generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
-            PduError::InvalidDirectiveType((buf[current_idx], Some(FileDirectiveType::MetadataPdu)))
+            PduError::InvalidDirectiveType {
+                found: buf[current_idx],
+                expected: Some(FileDirectiveType::MetadataPdu),
+            }
         })?;
         if directive_type != FileDirectiveType::MetadataPdu {
-            return Err(PduError::WrongDirectiveType((
-                directive_type,
-                FileDirectiveType::MetadataPdu,
-            )));
+            return Err(PduError::WrongDirectiveType {
+                found: directive_type,
+                expected: FileDirectiveType::MetadataPdu,
+            });
         }
         current_idx += 1;
         let (fss_len, file_size) =

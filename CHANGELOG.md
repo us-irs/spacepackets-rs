@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - `UnsignedByteField` and `GenericUnsignedByteField` `new` methods are `const` now.
+- `PduError` variants which contained a tuple variant with multiple fields were converted to a
+  struct variant.
 
 # Added
 

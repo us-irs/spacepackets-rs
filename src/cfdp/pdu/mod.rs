@@ -35,16 +35,19 @@ pub enum PduError {
     InvalidEntityLen(u8),
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
     InvalidTransactionSeqNumLen(u8),
-    /// The first entry will be the source entity ID length, the second one the destination entity
-    /// ID length.
-    SourceDestIdLenMissmatch((usize, usize)),
-    /// The first tuple entry will be the found directive type, the second entry the expected entry
-    /// type.
-    WrongDirectiveType((FileDirectiveType, FileDirectiveType)),
+    SourceDestIdLenMissmatch {
+        src_id_len: usize,
+        dest_id_len: usize,
+    },
+    WrongDirectiveType {
+        found: FileDirectiveType,
+        expected: FileDirectiveType,
+    },
     /// The directive type field contained a value not in the range of permitted values.
-    /// The first tuple entry will be the found raw number, the second entry the expected entry
-    /// type when applicable.
-    InvalidDirectiveType((u8, Option<FileDirectiveType>)),
+    InvalidDirectiveType {
+        found: u8,
+        expected: Option<FileDirectiveType>,
+    },
     /// Invalid condition code. Contains the raw detected value.
     InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
@@ -80,10 +83,13 @@ impl Display for PduError {
                     "cfdp version missmatch, found {raw}, expected {CFDP_VERSION_2}"
                 )
             }
-            PduError::SourceDestIdLenMissmatch((src_len, dest_len)) => {
+            PduError::SourceDestIdLenMissmatch {
+                src_id_len,
+                dest_id_len,
+            } => {
                 write!(
                     f,
-                    "missmatch of PDU source length {src_len} and destination length {dest_len}"
+                    "missmatch of PDU source length {src_id_len} and destination length {dest_id_len}"
                 )
             }
             PduError::ByteConversionError(e) => {
@@ -92,13 +98,13 @@ impl Display for PduError {
             PduError::FileSizeTooLarge(value) => {
                 write!(f, "file size value {value} exceeds allowed 32 bit width")
             }
-            PduError::WrongDirectiveType((found, expected)) => {
+            PduError::WrongDirectiveType { found, expected } => {
                 write!(f, "found directive type {found:?}, expected {expected:?}")
             }
             PduError::InvalidConditionCode(raw_code) => {
                 write!(f, "found invalid condition code with raw value {raw_code}")
             }
-            PduError::InvalidDirectiveType((found, expected)) => {
+            PduError::InvalidDirectiveType { found, expected } => {
                 write!(
                     f,
                     "invalid directive type value {found}, expected {expected:?}"
@@ -216,10 +222,10 @@ impl CommonPduConfig {
         let source_id = source_id.into();
         let dest_id = dest_id.into();
         if source_id.size() != dest_id.size() {
-            return Err(PduError::SourceDestIdLenMissmatch((
-                source_id.size(),
-                dest_id.size(),
-            )));
+            return Err(PduError::SourceDestIdLenMissmatch {
+                src_id_len: source_id.size(),
+                dest_id_len: dest_id.size(),
+            });
         }
         if source_id.size() != 1
             && source_id.size() != 2
@@ -353,10 +359,10 @@ impl PduHeader {
         // Internal note: There is currently no way to pass a PDU configuration like this, but
         // this check is still kept for defensive programming.
         if self.pdu_conf.source_entity_id.size() != self.pdu_conf.dest_entity_id.size() {
-            return Err(PduError::SourceDestIdLenMissmatch((
-                self.pdu_conf.source_entity_id.size(),
-                self.pdu_conf.dest_entity_id.size(),
-            )));
+            return Err(PduError::SourceDestIdLenMissmatch {
+                src_id_len: self.pdu_conf.source_entity_id.size(),
+                dest_id_len: self.pdu_conf.dest_entity_id.size(),
+            });
         }
         if buf.len()
             < FIXED_HEADER_LEN
