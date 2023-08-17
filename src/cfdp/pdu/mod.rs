@@ -340,6 +340,10 @@ impl PduHeader {
             + self.pdu_conf.dest_entity_id.size()
     }
 
+    pub fn pdu_datafield_len(&self) -> usize {
+        self.pdu_datafield_len.into()
+    }
+
     /// Returns the full length of the PDU when written to a raw buffer, which is the header length
     /// plus the PDU datafield length.
     pub fn pdu_len(&self) -> usize {
