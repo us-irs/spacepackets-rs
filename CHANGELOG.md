@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - `UnsignedByteField` and `GenericUnsignedByteField` `new` methods are `const` now.
 
+# Added
+
+- Added `pdu_datafield_len` getter function for `PduHeader`
+
 # [v0.7.0-beta.0] 2023-08-16
 
 - Moved MSRV from v1.60 to v1.61.
