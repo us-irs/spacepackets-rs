@@ -83,7 +83,10 @@ impl Display for PduError {
                     "cfdp version missmatch, found {raw}, expected {CFDP_VERSION_2}"
                 )
             }
-            PduError::SourceDestIdLenMissmatch { src_id_len, dest_id_len }=> {
+            PduError::SourceDestIdLenMissmatch {
+                src_id_len,
+                dest_id_len,
+            } => {
                 write!(
                     f,
                     "missmatch of PDU source length {src_id_len} and destination length {dest_id_len}"
@@ -95,7 +98,7 @@ impl Display for PduError {
             PduError::FileSizeTooLarge(value) => {
                 write!(f, "file size value {value} exceeds allowed 32 bit width")
             }
-            PduError::WrongDirectiveType { found, expected }=> {
+            PduError::WrongDirectiveType { found, expected } => {
                 write!(f, "found directive type {found:?}, expected {expected:?}")
             }
             PduError::InvalidConditionCode(raw_code) => {
@@ -222,7 +225,6 @@ impl CommonPduConfig {
             return Err(PduError::SourceDestIdLenMissmatch {
                 src_id_len: source_id.size(),
                 dest_id_len: dest_id.size(),
-
             });
         }
         if source_id.size() != 1
@@ -929,7 +931,11 @@ mod tests {
             CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_id);
         assert!(pdu_conf_res.is_err());
         let error = pdu_conf_res.unwrap_err();
-        if let PduError::SourceDestIdLenMissmatch { src_id_len, dest_id_len }= error {
+        if let PduError::SourceDestIdLenMissmatch {
+            src_id_len,
+            dest_id_len,
+        } = error
+        {
             assert_eq!(src_id_len, 1);
             assert_eq!(dest_id_len, 2);
         }
