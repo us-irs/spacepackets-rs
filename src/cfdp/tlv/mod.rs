@@ -9,6 +9,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod msg_to_user;
+
 pub const MIN_TLV_LEN: usize = 2;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
@@ -70,6 +72,9 @@ impl From<TlvTypeField> for u8 {
 
 /// Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
 ///
+/// Please note that this class is zero-copy and does not generate a copy of the value data for
+/// both the regular [Self::new] constructor and the [Self::from_bytes] constructor.
+///
 /// # Lifetimes
 ///  * `data`: If the TLV is generated from a raw bytestream, this will be the lifetime of
 ///    the raw bytestream. If the TLV is generated from a raw slice or a similar data reference,
@@ -98,22 +103,41 @@ impl<'data> Tlv<'data> {
         }
     }
 
+    /// Checks whether the type field contains one of the standard types specified in the CFDP
+    /// standard and is part of the [TlvType] enum.
+    pub fn is_standard_tlv(&self) -> bool {
+        if let TlvTypeField::Standard(_) = self.tlv_type_field {
+            return true;
+        }
+        false
+    }
+
+    /// Returns the standard TLV type if the TLV field is not a custom field
+    pub fn tlv_type(&self) -> Option<TlvType> {
+        if let TlvTypeField::Standard(tlv_type) = self.tlv_type_field {
+            Some(tlv_type)
+        } else {
+            None
+        }
+    }
+
     pub fn tlv_type_field(&self) -> TlvTypeField {
         self.tlv_type_field
     }
 
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        generic_len_check_data_serialization(buf, self.len_value(), MIN_TLV_LEN)?;
+        generic_len_check_data_serialization(buf, self.value().len(), MIN_TLV_LEN)?;
         buf[0] = self.tlv_type_field.into();
         self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
         Ok(self.len_full())
     }
 
-    pub fn value(&self) -> Option<&[u8]> {
+    pub fn value(&self) -> &[u8] {
         self.lv.value()
     }
 
-    /// Returns the length of the value part, not including the length byte.
+    /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
+    /// [Self::value]
     pub fn len_value(&self) -> usize {
         self.lv.len_value()
     }
@@ -134,10 +158,20 @@ impl<'data> Tlv<'data> {
     /// [Self::len_full].
     pub fn from_bytes(buf: &'data [u8]) -> Result<Tlv<'data>, TlvLvError> {
         generic_len_check_deserialization(buf, MIN_TLV_LEN)?;
-        Ok(Self {
+        let mut tlv = Self {
             tlv_type_field: TlvTypeField::from(buf[0]),
             lv: Lv::from_bytes(&buf[MIN_LV_LEN..])?,
-        })
+        };
+        // We re-use this field so we do not need an additional struct field to store the raw start
+        // of the TLV.
+        tlv.lv.raw_data = Some(buf);
+        Ok(tlv)
+    }
+
+    /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw start
+    /// of the TLV can be retrieved with this method.
+    pub fn raw_data(&self) -> Option<&[u8]> {
+        self.lv.raw_data()
     }
 }
 
@@ -234,21 +268,19 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
                 )));
             }
         }
-        if value.len_value() != 1
-            && value.len_value() != 2
-            && value.len_value() != 4
-            && value.len_value() != 8
-        {
-            return Err(TlvLvError::InvalidValueLength(value.len_value()));
+        let len_value = value.value().len();
+        if len_value != 1 && len_value != 2 && len_value != 4 && len_value != 8 {
+            return Err(TlvLvError::InvalidValueLength(len_value));
         }
         Ok(Self::new(
-            UnsignedByteField::new_from_be_bytes(value.len_value(), value.value().unwrap())
-                .map_err(|e| match e {
+            UnsignedByteField::new_from_be_bytes(len_value, value.value()).map_err(
+                |e| match e {
                     UnsignedByteFieldError::ByteConversionError(e) => e,
                     // This can not happen, we checked for the length validity, and the data is always smaller than
                     // 255 bytes.
                     _ => panic!("unexpected error"),
-                })?,
+                },
+            )?,
         ))
     }
 }
@@ -454,8 +486,8 @@ mod tests {
     use crate::cfdp::TlvLvError;
     use crate::util::{UbfU8, UnsignedEnum};
 
-    const TLV_TEST_STR_0: &'static str = "hello.txt";
-    const TLV_TEST_STR_1: &'static str = "hello2.txt";
+    const TLV_TEST_STR_0: &str = "hello.txt";
+    const TLV_TEST_STR_1: &str = "hello2.txt";
 
     #[test]
     fn test_basic() {
@@ -470,10 +502,10 @@ mod tests {
             TlvTypeField::Standard(TlvType::EntityId)
         );
         assert_eq!(tlv_res.len_full(), 3);
+        assert_eq!(tlv_res.value().len(), 1);
         assert_eq!(tlv_res.len_value(), 1);
         assert!(!tlv_res.is_empty());
-        assert!(tlv_res.value().is_some());
-        assert_eq!(tlv_res.value().unwrap()[0], 5);
+        assert_eq!(tlv_res.value()[0], 5);
     }
 
     #[test]
@@ -498,26 +530,27 @@ mod tests {
         assert!(entity_id.write_to_be_bytes(&mut buf[2..]).is_ok());
         buf[0] = TlvType::EntityId as u8;
         buf[1] = 1;
-        let tlv_from_raw = Tlv::from_bytes(&mut buf);
+        let tlv_from_raw = Tlv::from_bytes(&buf);
         assert!(tlv_from_raw.is_ok());
         let tlv_from_raw = tlv_from_raw.unwrap();
+        assert!(tlv_from_raw.raw_data().is_some());
+        assert_eq!(tlv_from_raw.raw_data().unwrap(), buf);
         assert_eq!(
             tlv_from_raw.tlv_type_field(),
             TlvTypeField::Standard(TlvType::EntityId)
         );
-        assert_eq!(tlv_from_raw.len_value(), 1);
+        assert_eq!(tlv_from_raw.value().len(), 1);
         assert_eq!(tlv_from_raw.len_full(), 3);
-        assert!(tlv_from_raw.value().is_some());
-        assert_eq!(tlv_from_raw.value().unwrap()[0], 5);
+        assert_eq!(tlv_from_raw.value()[0], 5);
     }
 
     #[test]
     fn test_empty() {
         let tlv_empty = Tlv::new_empty(TlvType::MsgToUser);
-        assert!(tlv_empty.value().is_none());
+        assert_eq!(tlv_empty.value().len(), 0);
         assert!(tlv_empty.is_empty());
         assert_eq!(tlv_empty.len_full(), 2);
-        assert_eq!(tlv_empty.len_value(), 0);
+        assert!(tlv_empty.value().is_empty());
         assert_eq!(
             tlv_empty.tlv_type_field(),
             TlvTypeField::Standard(TlvType::MsgToUser)
@@ -538,17 +571,17 @@ mod tests {
         let mut buf: [u8; 4] = [0; 4];
         buf[0] = TlvType::MsgToUser as u8;
         buf[1] = 0;
-        let tlv_empty = Tlv::from_bytes(&mut buf);
+        let tlv_empty = Tlv::from_bytes(&buf);
         assert!(tlv_empty.is_ok());
         let tlv_empty = tlv_empty.unwrap();
         assert!(tlv_empty.is_empty());
-        assert!(tlv_empty.value().is_none());
+        assert_eq!(tlv_empty.value().len(), 0);
         assert_eq!(
             tlv_empty.tlv_type_field(),
             TlvTypeField::Standard(TlvType::MsgToUser)
         );
         assert_eq!(tlv_empty.len_full(), 2);
-        assert_eq!(tlv_empty.len_value(), 0);
+        assert!(tlv_empty.value().is_empty());
     }
 
     #[test]
@@ -570,11 +603,11 @@ mod tests {
         buf[0] = 3;
         buf[1] = 1;
         buf[2] = 5;
-        let tlv = Tlv::from_bytes(&mut buf);
+        let tlv = Tlv::from_bytes(&buf);
         assert!(tlv.is_ok());
         let tlv = tlv.unwrap();
         assert_eq!(tlv.tlv_type_field(), TlvTypeField::Custom(3));
-        assert_eq!(tlv.len_value(), 1);
+        assert_eq!(tlv.value().len(), 1);
         assert_eq!(tlv.len_full(), 3);
     }
 

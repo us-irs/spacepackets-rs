@@ -11,14 +11,26 @@ pub const MIN_LV_LEN: usize = 1;
 
 /// Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
 ///
+/// Please note that this class is zero-copy and does not generate a copy of the value data for
+/// both the regular [Self::new] constructor and the [Self::from_bytes] constructor.
+///
 /// # Lifetimes
 ///  * `data`: If the LV is generated from a raw bytestream, this will be the lifetime of
 ///    the raw bytestream. If the LV is generated from a raw slice or a similar data reference,
 ///    this will be the lifetime of that data reference.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Lv<'data> {
-    data: Option<&'data [u8]>,
+    data: &'data [u8],
+    // If the LV was generated from a raw bytestream, this will contain the start of the
+    // full LV.
+    pub(crate) raw_data: Option<&'data [u8]>,
+}
+
+impl PartialEq for Lv<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.data == other.data
+    }
 }
 
 pub(crate) fn generic_len_check_data_serialization(
@@ -53,12 +65,18 @@ impl<'data> Lv<'data> {
         if data.len() > u8::MAX as usize {
             return Err(TlvLvError::DataTooLarge(data.len()));
         }
-        Ok(Lv { data: Some(data) })
+        Ok(Lv {
+            data,
+            raw_data: None,
+        })
     }
 
     /// Creates a LV with an empty value field.
     pub fn new_empty() -> Lv<'data> {
-        Lv { data: None }
+        Lv {
+            data: &[],
+            raw_data: None,
+        }
     }
 
     /// Helper function to build a string LV. This is especially useful for the file or directory
@@ -77,10 +95,7 @@ impl<'data> Lv<'data> {
 
     /// Returns the length of the value part, not including the length byte.
     pub fn len_value(&self) -> usize {
-        if self.data.is_none() {
-            return 0;
-        }
-        self.data.unwrap().len()
+        self.data.len()
     }
 
     /// Returns the full raw length, including the length byte.
@@ -90,18 +105,26 @@ impl<'data> Lv<'data> {
 
     /// Checks whether the value field is empty.
     pub fn is_empty(&self) -> bool {
-        self.data.is_none()
+        self.data.len() == 0
     }
 
-    pub fn value(&self) -> Option<&[u8]> {
+    pub fn value(&self) -> &[u8] {
         self.data
+    }
+
+    /// If the LV was generated from a raw bytestream using [Self::from_bytes], the raw start
+    /// of the LV can be retrieved with this method.
+    pub fn raw_data(&self) -> Option<&[u8]> {
+        self.raw_data
     }
 
     /// Convenience function to extract the value as a [str]. This is useful if the LV is
     /// known to contain a [str], for example being a file name.
     pub fn value_as_str(&self) -> Option<Result<&'data str, Utf8Error>> {
-        self.data?;
-        Some(core::str::from_utf8(self.data.unwrap()))
+        if self.is_empty() {
+            return None;
+        }
+        Some(core::str::from_utf8(self.data))
     }
 
     /// Writes the LV to a raw buffer. Please note that the first byte will contain the length
@@ -118,15 +141,14 @@ impl<'data> Lv<'data> {
     }
 
     pub(crate) fn write_to_be_bytes_no_len_check(&self, buf: &mut [u8]) -> usize {
-        if self.data.is_none() {
+        if self.is_empty() {
             buf[0] = 0;
             return MIN_LV_LEN;
         }
-        let data = self.data.unwrap();
         // Length check in constructor ensures the length always has a valid value.
-        buf[0] = data.len() as u8;
-        buf[MIN_LV_LEN..data.len() + MIN_LV_LEN].copy_from_slice(data);
-        MIN_LV_LEN + data.len()
+        buf[0] = self.data.len() as u8;
+        buf[MIN_LV_LEN..self.data.len() + MIN_LV_LEN].copy_from_slice(self.data);
+        MIN_LV_LEN + self.data.len()
     }
 
     pub(crate) fn from_be_bytes_no_len_check(
@@ -134,11 +156,10 @@ impl<'data> Lv<'data> {
     ) -> Result<Lv<'data>, ByteConversionError> {
         let value_len = buf[0] as usize;
         generic_len_check_deserialization(buf, value_len + MIN_LV_LEN)?;
-        let mut data = None;
-        if value_len > 0 {
-            data = Some(&buf[MIN_LV_LEN..MIN_LV_LEN + value_len])
-        }
-        Ok(Self { data })
+        Ok(Self {
+            data: &buf[MIN_LV_LEN..MIN_LV_LEN + value_len],
+            raw_data: Some(buf),
+        })
     }
 }
 
@@ -155,8 +176,8 @@ pub mod tests {
         let lv_res = Lv::new(&lv_data);
         assert!(lv_res.is_ok());
         let lv = lv_res.unwrap();
-        assert!(lv.value().is_some());
-        let val = lv.value().unwrap();
+        assert!(lv.value().len() > 0);
+        let val = lv.value();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);
         assert_eq!(val[2], 3);
@@ -172,7 +193,6 @@ pub mod tests {
         assert_eq!(lv_empty.len_value(), 0);
         assert_eq!(lv_empty.len_full(), 1);
         assert!(lv_empty.is_empty());
-        assert_eq!(lv_empty.value(), None);
         let mut buf: [u8; 4] = [0xff; 4];
         let res = lv_empty.write_to_be_bytes(&mut buf);
         assert!(res.is_ok());
@@ -211,10 +231,11 @@ pub mod tests {
         assert!(lv.is_ok());
         let lv = lv.unwrap();
         assert!(!lv.is_empty());
-        assert!(lv.value().is_some());
         assert_eq!(lv.len_value(), 4);
         assert_eq!(lv.len_full(), 5);
-        let val = lv.value().unwrap();
+        assert!(lv.raw_data().is_some());
+        assert_eq!(lv.raw_data().unwrap(), buf);
+        let val = lv.value();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);
         assert_eq!(val[2], 3);
@@ -228,7 +249,6 @@ pub mod tests {
         assert!(lv_empty.is_ok());
         let lv_empty = lv_empty.unwrap();
         assert!(lv_empty.is_empty());
-        assert!(lv_empty.value().is_none());
     }
 
     #[test]
@@ -282,14 +302,14 @@ pub mod tests {
         let res = res.unwrap();
         assert_eq!(res, 8 + 1);
         assert_eq!(buf[0], 8);
-        assert_eq!(buf[1], 't' as u8);
-        assert_eq!(buf[2], 'e' as u8);
-        assert_eq!(buf[3], 's' as u8);
-        assert_eq!(buf[4], 't' as u8);
-        assert_eq!(buf[5], '.' as u8);
-        assert_eq!(buf[6], 'b' as u8);
-        assert_eq!(buf[7], 'i' as u8);
-        assert_eq!(buf[8], 'n' as u8);
+        assert_eq!(buf[1], b't');
+        assert_eq!(buf[2], b'e');
+        assert_eq!(buf[3], b's');
+        assert_eq!(buf[4], b't');
+        assert_eq!(buf[5], b'.');
+        assert_eq!(buf[6], b'b');
+        assert_eq!(buf[7], b'i');
+        assert_eq!(buf[8], b'n');
     }
     #[test]
     fn test_str_helper() {
