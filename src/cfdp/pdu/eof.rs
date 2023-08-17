@@ -106,7 +106,7 @@ impl EofPdu {
         }
         generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
-            PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::EofPdu))
+            PduError::InvalidDirectiveType((buf[current_idx], Some(FileDirectiveType::EofPdu)))
         })?;
         if directive_type != FileDirectiveType::EofPdu {
             return Err(PduError::WrongDirectiveType((

@@ -248,7 +248,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         }
         generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
-            PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::MetadataPdu))
+            PduError::InvalidDirectiveType((buf[current_idx], Some(FileDirectiveType::MetadataPdu)))
         })?;
         if directive_type != FileDirectiveType::MetadataPdu {
             return Err(PduError::WrongDirectiveType((

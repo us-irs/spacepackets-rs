@@ -170,7 +170,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         let min_expected_len = current_idx + 2;
         generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
-            PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::FinishedPdu))
+            PduError::InvalidDirectiveType((buf[current_idx], Some(FileDirectiveType::FinishedPdu)))
         })?;
         if directive_type != FileDirectiveType::FinishedPdu {
             return Err(PduError::WrongDirectiveType((

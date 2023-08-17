@@ -43,8 +43,8 @@ pub enum PduError {
     WrongDirectiveType((FileDirectiveType, FileDirectiveType)),
     /// The directive type field contained a value not in the range of permitted values.
     /// The first tuple entry will be the found raw number, the second entry the expected entry
-    /// type.
-    InvalidDirectiveType((u8, FileDirectiveType)),
+    /// type when applicable.
+    InvalidDirectiveType((u8, Option<FileDirectiveType>)),
     /// Invalid condition code. Contains the raw detected value.
     InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
@@ -101,8 +101,7 @@ impl Display for PduError {
             PduError::InvalidDirectiveType((found, expected)) => {
                 write!(
                     f,
-                    "invalid directive type value {found}, expected {expected:?} ({})",
-                    *expected as u8
+                    "invalid directive type value {found}, expected {expected:?}"
                 )
             }
             PduError::InvalidChecksumType(checksum_type) => {
