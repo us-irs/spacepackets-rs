@@ -454,10 +454,10 @@ impl TimeReader for TimeProviderCcsdsEpoch {
     {
         if buf.len() < MIN_CUC_LEN {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall {
                     expected: MIN_CUC_LEN,
                     found: buf.len(),
-                }),
+                },
             ));
         }
         match ccsds_time_code_from_p_field(buf[0]) {
@@ -480,10 +480,10 @@ impl TimeReader for TimeProviderCcsdsEpoch {
             Self::len_components_and_total_from_pfield(buf[0]);
         if buf.len() < total_len {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall {
                     expected: total_len,
                     found: buf.len(),
-                }),
+                },
             ));
         }
         let mut current_idx = 1;
@@ -536,10 +536,10 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
         // Cross check the sizes of the counters against byte widths in the ctor
         if bytes.len() < self.len_as_bytes() {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                ByteConversionError::ToSliceTooSmall {
                     found: bytes.len(),
                     expected: self.len_as_bytes(),
-                }),
+                },
             ));
         }
         bytes[0] = self.pfield;
@@ -797,9 +797,13 @@ mod tests {
             let res = TimeProviderCcsdsEpoch::from_bytes(&buf[0..i]);
             assert!(res.is_err());
             let err = res.unwrap_err();
-            if let TimestampError::ByteConversion(ByteConversionError::FromSliceTooSmall(e)) = err {
-                assert_eq!(e.found, i);
-                assert_eq!(e.expected, 2);
+            if let TimestampError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+                found,
+                expected,
+            }) = err
+            {
+                assert_eq!(found, i);
+                assert_eq!(expected, 2);
             }
         }
         let large_stamp = TimeProviderCcsdsEpoch::new_with_fine_fractions(22, 300).unwrap();
@@ -808,9 +812,13 @@ mod tests {
             let res = TimeProviderCcsdsEpoch::from_bytes(&buf[0..i]);
             assert!(res.is_err());
             let err = res.unwrap_err();
-            if let TimestampError::ByteConversion(ByteConversionError::FromSliceTooSmall(e)) = err {
-                assert_eq!(e.found, i);
-                assert_eq!(e.expected, large_stamp.len_as_bytes());
+            if let TimestampError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+                found,
+                expected,
+            }) = err
+            {
+                assert_eq!(found, i);
+                assert_eq!(expected, large_stamp.len_as_bytes());
             }
         }
     }
@@ -882,9 +890,13 @@ mod tests {
             let err = cuc.write_to_bytes(&mut buf[0..i]);
             assert!(err.is_err());
             let err = err.unwrap_err();
-            if let TimestampError::ByteConversion(ByteConversionError::ToSliceTooSmall(e)) = err {
-                assert_eq!(e.expected, cuc.len_as_bytes());
-                assert_eq!(e.found, i);
+            if let TimestampError::ByteConversion(ByteConversionError::ToSliceTooSmall {
+                found,
+                expected,
+            }) = err
+            {
+                assert_eq!(expected, cuc.len_as_bytes());
+                assert_eq!(found, i);
             } else {
                 panic!("unexpected error: {}", err);
             }

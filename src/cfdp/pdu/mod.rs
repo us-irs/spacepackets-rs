@@ -1,8 +1,8 @@
 //! CFDP Packet Data Unit (PDU) support.
 use crate::cfdp::*;
 use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
+use crate::ByteConversionError;
 use crate::CRC_CCITT_FALSE;
-use crate::{ByteConversionError, SizeMissmatch};
 use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
@@ -360,10 +360,10 @@ impl PduHeader {
                 + self.pdu_conf.source_entity_id.size()
                 + self.pdu_conf.transaction_seq_num.size()
         {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: FIXED_HEADER_LEN,
-            })
+            }
             .into());
         }
         let mut current_idx = 0;
@@ -404,10 +404,10 @@ impl PduHeader {
     /// flag is not set, it will simply return the PDU length.
     pub fn verify_length_and_checksum(&self, buf: &[u8]) -> Result<usize, PduError> {
         if buf.len() < self.pdu_len() {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: self.pdu_len(),
-            })
+            }
             .into());
         }
         if self.pdu_conf.crc_flag == CrcFlag::WithCrc {
@@ -434,10 +434,10 @@ impl PduHeader {
     pub fn from_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
         if buf.len() < FIXED_HEADER_LEN {
             return Err(PduError::ByteConversionError(
-                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall {
                     found: buf.len(),
                     expected: FIXED_HEADER_LEN,
-                }),
+                },
             ));
         }
         let cfdp_version_raw = (buf[0] >> 5) & 0b111;
@@ -472,10 +472,10 @@ impl PduHeader {
             ));
         }
         if buf.len() < (4 + 2 * expected_len_entity_ids + expected_len_seq_num) {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: 4 + 2 * expected_len_entity_ids + expected_len_seq_num,
-            })
+            }
             .into());
         }
         let mut current_idx = 4;
@@ -571,17 +571,17 @@ pub(crate) fn generic_length_checks_pdu_deserialization(
 ) -> Result<(), ByteConversionError> {
     // Buffer too short to hold additional expected minimum datasize.
     if buf.len() < min_expected_len {
-        return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+        return Err(ByteConversionError::FromSliceTooSmall {
             found: buf.len(),
             expected: min_expected_len,
-        }));
+        });
     }
     // This can happen if the PDU datafield length value is invalid.
     if full_len_without_crc < min_expected_len {
-        return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+        return Err(ByteConversionError::FromSliceTooSmall {
             found: full_len_without_crc,
             expected: min_expected_len,
-        }));
+        });
     }
     Ok(())
 }
@@ -853,11 +853,13 @@ mod tests {
         let res = PduHeader::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
-            error
+        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall {
+            found,
+            expected,
+        }) = error
         {
-            assert_eq!(missmatch.found, 3);
-            assert_eq!(missmatch.expected, FIXED_HEADER_LEN);
+            assert_eq!(found, 3);
+            assert_eq!(expected, FIXED_HEADER_LEN);
         } else {
             panic!("invalid exception: {}", error);
         }
@@ -877,11 +879,13 @@ mod tests {
         let header = PduHeader::from_bytes(&buf[0..6]);
         assert!(header.is_err());
         let error = header.unwrap_err();
-        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall(missmatch)) =
-            error
+        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall {
+            found,
+            expected,
+        }) = error
         {
-            assert_eq!(missmatch.found, 6);
-            assert_eq!(missmatch.expected, 7);
+            assert_eq!(found, 6);
+            assert_eq!(expected, 7);
         }
     }
 

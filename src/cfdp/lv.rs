@@ -1,6 +1,6 @@
 //! Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
 use crate::cfdp::TlvLvError;
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use core::str::Utf8Error;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -39,10 +39,10 @@ pub(crate) fn generic_len_check_data_serialization(
     min_overhead: usize,
 ) -> Result<(), ByteConversionError> {
     if buf.len() < data_len + min_overhead {
-        return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+        return Err(ByteConversionError::ToSliceTooSmall {
             found: buf.len(),
             expected: data_len + min_overhead,
-        }));
+        });
     }
     Ok(())
 }
@@ -52,10 +52,10 @@ pub(crate) fn generic_len_check_deserialization(
     min_overhead: usize,
 ) -> Result<(), ByteConversionError> {
     if buf.len() < min_overhead {
-        return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+        return Err(ByteConversionError::FromSliceTooSmall {
             found: buf.len(),
             expected: min_overhead,
-        }));
+        });
     }
     Ok(())
 }
@@ -272,9 +272,9 @@ pub mod tests {
         let res = lv.write_to_be_bytes(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        if let ByteConversionError::ToSliceTooSmall(missmatch) = error {
-            assert_eq!(missmatch.expected, 5);
-            assert_eq!(missmatch.found, 3);
+        if let ByteConversionError::ToSliceTooSmall { found, expected } = error {
+            assert_eq!(expected, 5);
+            assert_eq!(found, 3);
         } else {
             panic!("invalid error {}", error);
         }
@@ -287,9 +287,9 @@ pub mod tests {
         let res = Lv::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        if let ByteConversionError::FromSliceTooSmall(missmatch) = error {
-            assert_eq!(missmatch.found, 3);
-            assert_eq!(missmatch.expected, 5);
+        if let ByteConversionError::FromSliceTooSmall { found, expected } = error {
+            assert_eq!(found, 3);
+            assert_eq!(expected, 5);
         } else {
             panic!("invalid error {}", error);
         }

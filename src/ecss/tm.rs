@@ -6,8 +6,8 @@ use crate::ecss::{
     SerializablePusPacket,
 };
 use crate::{
-    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, SpHeader,
-    CCSDS_HEADER_LEN, CRC_CCITT_FALSE, MAX_APID, MAX_SEQ_COUNT,
+    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SpHeader, CCSDS_HEADER_LEN,
+    CRC_CCITT_FALSE, MAX_APID, MAX_SEQ_COUNT,
 };
 use core::mem::size_of;
 #[cfg(feature = "serde")]
@@ -207,9 +207,7 @@ pub mod legacy_tm {
         CCSDS_HEADER_LEN,
     };
     use crate::SequenceFlags;
-    use crate::{
-        ByteConversionError, CcsdsPacket, PacketType, SizeMissmatch, SpHeader, CRC_CCITT_FALSE,
-    };
+    use crate::{ByteConversionError, CcsdsPacket, PacketType, SpHeader, CRC_CCITT_FALSE};
     use core::mem::size_of;
     use zerocopy::AsBytes;
 
@@ -436,10 +434,10 @@ pub mod legacy_tm {
             let mut curr_idx = 0;
             let total_size = self.len_packed();
             if total_size > slice.len() {
-                return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                return Err(ByteConversionError::ToSliceTooSmall {
                     found: slice.len(),
                     expected: total_size,
-                })
+                }
                 .into());
             }
             self.sp_header
@@ -663,10 +661,10 @@ impl SerializablePusPacket for PusTmCreator<'_> {
         let mut curr_idx = 0;
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: slice.len(),
                 expected: total_size,
-            })
+            }
             .into());
         }
         self.sp_header
@@ -1055,9 +1053,9 @@ mod tests {
         assert!(matches!(error, PusError::ByteConversion { .. }));
         match error {
             PusError::ByteConversion(err) => match err {
-                ByteConversionError::ToSliceTooSmall(size_missmatch) => {
-                    assert_eq!(size_missmatch.expected, 22);
-                    assert_eq!(size_missmatch.found, 16);
+                ByteConversionError::ToSliceTooSmall { found, expected } => {
+                    assert_eq!(expected, 22);
+                    assert_eq!(found, 16);
                 }
                 _ => panic!("Invalid PUS error {:?}", err),
             },

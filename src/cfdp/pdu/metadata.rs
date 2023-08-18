@@ -5,7 +5,7 @@ use crate::cfdp::pdu::{
 };
 use crate::cfdp::tlv::Tlv;
 use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag, PduType};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "serde")]
@@ -201,10 +201,10 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.written_len();
         if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: expected_len,
-            })
+            }
             .into());
         }
 
