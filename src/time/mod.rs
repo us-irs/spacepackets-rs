@@ -5,6 +5,7 @@ use core::cmp::Ordering;
 use core::fmt::{Display, Formatter};
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
+use core::u8;
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
@@ -63,9 +64,7 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCodes, u8> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub enum TimestampError {
-    /// Contains tuple where first value is the expected time code and the second
-    /// value is the found raw value
-    InvalidTimeCode(CcsdsTimeCodes, u8),
+    InvalidTimeCode { expected: CcsdsTimeCodes, found: u8 },
     ByteConversion(ByteConversionError),
     Cds(cds::CdsError),
     Cuc(cuc::CucError),
@@ -76,10 +75,10 @@ pub enum TimestampError {
 impl Display for TimestampError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            TimestampError::InvalidTimeCode(time_code, raw_val) => {
+            TimestampError::InvalidTimeCode { expected, found } => {
                 write!(
                     f,
-                    "invalid raw time code value {raw_val} for time code {time_code:?}"
+                    "invalid raw time code value {found} for time code {expected:?}"
                 )
             }
             TimestampError::Cds(e) => {

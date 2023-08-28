@@ -463,17 +463,17 @@ impl TimeReader for TimeProviderCcsdsEpoch {
         match ccsds_time_code_from_p_field(buf[0]) {
             Ok(code) => {
                 if code != CcsdsTimeCodes::CucCcsdsEpoch {
-                    return Err(TimestampError::InvalidTimeCode(
-                        CcsdsTimeCodes::CucCcsdsEpoch,
-                        code as u8,
-                    ));
+                    return Err(TimestampError::InvalidTimeCode {
+                        expected: CcsdsTimeCodes::CucCcsdsEpoch,
+                        found: code as u8,
+                    });
                 }
             }
             Err(raw) => {
-                return Err(TimestampError::InvalidTimeCode(
-                    CcsdsTimeCodes::CucCcsdsEpoch,
-                    raw,
-                ))
+                return Err(TimestampError::InvalidTimeCode {
+                    expected: CcsdsTimeCodes::CucCcsdsEpoch,
+                    found: raw,
+                });
             }
         }
         let (cntr_len, fractions_len, total_len) =
