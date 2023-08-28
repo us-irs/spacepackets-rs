@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.7.0-beta.1] 2023-08-28
 
+- Bump `zerocopy` dependency to v0.7.0
+
 ## Changed
 
 - The `Tlv` and `Lv` API return `&[u8]` instead of `Option<&[u8]>`.
