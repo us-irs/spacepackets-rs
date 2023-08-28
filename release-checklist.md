@@ -13,6 +13,10 @@ Checklist for new releases
 6. Wait for CI/CD results for EGit and Github. These also check cross-compilation for bare-metal
    targets.
 
+# Release
+
+1. `cargo publish`
+
 # Post-Release
 
 1. Create a new release on `EGit` based on the release branch.
