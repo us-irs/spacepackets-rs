@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   was created from a raw bytestream.
 - Added `MsgToUserTlv` helper class which wraps a regular `Tlv` and adds some useful functionality.
 - `UnsignedByteField` and `GenericUnsignedByteField` `new` methods are `const` now.
+- `PduError` variants which contained a tuple variant with multiple fields were converted to a
+  struct variant.
+
+# Added
+
+- Added `pdu_datafield_len` getter function for `PduHeader`
 
 # [v0.7.0-beta.0] 2023-08-16
 
