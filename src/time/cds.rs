@@ -1493,9 +1493,9 @@ mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            InvalidTimeCode(code, raw) => {
-                assert_eq!(code, CcsdsTimeCodes::Cds);
-                assert_eq!(raw, 0);
+            InvalidTimeCode { expected, found } => {
+                assert_eq!(expected, CcsdsTimeCodes::Cds);
+                assert_eq!(found, 0);
             }
             _ => {}
         }
