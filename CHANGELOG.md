@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0-beta.1] 2023-08-28
+
 ## Changed
 
 - The `Tlv` and `Lv` API return `&[u8]` instead of `Option<&[u8]>`.
