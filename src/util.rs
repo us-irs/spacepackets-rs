@@ -80,8 +80,7 @@ pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum UnsignedByteFieldError {
-    /// Value is too large for specified width of byte field. The first value contains the width,
-    /// the second value contains the detected value.
+    /// Value is too large for specified width of byte field.
     ValueTooLargeForWidth {
         width: usize,
         value: u64,
