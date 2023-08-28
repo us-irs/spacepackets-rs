@@ -13,9 +13,12 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-zerocopy = ">0.5, <=0.7"
 crc = "3"
 delegate = ">=0.8, <0.11"
+
+[dependencies.zerocopy]
+version = ">0.5, <=0.7"
+features = ["derive"]
 
 [dependencies.thiserror]
 version = "1"
