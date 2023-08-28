@@ -80,12 +80,17 @@ pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum UnsignedByteFieldError {
-    /// Value is too large for specified width of byte field. The first value contains the width,
-    /// the second value contains the detected value.
-    ValueTooLargeForWidth((usize, u64)),
+    /// Value is too large for specified width of byte field.
+    ValueTooLargeForWidth {
+        width: usize,
+        value: u64,
+    },
     /// Only 1, 2, 4 and 8 are allow width values. Optionally contains the expected width if
     /// applicable, for example for conversions.
-    InvalidWidth(usize, Option<usize>),
+    InvalidWidth {
+        found: usize,
+        expected: Option<usize>,
+    },
     ByteConversionError(ByteConversionError),
 }
 
@@ -101,10 +106,10 @@ impl Display for UnsignedByteFieldError {
             Self::ByteConversionError(e) => {
                 write!(f, "low level byte conversion error: {e}")
             }
-            Self::InvalidWidth(val, _) => {
-                write!(f, "invalid width {val}, only 1, 2, 4 and 8 are allowed.")
+            Self::InvalidWidth { found, .. } => {
+                write!(f, "invalid width {found}, only 1, 2, 4 and 8 are allowed.")
             }
-            Self::ValueTooLargeForWidth((width, value)) => {
+            Self::ValueTooLargeForWidth { width, value } => {
                 write!(f, "value {value} too large for width {width}")
             }
         }
@@ -154,7 +159,10 @@ impl UnsignedByteField {
                 width,
                 u64::from_be_bytes(buf[0..8].try_into().unwrap()),
             )),
-            _ => Err(UnsignedByteFieldError::InvalidWidth(width, None)),
+            _ => Err(UnsignedByteFieldError::InvalidWidth {
+                found: width,
+                expected: None,
+            }),
         }
     }
 }
@@ -248,7 +256,10 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU8 {
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 1 {
-            return Err(UnsignedByteFieldError::InvalidWidth(value.width, Some(1)));
+            return Err(UnsignedByteFieldError::InvalidWidth {
+                found: value.width,
+                expected: Some(1),
+            });
         }
         Ok(Self::new(value.value as u8))
     }
@@ -265,7 +276,10 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU16 {
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 2 {
-            return Err(UnsignedByteFieldError::InvalidWidth(value.width, Some(2)));
+            return Err(UnsignedByteFieldError::InvalidWidth {
+                found: value.width,
+                expected: Some(2),
+            });
         }
         Ok(Self::new(value.value as u16))
     }
@@ -282,7 +296,10 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU32 {
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 4 {
-            return Err(UnsignedByteFieldError::InvalidWidth(value.width, Some(4)));
+            return Err(UnsignedByteFieldError::InvalidWidth {
+                found: value.width,
+                expected: Some(4),
+            });
         }
         Ok(Self::new(value.value as u32))
     }
@@ -299,7 +316,10 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU64 {
 
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 8 {
-            return Err(UnsignedByteFieldError::InvalidWidth(value.width, Some(8)));
+            return Err(UnsignedByteFieldError::InvalidWidth {
+                found: value.width,
+                expected: Some(8),
+            });
         }
         Ok(Self::new(value.value))
     }
@@ -393,8 +413,11 @@ pub mod tests {
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
-            UnsignedByteFieldError::InvalidWidth(width, Some(expected)) => {
-                assert_eq!(width, 2);
+            UnsignedByteFieldError::InvalidWidth {
+                found,
+                expected: Some(expected),
+            } => {
+                assert_eq!(found, 2);
                 assert_eq!(expected, 1);
             }
             _ => {
@@ -422,8 +445,11 @@ pub mod tests {
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
-            UnsignedByteFieldError::InvalidWidth(width, Some(expected)) => {
-                assert_eq!(width, 4);
+            UnsignedByteFieldError::InvalidWidth {
+                found,
+                expected: Some(expected),
+            } => {
+                assert_eq!(found, 4);
                 assert_eq!(expected, 2);
             }
             _ => {
@@ -451,8 +477,11 @@ pub mod tests {
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
-            UnsignedByteFieldError::InvalidWidth(width, Some(expected)) => {
-                assert_eq!(width, 8);
+            UnsignedByteFieldError::InvalidWidth {
+                found,
+                expected: Some(expected),
+            } => {
+                assert_eq!(found, 8);
                 assert_eq!(expected, 4);
             }
             _ => {
@@ -480,8 +509,11 @@ pub mod tests {
         assert!(conv_fails.is_err());
         let err = conv_fails.unwrap_err();
         match err {
-            UnsignedByteFieldError::InvalidWidth(width, Some(expected)) => {
-                assert_eq!(width, 4);
+            UnsignedByteFieldError::InvalidWidth {
+                found,
+                expected: Some(expected),
+            } => {
+                assert_eq!(found, 4);
                 assert_eq!(expected, 8);
             }
             _ => {
