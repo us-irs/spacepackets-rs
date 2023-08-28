@@ -1,4 +1,4 @@
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use core::fmt::{Debug, Display, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -133,10 +133,10 @@ impl UnsignedByteField {
 
     pub fn new_from_be_bytes(width: usize, buf: &[u8]) -> Result<Self, UnsignedByteFieldError> {
         if width > buf.len() {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 expected: width,
                 found: buf.len(),
-            })
+            }
             .into());
         }
         match width {
@@ -166,10 +166,10 @@ impl UnsignedEnum for UnsignedByteField {
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.size() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 expected: self.size(),
                 found: buf.len(),
-            }));
+            });
         }
         match self.size() {
             0 => Ok(0),
@@ -216,10 +216,10 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.size() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: self.size(),
-            }));
+            });
         }
         buf[0..self.size()].copy_from_slice(self.value.to_be_bytes().as_ref());
         Ok(self.value.written_len())
@@ -582,9 +582,9 @@ pub mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
-                assert_eq!(missmatch.found, 1);
-                assert_eq!(missmatch.expected, 2);
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
+                assert_eq!(found, 1);
+                assert_eq!(expected, 2);
             }
             _ => {
                 panic!("invalid exception")
@@ -600,9 +600,9 @@ pub mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
-                assert_eq!(missmatch.found, 1);
-                assert_eq!(missmatch.expected, 2);
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
+                assert_eq!(found, 1);
+                assert_eq!(expected, 2);
             }
             _ => {
                 panic!("invalid exception {}", err)
@@ -612,11 +612,11 @@ pub mod tests {
         assert!(u16.is_err());
         let err = u16.unwrap_err();
         if let UnsignedByteFieldError::ByteConversionError(
-            ByteConversionError::FromSliceTooSmall(missmatch),
+            ByteConversionError::FromSliceTooSmall { found, expected },
         ) = err
         {
-            assert_eq!(missmatch.expected, 2);
-            assert_eq!(missmatch.found, 1);
+            assert_eq!(expected, 2);
+            assert_eq!(found, 1);
         } else {
             panic!("unexpected exception {}", err);
         }
@@ -630,9 +630,9 @@ pub mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
-                assert_eq!(missmatch.found, 3);
-                assert_eq!(missmatch.expected, 4);
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
+                assert_eq!(found, 3);
+                assert_eq!(expected, 4);
             }
             _ => {
                 panic!("invalid exception")

@@ -1,5 +1,5 @@
 //! CCSDS Time Code Formats according to [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use core::cmp::Ordering;
 use core::fmt::{Display, Formatter};

@@ -4,7 +4,7 @@ use crate::cfdp::lv::{
 };
 use crate::cfdp::TlvLvError;
 use crate::util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -200,10 +200,10 @@ impl EntityIdTlv {
 
     fn len_check(buf: &[u8]) -> Result<(), ByteConversionError> {
         if buf.len() < 2 {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: 2,
-            }));
+            });
         }
         Ok(())
     }
@@ -422,10 +422,10 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: self.len_full(),
-            }));
+            });
         }
         buf[0] = TlvType::FilestoreRequest as u8;
         buf[1] = self.len_value() as u8;
@@ -449,10 +449,10 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         buf: &'longest [u8],
     ) -> Result<Self, TlvLvError> {
         if buf.len() < 2 {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: 2,
-            })
+            }
             .into());
         }
         verify_tlv_type(buf[0], TlvType::FilestoreRequest)?;

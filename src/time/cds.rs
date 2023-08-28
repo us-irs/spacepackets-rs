@@ -515,10 +515,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     ) -> Result<SubmillisPrecision, TimestampError> {
         if buf.len() < MIN_CDS_FIELD_LEN {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall {
                     expected: MIN_CDS_FIELD_LEN,
                     found: buf.len(),
-                }),
+                },
             ));
         }
         let pfield = buf[0];
@@ -549,10 +549,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         let stamp_len = Self::calc_stamp_len(pfield);
         if buf.len() < stamp_len {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+                ByteConversionError::FromSliceTooSmall {
                     expected: stamp_len,
                     found: buf.len(),
-                }),
+                },
             ));
         }
         Ok(precision_from_pfield(pfield))
@@ -606,10 +606,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), TimestampError> {
         if buf.len() < len_as_bytes {
             return Err(TimestampError::ByteConversion(
-                ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                ByteConversionError::ToSliceTooSmall {
                     expected: len_as_bytes,
                     found: buf.len(),
-                }),
+                },
             ));
         }
         Ok(())
@@ -1448,9 +1448,9 @@ mod tests {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
             match res.unwrap_err() {
-                ByteConversion(ToSliceTooSmall(missmatch)) => {
-                    assert_eq!(missmatch.found, i);
-                    assert_eq!(missmatch.expected, 7);
+                ByteConversion(ToSliceTooSmall { found, expected }) => {
+                    assert_eq!(found, i);
+                    assert_eq!(expected, 7);
                 }
                 _ => panic!(
                     "{}",
@@ -1469,9 +1469,9 @@ mod tests {
             let err = res.unwrap_err();
             match err {
                 ByteConversion(e) => match e {
-                    FromSliceTooSmall(missmatch) => {
-                        assert_eq!(missmatch.found, i);
-                        assert_eq!(missmatch.expected, 7);
+                    FromSliceTooSmall { found, expected } => {
+                        assert_eq!(found, i);
+                        assert_eq!(expected, 7);
                     }
                     _ => panic!("{}", format!("Invalid error {:?} detected", e)),
                 },
@@ -1764,7 +1764,7 @@ mod tests {
     fn generic_dt_case_1_us_prec(subsec_millis: u32) -> DateTime<Utc> {
         // 250 ms + 500 us
         let subsec_micros = subsec_millis * 1000 + 500;
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
+        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_micro_opt(16, 49, 30, subsec_micros)
             .unwrap();
@@ -1815,7 +1815,7 @@ mod tests {
         // 250 ms + 500 us
         let subsec_nanos = subsec_millis * 1000 * 1000 + 500 * 1000;
         let submilli_nanos = subsec_nanos % 10_u32.pow(6);
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
+        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_nano_opt(16, 49, 30, subsec_nanos)
             .unwrap();

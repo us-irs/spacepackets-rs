@@ -4,7 +4,7 @@ use crate::cfdp::pdu::{
 };
 use crate::cfdp::tlv::EntityIdTlv;
 use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -69,10 +69,10 @@ impl EofPdu {
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.written_len();
         if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: expected_len,
-            })
+            }
             .into());
         }
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;

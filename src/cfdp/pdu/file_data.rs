@@ -3,7 +3,7 @@ use crate::cfdp::pdu::{
     PduError, PduHeader,
 };
 use crate::cfdp::{CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -48,10 +48,10 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
 
     pub(crate) fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.written_len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: self.written_len(),
-            }));
+            });
         }
         buf[0] = ((self.record_continuation_state as u8) << 6)
             | self.metadata.map_or(0, |meta| meta.len() as u8);
@@ -63,10 +63,10 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
 
     pub(crate) fn from_bytes(buf: &'seg_meta [u8]) -> Result<Self, ByteConversionError> {
         if buf.is_empty() {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: 2,
-            }));
+            });
         }
         let mut metadata = None;
         let seg_metadata_len = (buf[0] & 0b111111) as usize;
@@ -165,10 +165,10 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         if buf.len() < self.written_len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: self.written_len(),
-            })
+            }
             .into());
         }
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
@@ -207,10 +207,10 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         let (fss, offset) = read_fss_field(pdu_header.pdu_conf.file_flag, &buf[current_idx..]);
         current_idx += fss;
         if current_idx > full_len_without_crc {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: current_idx,
                 expected: full_len_without_crc,
-            })
+            }
             .into());
         }
         Ok(Self {

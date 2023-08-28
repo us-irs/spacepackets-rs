@@ -87,20 +87,20 @@ pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SizeMissmatch {
-    pub found: usize,
-    pub expected: usize,
-}
-
+/// Generic error type when converting to and from raw byte slices.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the passed slice length and expected minimum size
-    ToSliceTooSmall(SizeMissmatch),
+    ToSliceTooSmall {
+        found: usize,
+        expected: usize,
+    },
     /// The provider buffer is too small. Returns the passed slice length and expected minimum size
-    FromSliceTooSmall(SizeMissmatch),
+    FromSliceTooSmall {
+        found: usize,
+        expected: usize,
+    },
     /// The [zerocopy] library failed to write to bytes
     ZeroCopyToError,
     ZeroCopyFromError,
@@ -109,18 +109,18 @@ pub enum ByteConversionError {
 impl Display for ByteConversionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
                 write!(
                     f,
                     "target slice with size {} is too small, expected size of at least {}",
-                    missmatch.found, missmatch.expected
+                    found, expected
                 )
             }
-            ByteConversionError::FromSliceTooSmall(missmatch) => {
+            ByteConversionError::FromSliceTooSmall { found, expected } => {
                 write!(
                     f,
                     "source slice with size {} too small, expected at least {} bytes",
-                    missmatch.found, missmatch.expected
+                    found, expected
                 )
             }
             ByteConversionError::ZeroCopyToError => {
@@ -564,10 +564,10 @@ impl SpHeader {
     /// CCSDS header.
     pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, &[u8]), ByteConversionError> {
         if buf.len() < CCSDS_HEADER_LEN {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
-            }));
+            });
         }
         let zc_header = zc::SpHeader::from_bytes(&buf[0..CCSDS_HEADER_LEN])
             .ok_or(ByteConversionError::ZeroCopyFromError)?;
@@ -581,10 +581,10 @@ impl SpHeader {
         buf: &'a mut [u8],
     ) -> Result<&'a mut [u8], ByteConversionError> {
         if buf.len() < CCSDS_HEADER_LEN {
-            return Err(ByteConversionError::FromSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
-            }));
+            });
         }
         let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
         zc_header

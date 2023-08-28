@@ -36,9 +36,7 @@ use crate::ecss::{
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
     SerializablePusPacket,
 };
-use crate::{
-    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SizeMissmatch, CCSDS_HEADER_LEN,
-};
+use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
 use crate::{SpHeader, CRC_CCITT_FALSE};
 use core::mem::size_of;
 use delegate::delegate;
@@ -223,9 +221,7 @@ pub mod legacy_tc {
     };
     use crate::ecss::{user_data_from_raw, PusVersion};
     use crate::SequenceFlags;
-    use crate::{
-        ByteConversionError, CcsdsPacket, PacketType, SizeMissmatch, SpHeader, CRC_CCITT_FALSE,
-    };
+    use crate::{ByteConversionError, CcsdsPacket, PacketType, SpHeader, CRC_CCITT_FALSE};
     use core::mem::size_of;
     use delegate::delegate;
     use zerocopy::AsBytes;
@@ -462,10 +458,10 @@ pub mod legacy_tc {
             let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
             let total_size = self.len_packed();
             if total_size > slice.len() {
-                return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+                return Err(ByteConversionError::ToSliceTooSmall {
                     found: slice.len(),
                     expected: total_size,
-                })
+                }
                 .into());
             }
             self.sp_header.write_to_be_bytes(slice)?;
@@ -668,10 +664,10 @@ impl SerializablePusPacket for PusTcCreator<'_> {
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let total_size = self.len_packed();
         if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: slice.len(),
                 expected: total_size,
-            })
+            }
             .into());
         }
         self.sp_header.write_to_be_bytes(slice)?;
@@ -996,9 +992,9 @@ mod tests {
         let err = res.unwrap_err();
         match err {
             PusError::ByteConversion(err) => match err {
-                ByteConversionError::ToSliceTooSmall(missmatch) => {
-                    assert_eq!(missmatch.expected, pus_tc.len_packed());
-                    assert_eq!(missmatch.found, 12);
+                ByteConversionError::ToSliceTooSmall { found, expected } => {
+                    assert_eq!(expected, pus_tc.len_packed());
+                    assert_eq!(found, 12);
                 }
                 _ => panic!("Unexpected error"),
             },
