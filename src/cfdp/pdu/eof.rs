@@ -106,13 +106,16 @@ impl EofPdu {
         }
         generic_length_checks_pdu_deserialization(buf, min_expected_len, full_len_without_crc)?;
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
-            PduError::InvalidDirectiveType((buf[current_idx], FileDirectiveType::EofPdu))
+            PduError::InvalidDirectiveType {
+                found: buf[current_idx],
+                expected: Some(FileDirectiveType::EofPdu),
+            }
         })?;
         if directive_type != FileDirectiveType::EofPdu {
-            return Err(PduError::WrongDirectiveType((
-                directive_type,
-                FileDirectiveType::EofPdu,
-            )));
+            return Err(PduError::WrongDirectiveType {
+                found: directive_type,
+                expected: FileDirectiveType::EofPdu,
+            });
         }
         current_idx += 1;
         let condition_code = ConditionCode::try_from((buf[current_idx] >> 4) & 0b1111)
