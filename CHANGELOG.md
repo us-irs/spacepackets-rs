@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - The `Tlv` and `Lv` API return `&[u8]` instead of `Option<&[u8]>`.
+- `ByteConversionError` error variants `ToSliceTooSmall` and `FromSliceTooSmall` are struct
+  variants now. `SizeMissmatch` was removed appropriately.
 
 ## Added
 
@@ -18,6 +20,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   was created from a raw bytestream.
 - Added `MsgToUserTlv` helper class which wraps a regular `Tlv` and adds some useful functionality.
 - `UnsignedByteField` and `GenericUnsignedByteField` `new` methods are `const` now.
+
+## Removed
+
+- `SizeMissmatch` because it is not required for the `ByteConversionError` error enumeration
+  anymore.
 
 # [v0.7.0-beta.0] 2023-08-16
 
