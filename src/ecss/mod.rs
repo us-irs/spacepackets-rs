@@ -397,9 +397,9 @@ mod tests {
         assert!(res.is_err());
         let error = res.unwrap_err();
         match error {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
-                assert_eq!(missmatch.expected, 2);
-                assert_eq!(missmatch.found, 1);
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
+                assert_eq!(expected, 2);
+                assert_eq!(found, 1);
             }
             _ => {
                 panic!("Unexpected error {:?}", error);
@@ -428,9 +428,9 @@ mod tests {
         assert!(res.is_err());
         let error = res.unwrap_err();
         match error {
-            ByteConversionError::ToSliceTooSmall(missmatch) => {
-                assert_eq!(missmatch.expected, 4);
-                assert_eq!(missmatch.found, 3);
+            ByteConversionError::ToSliceTooSmall { found, expected } => {
+                assert_eq!(expected, 4);
+                assert_eq!(found, 3);
             }
             _ => {
                 panic!("Unexpected error {:?}", error);

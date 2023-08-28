@@ -3,7 +3,7 @@ use crate::cfdp::pdu::{
 };
 use crate::cfdp::tlv::{EntityIdTlv, Tlv, TlvType, TlvTypeField};
 use crate::cfdp::{ConditionCode, CrcFlag, PduType, TlvLvError};
-use crate::{ByteConversionError, SizeMissmatch};
+use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -136,10 +136,10 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.written_len();
         if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall(SizeMissmatch {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: expected_len,
-            })
+            }
             .into());
         }
 
