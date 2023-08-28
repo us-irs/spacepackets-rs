@@ -40,9 +40,9 @@ pub trait GenericPusTmSecondaryHeader {
 pub mod zc {
     use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
-    use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{AsBytes, FromBytes, FromZeroes, NetworkEndian, Unaligned, U16};
 
-    #[derive(FromBytes, AsBytes, Unaligned)]
+    #[derive(FromBytes, FromZeroes, AsBytes, Unaligned)]
     #[repr(C)]
     pub struct PusTmSecHeaderWithoutTimestamp {
         pus_version_and_sc_time_ref_status: u8,

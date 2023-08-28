@@ -641,9 +641,9 @@ sph_from_other!(SpHeader, crate::zc::SpHeader);
 pub mod zc {
     use crate::{CcsdsPacket, CcsdsPrimaryHeader, PacketId, PacketSequenceCtrl, VERSION_MASK};
     use zerocopy::byteorder::NetworkEndian;
-    use zerocopy::{AsBytes, FromBytes, Unaligned, U16};
+    use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned, U16};
 
-    #[derive(FromBytes, AsBytes, Unaligned, Debug)]
+    #[derive(FromBytes, FromZeroes, AsBytes, Unaligned, Debug)]
     #[repr(C)]
     pub struct SpHeader {
         version_packet_id: U16<NetworkEndian>,

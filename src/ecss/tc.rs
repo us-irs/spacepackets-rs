@@ -82,9 +82,9 @@ pub trait GenericPusTcSecondaryHeader {
 pub mod zc {
     use crate::ecss::tc::GenericPusTcSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
-    use zerocopy::{AsBytes, FromBytes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{AsBytes, FromBytes, FromZeroes, NetworkEndian, Unaligned, U16};
 
-    #[derive(FromBytes, AsBytes, Unaligned)]
+    #[derive(FromZeroes, FromBytes, AsBytes, Unaligned)]
     #[repr(C)]
     pub struct PusTcSecondaryHeader {
         version_ack: u8,
