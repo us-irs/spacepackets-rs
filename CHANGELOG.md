@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - The `Tlv` and `Lv` API return `&[u8]` instead of `Option<&[u8]>`.
 - `ByteConversionError` error variants `ToSliceTooSmall` and `FromSliceTooSmall` are struct
   variants now. `SizeMissmatch` was removed appropriately.
+- `UnsignedByteFieldError` error variants `ValueTooLargeForWidth` and `InvalidWidth` are struct
+  variants now.
+- `TimestampError` error variant `InvalidTimeCode` is struct variant now.
 
 ## Added
 
