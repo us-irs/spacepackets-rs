@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   variants now. `SizeMissmatch` was removed appropriately.
 - `UnsignedByteFieldError` error variants `ValueTooLargeForWidth` and `InvalidWidth` are struct
   variants now.
+- `TimestampError` error variant `InvalidTimeCode` is struct variant now.
 
 ## Added
 

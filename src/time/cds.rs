@@ -428,14 +428,17 @@ pub fn get_dyn_time_provider_from_bytes(
 ) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
     let time_code = ccsds_time_code_from_p_field(buf[0]);
     if let Err(e) = time_code {
-        return Err(TimestampError::InvalidTimeCode(CcsdsTimeCodes::Cds, e));
+        return Err(TimestampError::InvalidTimeCode {
+            expected: CcsdsTimeCodes::Cds,
+            found: e,
+        });
     }
     let time_code = time_code.unwrap();
     if time_code != CcsdsTimeCodes::Cds {
-        return Err(TimestampError::InvalidTimeCode(
-            CcsdsTimeCodes::Cds,
-            time_code as u8,
-        ));
+        return Err(TimestampError::InvalidTimeCode {
+            expected: CcsdsTimeCodes::Cds,
+            found: time_code as u8,
+        });
     }
     if length_of_day_segment_from_pfield(buf[0]) == LengthOfDaySegment::Short16Bits {
         Ok(Box::new(TimeProvider::from_bytes_with_u16_days(buf)?))
@@ -523,17 +526,17 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             Ok(cds_type) => match cds_type {
                 CcsdsTimeCodes::Cds => (),
                 _ => {
-                    return Err(TimestampError::InvalidTimeCode(
-                        CcsdsTimeCodes::Cds,
-                        cds_type as u8,
-                    ))
+                    return Err(TimestampError::InvalidTimeCode {
+                        expected: CcsdsTimeCodes::Cds,
+                        found: cds_type as u8,
+                    })
                 }
             },
             _ => {
-                return Err(TimestampError::InvalidTimeCode(
-                    CcsdsTimeCodes::Cds,
-                    pfield >> 4 & 0b111,
-                ))
+                return Err(TimestampError::InvalidTimeCode {
+                    expected: CcsdsTimeCodes::Cds,
+                    found: pfield >> 4 & 0b111,
+                });
             }
         };
         if ((pfield >> 3) & 0b1) == 1 {
@@ -1490,9 +1493,9 @@ mod tests {
         assert!(res.is_err());
         let err = res.unwrap_err();
         match err {
-            InvalidTimeCode(code, raw) => {
-                assert_eq!(code, CcsdsTimeCodes::Cds);
-                assert_eq!(raw, 0);
+            InvalidTimeCode { expected, found } => {
+                assert_eq!(expected, CcsdsTimeCodes::Cds);
+                assert_eq!(found, 0);
             }
             _ => {}
         }

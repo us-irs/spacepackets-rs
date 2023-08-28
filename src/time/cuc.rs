@@ -463,17 +463,17 @@ impl TimeReader for TimeProviderCcsdsEpoch {
         match ccsds_time_code_from_p_field(buf[0]) {
             Ok(code) => {
                 if code != CcsdsTimeCodes::CucCcsdsEpoch {
-                    return Err(TimestampError::InvalidTimeCode(
-                        CcsdsTimeCodes::CucCcsdsEpoch,
-                        code as u8,
-                    ));
+                    return Err(TimestampError::InvalidTimeCode {
+                        expected: CcsdsTimeCodes::CucCcsdsEpoch,
+                        found: code as u8,
+                    });
                 }
             }
             Err(raw) => {
-                return Err(TimestampError::InvalidTimeCode(
-                    CcsdsTimeCodes::CucCcsdsEpoch,
-                    raw,
-                ))
+                return Err(TimestampError::InvalidTimeCode {
+                    expected: CcsdsTimeCodes::CucCcsdsEpoch,
+                    found: raw,
+                });
             }
         }
         let (cntr_len, fractions_len, total_len) =
@@ -909,9 +909,9 @@ mod tests {
         let res = TimeProviderCcsdsEpoch::from_bytes(&buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
-        if let TimestampError::InvalidTimeCode(code, raw) = err {
-            assert_eq!(code, CcsdsTimeCodes::CucCcsdsEpoch);
-            assert_eq!(raw, CcsdsTimeCodes::CucAgencyEpoch as u8);
+        if let TimestampError::InvalidTimeCode { expected, found } = err {
+            assert_eq!(expected, CcsdsTimeCodes::CucCcsdsEpoch);
+            assert_eq!(found, CcsdsTimeCodes::CucAgencyEpoch as u8);
         } else {
             panic!("unexpected error: {}", err);
         }
