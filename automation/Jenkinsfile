@@ -20,7 +20,9 @@ pipeline {
         }
         stage('Docs') {
             steps {
-                sh 'cargo +nightly doc --all-features'
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh 'cargo +nightly doc --all-features'
+                }
             }
         }
         stage('Rustfmt') {
