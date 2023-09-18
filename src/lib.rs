@@ -62,7 +62,10 @@ extern crate alloc;
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
-use core::fmt::{Debug, Display, Formatter};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+};
 use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
 
@@ -193,6 +196,25 @@ pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
     apid: u16,
+}
+
+impl PartialOrd for PacketId {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        self.raw().partial_cmp(&other.raw())
+    }
+}
+
+impl Ord for PacketId {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.raw().cmp(&other.raw())
+    }
+}
+
+impl Hash for PacketId {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        let raw = self.raw();
+        raw.hash(state);
+    }
 }
 
 impl Default for PacketId {

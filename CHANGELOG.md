@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `PacketId` trait impls: `Ord`, `PartialOrd` and `Hash`
+
 # [v0.7.0-beta.1] 2023-08-28
 
 - Bump `zerocopy` dependency to v0.7.0
