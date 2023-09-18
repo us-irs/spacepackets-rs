@@ -8,8 +8,8 @@ pipeline {
     }
 
     stages {
-        stage ('Rust Toolchain Info') {
-            def rustVersion =sh(script: 'rustc --version', returnStatus: true).trim()
+        stage('Rust Toolchain Info') {
+            def rustVersion = sh(script: 'rustc --version', returnStatus: true).trim()
             echo "Rust Toolchain Vrsion: ${rustVersion}"
         }
         stage('Clippy') {
