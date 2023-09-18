@@ -10,7 +10,6 @@ pipeline {
     stages {
         stage('Rust Toolchain Info') {
             steps {
-                echo "Rust Toolchain Version"
                 sh 'rustc --version'
             }
         }
