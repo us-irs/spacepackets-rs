@@ -190,12 +190,18 @@ impl TryFrom<u8> for SequenceFlags {
 
 /// Abstraction for the CCSDS Packet ID, which forms the last thirteen bits
 /// of the first two bytes in the CCSDS primary header.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
     apid: u16,
+}
+
+impl PartialEq for PacketId {
+    fn eq(&self, other: &Self) -> bool {
+        self.raw().eq(&other.raw())
+    }
 }
 
 impl PartialOrd for PacketId {
