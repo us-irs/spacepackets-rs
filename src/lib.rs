@@ -283,6 +283,7 @@ impl PacketId {
         self.apid
     }
 
+    #[inline]
     pub fn raw(&self) -> u16 {
         ((self.ptype as u16) << 12) | ((self.sec_header_flag as u16) << 11) | self.apid
     }
