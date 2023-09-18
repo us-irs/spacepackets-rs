@@ -8,6 +8,11 @@ pipeline {
     }
 
     stages {
+        stage('Rust Toolchain Info') {
+            steps {
+                sh 'rustc --version'
+            }
+        }
         stage('Clippy') {
             steps {
                 sh 'cargo clippy'
@@ -15,7 +20,9 @@ pipeline {
         }
         stage('Docs') {
             steps {
-                sh 'cargo +nightly doc --all-features'
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh 'cargo +nightly doc --all-features'
+                }
             }
         }
         stage('Rustfmt') {

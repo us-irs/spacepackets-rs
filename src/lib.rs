@@ -62,7 +62,10 @@ extern crate alloc;
 extern crate std;
 
 use crate::ecss::CCSDS_HEADER_LEN;
-use core::fmt::{Debug, Display, Formatter};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+};
 use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
 
@@ -187,12 +190,37 @@ impl TryFrom<u8> for SequenceFlags {
 
 /// Abstraction for the CCSDS Packet ID, which forms the last thirteen bits
 /// of the first two bytes in the CCSDS primary header.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
     apid: u16,
+}
+
+impl PartialEq for PacketId {
+    fn eq(&self, other: &Self) -> bool {
+        self.raw().eq(&other.raw())
+    }
+}
+
+impl PartialOrd for PacketId {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        self.raw().partial_cmp(&other.raw())
+    }
+}
+
+impl Ord for PacketId {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.raw().cmp(&other.raw())
+    }
+}
+
+impl Hash for PacketId {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        let raw = self.raw();
+        raw.hash(state);
+    }
 }
 
 impl Default for PacketId {
@@ -255,6 +283,7 @@ impl PacketId {
         self.apid
     }
 
+    #[inline]
     pub fn raw(&self) -> u16 {
         ((self.ptype as u16) << 12) | ((self.sec_header_flag as u16) << 11) | self.apid
     }
@@ -721,6 +750,8 @@ pub mod zc {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
+    use std::collections::HashSet;
+
     #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
     use crate::{
@@ -1033,5 +1064,23 @@ mod tests {
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.data_len(), 0);
+    }
+
+    #[test]
+    fn packet_id_ord_partial_ord() {
+        let packet_id_small = PacketId::from(1_u16);
+        let packet_id_larger = PacketId::from(2_u16);
+        assert!(packet_id_small < packet_id_larger);
+        assert!(packet_id_larger > packet_id_small);
+        assert_eq!(
+            packet_id_small.cmp(&packet_id_larger),
+            core::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn packet_id_hashable() {
+        let mut id_set = HashSet::new();
+        id_set.insert(PacketId::from(1_u16));
     }
 }
