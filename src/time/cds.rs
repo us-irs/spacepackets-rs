@@ -1716,11 +1716,12 @@ mod tests {
     }
 
     fn generic_dt_case_0_no_prec(subsec_millis: u32) -> DateTime<Utc> {
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
+        NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
-            .unwrap();
-        DateTime::<Utc>::from_utc(naivedatetime_utc, Utc)
+            .unwrap()
+            .and_local_timezone(Utc)
+            .unwrap()
     }
 
     fn generic_check_dt_case_0<DaysLen: ProvidesDaysLength>(
@@ -1764,11 +1765,12 @@ mod tests {
     fn generic_dt_case_1_us_prec(subsec_millis: u32) -> DateTime<Utc> {
         // 250 ms + 500 us
         let subsec_micros = subsec_millis * 1000 + 500;
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 1, 14)
+        NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_micro_opt(16, 49, 30, subsec_micros)
-            .unwrap();
-        DateTime::<Utc>::from_utc(naivedatetime_utc, Utc)
+            .unwrap()
+            .and_local_timezone(Utc)
+            .unwrap()
     }
 
     fn generic_check_dt_case_1_us_prec<DaysLen: ProvidesDaysLength>(
@@ -1815,12 +1817,13 @@ mod tests {
         // 250 ms + 500 us
         let subsec_nanos = subsec_millis * 1000 * 1000 + 500 * 1000;
         let submilli_nanos = subsec_nanos % 10_u32.pow(6);
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 1, 14)
-            .unwrap()
-            .and_hms_nano_opt(16, 49, 30, subsec_nanos)
-            .unwrap();
         (
-            DateTime::<Utc>::from_utc(naivedatetime_utc, Utc),
+            NaiveDate::from_ymd_opt(2023, 1, 14)
+                .unwrap()
+                .and_hms_nano_opt(16, 49, 30, subsec_nanos)
+                .unwrap()
+                .and_local_timezone(Utc)
+                .unwrap(),
             submilli_nanos,
         )
     }
@@ -1903,11 +1906,12 @@ mod tests {
     #[test]
     fn test_creation_from_unix_stamp_1() {
         let subsec_millis = 250;
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(2023, 01, 14)
+        let datetime_utc = NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
+            .unwrap()
+            .and_local_timezone(Utc)
             .unwrap();
-        let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
         let time_provider = TimeProvider::from_unix_secs_with_u16_days(&datetime_utc.into())
             .expect("creating provider from unix stamp failed");
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
@@ -2185,11 +2189,12 @@ mod tests {
     #[test]
     fn test_from_dt_invalid_time() {
         // Date before CCSDS epoch
-        let naivedatetime_utc = NaiveDate::from_ymd_opt(1957, 12, 31)
+        let datetime_utc = NaiveDate::from_ymd_opt(1957, 12, 31)
             .unwrap()
             .and_hms_milli_opt(23, 59, 59, 999)
+            .unwrap()
+            .and_local_timezone(Utc)
             .unwrap();
-        let datetime_utc = DateTime::<Utc>::from_utc(naivedatetime_utc, Utc);
         let time_provider = TimeProvider::from_dt_with_u24_days(&datetime_utc);
         assert!(time_provider.is_err());
         if let TimestampError::DateBeforeCcsdsEpoch(dt) = time_provider.unwrap_err() {
@@ -2204,8 +2209,8 @@ mod tests {
         stamp0.write_to_bytes(&mut buf).unwrap();
         let stamp1 = TimeProvider::from_bytes_with_u16_days(&buf).unwrap();
         assert_eq!(stamp0, stamp1);
-        assert!(!(stamp0 < stamp1));
-        assert!(!(stamp1 > stamp0));
+        assert!(stamp0 >= stamp1);
+        assert!(stamp1 <= stamp0);
     }
 
     #[test]
