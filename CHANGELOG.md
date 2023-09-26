@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Added
 
 - `PacketId` trait impls: `Ord`, `PartialOrd` and `Hash`
+- `SerializablePusPacket` trait: Add `to_vec` method with default implementation.
 
 # [v0.7.0-beta.1] 2023-08-28
 

@@ -4,6 +4,8 @@
 //! You can find the PUS telecommand definitions in the [tc] module and ithe PUS telemetry definitions
 //! inside the [tm] module.
 use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -361,6 +363,15 @@ pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 pub trait SerializablePusPacket {
     fn len_packed(&self) -> usize;
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+    #[cfg(feature = "alloc")]
+    fn to_vec(&self) -> Result<Vec<u8>, PusError> {
+        // This is the correct way to do this. See
+        // [this issue](https://github.com/rust-lang/rust-clippy/issues/4483) for caveats of more
+        // "efficient" implementations.
+        let mut vec = alloc::vec![0; self.len_packed()];
+        self.write_to_bytes(&mut vec)?;
+        Ok(vec)
+    }
 }
 
 #[cfg(test)]
