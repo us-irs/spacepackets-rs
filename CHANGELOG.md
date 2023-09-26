@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0-beta.2] 2023-09-26
+
 ## Added
 
 - `PacketId` trait impls: `Ord`, `PartialOrd` and `Hash`
