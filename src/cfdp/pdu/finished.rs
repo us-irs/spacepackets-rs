@@ -2,7 +2,7 @@ use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::{EntityIdTlv, Tlv, TlvType, TlvTypeField};
-use crate::cfdp::{ConditionCode, CrcFlag, PduType, TlvLvError};
+use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType, TlvLvError};
 use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
@@ -83,6 +83,8 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         fault_location: Option<EntityIdTlv>,
     ) -> Self {
         pdu_header.pdu_type = PduType::FileDirective;
+        // Enforce correct direction bit.
+        pdu_header.pdu_conf.direction = Direction::TowardsSender;
         let mut finished_pdu = Self {
             pdu_header,
             condition_code,
@@ -249,7 +251,7 @@ mod tests {
     use crate::cfdp::pdu::finished::{DeliveryCode, FileStatus, FinishedPdu};
     use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};
+    use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
 
     fn generic_finished_pdu(
         crc_flag: CrcFlag,
@@ -270,6 +272,10 @@ mod tests {
             FileStatus::Retained,
         );
         assert_eq!(finished_pdu.condition_code(), ConditionCode::NoError);
+        assert_eq!(
+            finished_pdu.pdu_header().pdu_conf.direction,
+            Direction::TowardsSender
+        );
         assert_eq!(finished_pdu.delivery_code(), DeliveryCode::Complete);
         assert_eq!(finished_pdu.file_status(), FileStatus::Retained);
         assert_eq!(finished_pdu.filestore_responses(), None);
@@ -290,6 +296,10 @@ mod tests {
         let written = written.unwrap();
         assert_eq!(written, finished_pdu.written_len());
         assert_eq!(written, finished_pdu.pdu_header().header_len() + 2);
+        assert_eq!(
+            finished_pdu.pdu_header().pdu_conf.direction,
+            Direction::TowardsSender
+        );
         verify_raw_header(finished_pdu.pdu_header(), &buf);
         let mut current_idx = finished_pdu.pdu_header().header_len();
         assert_eq!(buf[current_idx], FileDirectiveType::FinishedPdu as u8);

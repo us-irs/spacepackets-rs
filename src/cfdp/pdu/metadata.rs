@@ -4,7 +4,7 @@ use crate::cfdp::pdu::{
     FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::Tlv;
-use crate::cfdp::{ChecksumType, CrcFlag, LargeFileFlag, PduType};
+use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
 use crate::ByteConversionError;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -134,6 +134,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         options: Option<&'opts [u8]>,
     ) -> Self {
         pdu_header.pdu_type = PduType::FileDirective;
+        pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
         let mut pdu = Self {
             pdu_header,
             metadata_params,

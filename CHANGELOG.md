@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Fixed
+
+- Set the directtion field inside the PDU header field correctl explicitely for all CFDP PDU
+  packets.
+
 # [v0.7.0-beta.2] 2023-09-26
 
 ## Added
