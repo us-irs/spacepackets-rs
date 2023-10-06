@@ -3,7 +3,7 @@ use crate::cfdp::pdu::{
     FileDirectiveType, PduError, PduHeader,
 };
 use crate::cfdp::tlv::EntityIdTlv;
-use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};
+use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
 use crate::ByteConversionError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,9 @@ pub struct EofPdu {
 }
 
 impl EofPdu {
-    pub fn new_no_error(pdu_header: PduHeader, file_checksum: u32, file_size: u64) -> Self {
+    pub fn new_no_error(mut pdu_header: PduHeader, file_checksum: u32, file_size: u64) -> Self {
+        // Force correct direction flag.
+        pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
         let mut eof_pdu = Self {
             pdu_header,
             condition_code: ConditionCode::NoError,

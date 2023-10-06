@@ -632,7 +632,6 @@ mod tests {
         assert_eq!((buf[0] >> 5) & 0b111, CFDP_VERSION_2);
         // File directive
         assert_eq!((buf[0] >> 4) & 1, pdu_conf.pdu_type as u8);
-        // Towards receiver
         assert_eq!((buf[0] >> 3) & 1, pdu_conf.pdu_conf.direction as u8);
         // Acknowledged
         assert_eq!((buf[0] >> 2) & 1, pdu_conf.pdu_conf.trans_mode as u8);
@@ -678,7 +677,7 @@ mod tests {
                             .try_into()
                             .unwrap()
                     ),
-                    ubf.value() as u64
+                    ubf.value()
                 ),
                 _ => panic!("invalid entity ID length"),
             }
