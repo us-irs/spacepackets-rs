@@ -307,12 +307,18 @@ impl From<DateTime<Utc>> for UnixTimestamp {
 
 impl PartialOrd for UnixTimestamp {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for UnixTimestamp {
+    fn cmp(&self, other: &Self) -> Ordering {
         if self == other {
-            return Some(Ordering::Equal);
+            return Ordering::Equal;
         }
         match self.unix_seconds.cmp(&other.unix_seconds) {
-            Ordering::Less => return Some(Ordering::Less),
-            Ordering::Greater => return Some(Ordering::Greater),
+            Ordering::Less => return Ordering::Less,
+            Ordering::Greater => return Ordering::Greater,
             _ => (),
         }
 
@@ -323,27 +329,21 @@ impl PartialOrd for UnixTimestamp {
         {
             Ordering::Less => {
                 return if self.unix_seconds < 0 {
-                    Some(Ordering::Greater)
+                    Ordering::Greater
                 } else {
-                    Some(Ordering::Less)
+                    Ordering::Less
                 }
             }
             Ordering::Greater => {
                 return if self.unix_seconds < 0 {
-                    Some(Ordering::Less)
+                    Ordering::Less
                 } else {
-                    Some(Ordering::Greater)
+                    Ordering::Greater
                 }
             }
             Ordering::Equal => (),
         }
-        Some(Ordering::Equal)
-    }
-}
-
-impl Ord for UnixTimestamp {
-    fn cmp(&self, other: &Self) -> Ordering {
-        PartialOrd::partial_cmp(self, other).unwrap()
+        Ordering::Equal
     }
 }
 

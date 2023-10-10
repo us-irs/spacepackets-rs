@@ -206,7 +206,7 @@ impl PartialEq for PacketId {
 
 impl PartialOrd for PacketId {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        self.raw().partial_cmp(&other.raw())
+        Some(self.cmp(other))
     }
 }
 
