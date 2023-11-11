@@ -149,7 +149,7 @@ impl From<TlvLvError> for PduError {
     }
 }
 
-trait WritablePduPacket {
+pub trait WritablePduPacket {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError>;
 }
 
