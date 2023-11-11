@@ -8,6 +8,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::WritablePduPacket;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
@@ -163,35 +165,6 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         self.segment_metadata.as_ref()
     }
 
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        if buf.len() < self.written_len() {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: self.written_len(),
-            }
-            .into());
-        }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        if self.segment_metadata.is_some() {
-            current_idx += self
-                .segment_metadata
-                .as_ref()
-                .unwrap()
-                .write_to_bytes(&mut buf[current_idx..])?;
-        }
-        current_idx += write_fss_field(
-            self.pdu_header.common_pdu_conf().file_flag,
-            self.offset,
-            &mut buf[current_idx..],
-        )?;
-        buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
-        current_idx += self.file_data.len();
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
-    }
-
     pub fn from_bytes<'longest: 'seg_meta + 'file_data>(
         buf: &'longest [u8],
     ) -> Result<Self, PduError> {
@@ -222,9 +195,40 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
     }
 }
 
+impl WritablePduPacket for FileDataPdu<'_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        if buf.len() < self.written_len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: self.written_len(),
+            }
+            .into());
+        }
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        if self.segment_metadata.is_some() {
+            current_idx += self
+                .segment_metadata
+                .as_ref()
+                .unwrap()
+                .write_to_bytes(&mut buf[current_idx..])?;
+        }
+        current_idx += write_fss_field(
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.offset,
+            &mut buf[current_idx..],
+        )?;
+        buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
+        current_idx += self.file_data.len();
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::pdu::file_data::{FileDataPdu, RecordContinuationState, SegmentMetadata};
+    use super::*;
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
     use crate::cfdp::{SegmentMetadataFlag, SegmentationControl};
     use crate::util::UbfU8;

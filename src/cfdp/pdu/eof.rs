@@ -8,6 +8,8 @@ use crate::ByteConversionError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::WritablePduPacket;
+
 /// Finished PDU abstraction.
 ///
 /// For more information, refer to CFDP chapter 5.2.2.
@@ -68,36 +70,6 @@ impl EofPdu {
         len
     }
 
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
-        if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: expected_len,
-            }
-            .into());
-        }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::EofPdu as u8;
-        current_idx += 1;
-        buf[current_idx] = (self.condition_code as u8) << 4;
-        current_idx += 1;
-        buf[current_idx..current_idx + 4].copy_from_slice(&self.file_checksum.to_be_bytes());
-        current_idx += 4;
-        current_idx += write_fss_field(
-            self.pdu_header.pdu_conf.file_flag,
-            self.file_size,
-            &mut buf[current_idx..],
-        )?;
-        if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_be_bytes(buf)?;
-        }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
-    }
-
     pub fn from_bytes(buf: &[u8]) -> Result<EofPdu, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -143,9 +115,41 @@ impl EofPdu {
     }
 }
 
+impl WritablePduPacket for EofPdu {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let expected_len = self.written_len();
+        if buf.len() < expected_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_idx] = FileDirectiveType::EofPdu as u8;
+        current_idx += 1;
+        buf[current_idx] = (self.condition_code as u8) << 4;
+        current_idx += 1;
+        buf[current_idx..current_idx + 4].copy_from_slice(&self.file_checksum.to_be_bytes());
+        current_idx += 4;
+        current_idx += write_fss_field(
+            self.pdu_header.pdu_conf.file_flag,
+            self.file_size,
+            &mut buf[current_idx..],
+        )?;
+        if let Some(fault_location) = self.fault_location {
+            current_idx += fault_location.write_to_be_bytes(buf)?;
+        }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::pdu::eof::EofPdu;
+    use super::*;
     use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};

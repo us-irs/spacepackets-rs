@@ -149,6 +149,10 @@ impl From<TlvLvError> for PduError {
     }
 }
 
+trait WritablePduPacket {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError>;
+}
+
 /// Common configuration fields for a PDU.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
