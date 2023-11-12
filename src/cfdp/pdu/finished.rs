@@ -8,6 +8,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::WritablePduPacket;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
@@ -135,36 +137,6 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         base_len
     }
 
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
-        if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: expected_len,
-            }
-            .into());
-        }
-
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::FinishedPdu as u8;
-        current_idx += 1;
-        buf[current_idx] = ((self.condition_code as u8) << 4)
-            | ((self.delivery_code as u8) << 2)
-            | self.file_status as u8;
-        current_idx += 1;
-        if let Some(fs_responses) = self.fs_responses {
-            buf[current_idx..current_idx + fs_responses.len()].copy_from_slice(fs_responses);
-            current_idx += fs_responses.len();
-        }
-        if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
-        }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
-    }
-
     /// Generates [Self] from a raw bytestream.
     pub fn from_bytes(buf: &'fs_responses [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
@@ -246,9 +218,41 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
     }
 }
 
+impl WritablePduPacket for FinishedPdu<'_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let expected_len = self.written_len();
+        if buf.len() < expected_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_idx] = FileDirectiveType::FinishedPdu as u8;
+        current_idx += 1;
+        buf[current_idx] = ((self.condition_code as u8) << 4)
+            | ((self.delivery_code as u8) << 2)
+            | self.file_status as u8;
+        current_idx += 1;
+        if let Some(fs_responses) = self.fs_responses {
+            buf[current_idx..current_idx + fs_responses.len()].copy_from_slice(fs_responses);
+            current_idx += fs_responses.len();
+        }
+        if let Some(fault_location) = self.fault_location {
+            current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
+        }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::cfdp::pdu::finished::{DeliveryCode, FileStatus, FinishedPdu};
+    use super::*;
     use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};

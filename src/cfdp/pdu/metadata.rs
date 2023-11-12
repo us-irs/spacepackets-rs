@@ -11,6 +11,8 @@ use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::WritablePduPacket;
+
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataGenericParams {
@@ -199,43 +201,6 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         &self.pdu_header
     }
 
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
-        if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: expected_len,
-            }
-            .into());
-        }
-
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
-        current_idx += 1;
-        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
-            | (self.metadata_params.checksum_type as u8);
-        current_idx += 1;
-        current_idx += write_fss_field(
-            self.pdu_header.common_pdu_conf().file_flag,
-            self.metadata_params.file_size,
-            &mut buf[current_idx..],
-        )?;
-        current_idx += self
-            .src_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
-        current_idx += self
-            .dest_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
-        if let Some(opts) = self.options {
-            buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
-            current_idx += opts.len();
-        }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
-    }
-
     pub fn from_bytes<'longest: 'src_name + 'dest_name + 'opts>(
         buf: &'longest [u8],
     ) -> Result<Self, PduError> {
@@ -289,8 +254,48 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
     }
 }
 
+impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let expected_len = self.written_len();
+        if buf.len() < expected_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
+        current_idx += 1;
+        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
+            | (self.metadata_params.checksum_type as u8);
+        current_idx += 1;
+        current_idx += write_fss_field(
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.metadata_params.file_size,
+            &mut buf[current_idx..],
+        )?;
+        current_idx += self
+            .src_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
+        current_idx += self
+            .dest_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
+        if let Some(opts) = self.options {
+            buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
+            current_idx += opts.len();
+        }
+        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
+    use super::*;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
@@ -304,18 +309,14 @@ pub mod tests {
     };
     use std::vec;
 
-    const SRC_FILENAME: &'static str = "hello-world.txt";
-    const DEST_FILENAME: &'static str = "hello-world2.txt";
+    const SRC_FILENAME: &str = "hello-world.txt";
+    const DEST_FILENAME: &str = "hello-world2.txt";
 
-    fn generic_metadata_pdu<'opts>(
+    fn generic_metadata_pdu(
         crc_flag: CrcFlag,
         fss: LargeFileFlag,
-        opts: Option<&'opts [u8]>,
-    ) -> (
-        Lv<'static>,
-        Lv<'static>,
-        MetadataPdu<'static, 'static, 'opts>,
-    ) {
+        opts: Option<&[u8]>,
+    ) -> (Lv<'static>, Lv<'static>, MetadataPdu<'static, 'static, '_>) {
         let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
         let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 0x1010);
         let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
