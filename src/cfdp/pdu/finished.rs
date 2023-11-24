@@ -102,10 +102,6 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         &self.pdu_header
     }
 
-    pub fn written_len(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
-
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
@@ -220,7 +216,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
 
 impl WritablePduPacket for FinishedPdu<'_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
+        let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -247,6 +243,10 @@ impl WritablePduPacket for FinishedPdu<'_> {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
 }
 
@@ -298,7 +298,7 @@ mod tests {
         let written = finished_pdu.write_to_bytes(&mut buf);
         assert!(written.is_ok());
         let written = written.unwrap();
-        assert_eq!(written, finished_pdu.written_len());
+        assert_eq!(written, finished_pdu.len_written());
         assert_eq!(written, finished_pdu.pdu_header().header_len() + 2);
         assert_eq!(
             finished_pdu.pdu_header().pdu_conf.direction,
@@ -333,6 +333,20 @@ mod tests {
     #[test]
     fn test_serialization_simple_3() {
         generic_serialization_test_no_error(DeliveryCode::Incomplete, FileStatus::Unreported);
+    }
+
+    #[test]
+    fn test_write_to_vec() {
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::NoCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let written = finished_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = finished_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
     }
 
     #[test]

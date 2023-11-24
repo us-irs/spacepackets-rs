@@ -174,10 +174,6 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         })
     }
 
-    pub fn written_len(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
-
     fn calc_pdu_datafield_len(&self) -> usize {
         // One directve type octet and one byte of the directive parameter field.
         let mut len = 2;
@@ -256,7 +252,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
 
 impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
+        let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -291,17 +287,21 @@ impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
         }
         Ok(current_idx)
     }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
         MetadataPdu,
     };
     use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
+    use crate::cfdp::pdu::WritablePduPacket;
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::{Tlv, TlvType};
     use crate::cfdp::{
@@ -340,7 +340,7 @@ pub mod tests {
         let (src_filename, dest_filename, metadata_pdu) =
             generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
         assert_eq!(
-            metadata_pdu.written_len(),
+            metadata_pdu.len_written(),
             metadata_pdu.pdu_header().header_len()
                 + 1
                 + 1
@@ -386,6 +386,16 @@ pub mod tests {
         current_idx += dest_name_from_raw.len_full();
         // No options, so no additional data here.
         assert_eq!(current_idx, written);
+    }
+
+    #[test]
+    fn test_write_to_vec() {
+        let (_, _, metadata_pdu) =
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_vec = metadata_pdu.to_vec().unwrap();
+        let written = metadata_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
     }
 
     #[test]

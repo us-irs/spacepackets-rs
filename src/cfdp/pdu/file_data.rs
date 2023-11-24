@@ -149,9 +149,6 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         }
         len
     }
-    pub fn written_len(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
 
     pub fn offset(&self) -> u64 {
         self.offset
@@ -197,10 +194,10 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
 impl WritablePduPacket for FileDataPdu<'_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        if buf.len() < self.written_len() {
+        if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
-                expected: self.written_len(),
+                expected: self.len_written(),
             }
             .into());
         }
@@ -224,6 +221,10 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
         }
         Ok(current_idx)
     }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
 }
 
 #[cfg(test)]
@@ -233,13 +234,13 @@ mod tests {
     use crate::cfdp::{SegmentMetadataFlag, SegmentationControl};
     use crate::util::UbfU8;
 
+    const SRC_ID: UbfU8 = UbfU8::new(1);
+    const DEST_ID: UbfU8 = UbfU8::new(2);
+    const SEQ_NUM: UbfU8 = UbfU8::new(3);
+
     #[test]
     fn test_basic() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -247,18 +248,14 @@ mod tests {
         assert_eq!(fd_pdu.offset(), 10);
         assert!(fd_pdu.segment_metadata().is_none());
         assert_eq!(
-            fd_pdu.written_len(),
+            fd_pdu.len_written(),
             fd_pdu.pdu_header.header_len() + core::mem::size_of::<u32>() + 4
         );
     }
 
     #[test]
     fn test_serialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -288,12 +285,20 @@ mod tests {
     }
 
     #[test]
+    fn test_write_to_vec() {
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = fd_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = fd_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
+    }
+
+    #[test]
     fn test_deserialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -327,7 +332,7 @@ mod tests {
         assert!(fd_pdu.segment_metadata().is_some());
         assert_eq!(*fd_pdu.segment_metadata().unwrap(), segment_meta);
         assert_eq!(
-            fd_pdu.written_len(),
+            fd_pdu.len_written(),
             fd_pdu.pdu_header.header_len()
                 + 1
                 + seg_metadata.len()
@@ -367,7 +372,7 @@ mod tests {
         current_idx += 1;
         assert_eq!(buf[current_idx], 4);
         current_idx += 1;
-        assert_eq!(current_idx, fd_pdu.written_len());
+        assert_eq!(current_idx, fd_pdu.len_written());
     }
 
     #[test]

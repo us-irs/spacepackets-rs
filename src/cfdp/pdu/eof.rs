@@ -42,10 +42,6 @@ impl EofPdu {
         &self.pdu_header
     }
 
-    pub fn written_len(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
-
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
@@ -117,7 +113,7 @@ impl EofPdu {
 
 impl WritablePduPacket for EofPdu {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.written_len();
+        let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -145,6 +141,10 @@ impl WritablePduPacket for EofPdu {
         }
         Ok(current_idx)
     }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
 }
 
 #[cfg(test)]
@@ -159,7 +159,7 @@ mod tests {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
-        assert_eq!(eof_pdu.written_len(), pdu_header.header_len() + 2 + 4 + 4);
+        assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 4 + 4);
         assert_eq!(eof_pdu.file_checksum(), 0x01020304);
         assert_eq!(eof_pdu.file_size(), 12);
         assert_eq!(eof_pdu.condition_code(), ConditionCode::NoError);
@@ -174,7 +174,7 @@ mod tests {
         let res = eof_pdu.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         let written = res.unwrap();
-        assert_eq!(written, eof_pdu.written_len());
+        assert_eq!(written, eof_pdu.len_written());
         verify_raw_header(eof_pdu.pdu_header(), &buf);
         let mut current_idx = eof_pdu.pdu_header().header_len();
         buf[current_idx] = FileDirectiveType::EofPdu as u8;
@@ -205,11 +205,22 @@ mod tests {
         let mut buf: [u8; 64] = [0; 64];
         eof_pdu.write_to_bytes(&mut buf).unwrap();
         let eof_read_back = EofPdu::from_bytes(&buf);
-        if !eof_read_back.is_ok() {
+        if eof_read_back.is_err() {
             let e = eof_read_back.unwrap_err();
             panic!("deserialization failed with: {e}")
         }
         let eof_read_back = eof_read_back.unwrap();
         assert_eq!(eof_read_back, eof_pdu);
+    }
+
+    #[test]
+    fn test_write_to_vec() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = eof_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
     }
 }

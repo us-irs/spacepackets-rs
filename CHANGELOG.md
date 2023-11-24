@@ -8,10 +8,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- Add `WritablePduPacket` trait which is a common trait of all CFDP PDU implementations.
+
 ## Fixed
 
-- Set the directtion field inside the PDU header field correctl explicitely for all CFDP PDU
+- Set the direction field inside the PDU header field correctly explicitely for all CFDP PDU
   packets.
+
+## Changed
+
+- Renamed `SerializablePusPacket` to `WritablePusPacket`.
+- Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.
 
 # [v0.7.0-beta.2] 2023-09-26
 
