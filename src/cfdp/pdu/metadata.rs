@@ -11,7 +11,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::WritablePduPacket;
+use super::{CfdpPdu, WritablePduPacket};
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -193,10 +193,6 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         len
     }
 
-    pub fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
     pub fn from_bytes<'longest: 'src_name + 'dest_name + 'opts>(
         buf: &'longest [u8],
     ) -> Result<Self, PduError> {
@@ -250,6 +246,16 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
     }
 }
 
+impl CfdpPdu for MetadataPdu<'_, '_, '_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::MetadataPdu)
+    }
+}
+
 impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
@@ -300,12 +306,15 @@ pub mod tests {
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
         MetadataPdu,
     };
-    use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
-    use crate::cfdp::pdu::WritablePduPacket;
+    use crate::cfdp::pdu::tests::{
+        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+    };
+    use crate::cfdp::pdu::{CfdpPdu, WritablePduPacket};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::{Tlv, TlvType};
     use crate::cfdp::{
-        ChecksumType, CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
+        ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag,
+        SegmentationControl, TransmissionMode,
     };
     use std::vec;
 
@@ -351,6 +360,21 @@ pub mod tests {
         assert_eq!(metadata_pdu.src_file_name(), src_filename);
         assert_eq!(metadata_pdu.dest_file_name(), dest_filename);
         assert_eq!(metadata_pdu.options(), None);
+        assert_eq!(metadata_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(metadata_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(metadata_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            metadata_pdu.file_directive_type(),
+            Some(FileDirectiveType::MetadataPdu)
+        );
+        assert_eq!(
+            metadata_pdu.transmission_mode(),
+            TransmissionMode::Acknowledged
+        );
+        assert_eq!(metadata_pdu.direction(), Direction::TowardsReceiver);
+        assert_eq!(metadata_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(metadata_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(metadata_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
     #[test]
@@ -414,6 +438,7 @@ pub mod tests {
     fn test_with_crc_flag() {
         let (src_filename, dest_filename, metadata_pdu) =
             generic_metadata_pdu(CrcFlag::WithCrc, LargeFileFlag::Normal, None);
+        assert_eq!(metadata_pdu.crc_flag(), CrcFlag::WithCrc);
         let mut buf: [u8; 64] = [0; 64];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(write_res.is_ok());

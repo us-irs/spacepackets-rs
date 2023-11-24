@@ -8,7 +8,7 @@ use crate::ByteConversionError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::WritablePduPacket;
+use super::{CfdpPdu, WritablePduPacket};
 
 /// Finished PDU abstraction.
 ///
@@ -108,6 +108,16 @@ impl EofPdu {
             file_size,
             fault_location,
         })
+    }
+}
+
+impl CfdpPdu for EofPdu {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::EofPdu)
     }
 }
 

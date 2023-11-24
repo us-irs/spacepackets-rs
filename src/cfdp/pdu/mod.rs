@@ -165,8 +165,51 @@ pub trait WritablePduPacket {
     }
 }
 
+/// Abstraction trait for fields and properties common for all PDUs.
+pub trait CfdpPdu {
+    fn pdu_header(&self) -> &PduHeader;
+
+    fn source_id(&self) -> UnsignedByteField {
+        self.pdu_header().common_pdu_conf().source_entity_id
+    }
+
+    fn dest_id(&self) -> UnsignedByteField {
+        self.pdu_header().common_pdu_conf().dest_entity_id
+    }
+
+    fn transaction_seq_num(&self) -> UnsignedByteField {
+        self.pdu_header().common_pdu_conf().transaction_seq_num
+    }
+
+    fn transmission_mode(&self) -> TransmissionMode {
+        self.pdu_header().common_pdu_conf().trans_mode
+    }
+    fn direction(&self) -> Direction {
+        self.pdu_header().common_pdu_conf().direction
+    }
+
+    fn crc_flag(&self) -> CrcFlag {
+        self.pdu_header().common_pdu_conf().crc_flag
+    }
+
+    fn file_flag(&self) -> LargeFileFlag {
+        self.pdu_header().common_pdu_conf().file_flag
+    }
+
+    fn pdu_type(&self) -> PduType {
+        self.pdu_header().pdu_type()
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType>;
+}
+
 /// Common configuration fields for a PDU.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+///
+/// Please note that this structure has a custom implementation of [PartialEq] which only
+/// compares the values for source entity ID, destination entity ID and transaction sequence
+/// number. This permits that those fields can have different widths, as long as the value is the
+/// same.
+#[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CommonPduConfig {
     source_entity_id: UnsignedByteField,
@@ -284,6 +327,18 @@ impl Default for CommonPduConfig {
             Direction::TowardsReceiver,
         )
         .unwrap()
+    }
+}
+
+impl PartialEq for CommonPduConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.source_entity_id.value() == other.source_entity_id.value()
+            && self.dest_entity_id.value() == other.dest_entity_id.value()
+            && self.transaction_seq_num.value() == other.transaction_seq_num.value()
+            && self.trans_mode == other.trans_mode
+            && self.file_flag == other.file_flag
+            && self.crc_flag == other.crc_flag
+            && self.direction == other.direction
     }
 }
 
@@ -627,17 +682,18 @@ mod tests {
         TransmissionMode, CFDP_VERSION_2,
     };
     use crate::util::{
-        UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum,
+        UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum, UbfU16,
     };
     use crate::ByteConversionError;
     use std::format;
 
+    pub(crate) const TEST_SRC_ID: UbfU8 = UbfU8::new(5);
+    pub(crate) const TEST_DEST_ID: UbfU8 = UbfU8::new(10);
+    pub(crate) const TEST_SEQ_NUM: UbfU8 = UbfU8::new(20);
+
     pub(crate) fn common_pdu_conf(crc_flag: CrcFlag, fss: LargeFileFlag) -> CommonPduConfig {
-        let src_id = UbfU8::new(5);
-        let dest_id = UbfU8::new(10);
-        let transaction_seq_num = UbfU8::new(20);
         let mut pdu_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num)
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM)
                 .expect("Generating common PDU config");
         pdu_conf.crc_flag = crc_flag;
         pdu_conf.file_flag = fss;
@@ -726,6 +782,15 @@ mod tests {
         );
         assert_eq!(pdu_header.pdu_datafield_len, 5);
         assert_eq!(pdu_header.header_len(), 7);
+    }
+
+    #[test]
+    fn test_common_pdu_conf_partial_eq() {
+        let common_pdu_cfg_0 = CommonPduConfig::new_with_byte_fields(UbfU8::new(1), UbfU8::new(2), UbfU8::new(3))
+            .expect("common config creation failed");
+        let common_pdu_cfg_1 = CommonPduConfig::new_with_byte_fields(UbfU16::new(1), UbfU16::new(2), UbfU16::new(3))
+            .expect("common config creation failed");
+        assert_eq!(common_pdu_cfg_0, common_pdu_cfg_1);
     }
 
     #[test]
