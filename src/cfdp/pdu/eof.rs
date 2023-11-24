@@ -205,11 +205,22 @@ mod tests {
         let mut buf: [u8; 64] = [0; 64];
         eof_pdu.write_to_bytes(&mut buf).unwrap();
         let eof_read_back = EofPdu::from_bytes(&buf);
-        if !eof_read_back.is_ok() {
+        if eof_read_back.is_err() {
             let e = eof_read_back.unwrap_err();
             panic!("deserialization failed with: {e}")
         }
         let eof_read_back = eof_read_back.unwrap();
         assert_eq!(eof_read_back, eof_pdu);
+    }
+
+    #[test]
+    fn test_write_to_vec() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = eof_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
     }
 }

@@ -336,6 +336,20 @@ mod tests {
     }
 
     #[test]
+    fn test_write_to_vec() {
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::NoCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let written = finished_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = finished_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
+    }
+
+    #[test]
     fn test_deserialization_simple() {
         let finished_pdu = generic_finished_pdu(
             CrcFlag::NoCrc,

@@ -234,13 +234,13 @@ mod tests {
     use crate::cfdp::{SegmentMetadataFlag, SegmentationControl};
     use crate::util::UbfU8;
 
+    const SRC_ID: UbfU8 = UbfU8::new(1);
+    const DEST_ID: UbfU8 = UbfU8::new(2);
+    const SEQ_NUM: UbfU8 = UbfU8::new(3);
+
     #[test]
     fn test_basic() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -255,11 +255,7 @@ mod tests {
 
     #[test]
     fn test_serialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -289,12 +285,20 @@ mod tests {
     }
 
     #[test]
+    fn test_write_to_vec() {
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = fd_pdu.write_to_bytes(&mut buf).unwrap();
+        let pdu_vec = fd_pdu.to_vec().unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
+    }
+
+    #[test]
     fn test_deserialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
-        let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);

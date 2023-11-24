@@ -389,6 +389,16 @@ pub mod tests {
     }
 
     #[test]
+    fn test_write_to_vec() {
+        let (_, _, metadata_pdu) =
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_vec = metadata_pdu.to_vec().unwrap();
+        let written = metadata_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(buf[0..written], pdu_vec);
+    }
+
+    #[test]
     fn test_deserialization() {
         let (_, _, metadata_pdu) =
             generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);

@@ -999,7 +999,7 @@ mod tests {
     #[test]
     fn test_setters() {
         let timestamp = dummy_timestamp();
-        let mut pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let mut pus_tm = base_ping_reply_full_ctor(timestamp);
         pus_tm.set_sc_time_ref_status(0b1010);
         pus_tm.set_dest_id(0x7fff);
         pus_tm.set_msg_counter(0x1f1f);
@@ -1011,9 +1011,20 @@ mod tests {
     }
 
     #[test]
+    fn test_write_into_vec() {
+        let timestamp = dummy_timestamp();
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
+        let tm_vec = pus_tm.to_vec().expect("Serialization failed");
+        assert_eq!(tm_vec.len(), 22);
+        let (tm_deserialized, size) =
+            PusTmReader::new(tm_vec.as_slice(), 7).expect("Deserialization failed");
+        assert_eq!(tm_vec.len(), size);
+        verify_ping_reply_with_reader(&tm_deserialized, false, 22, dummy_timestamp());
+    }
+    #[test]
     fn test_deserialization_no_source_data() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1045,7 +1056,7 @@ mod tests {
     #[test]
     fn test_target_buf_too_small() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
         let mut buf: [u8; 16] = [0; 16];
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());

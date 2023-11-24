@@ -906,6 +906,20 @@ mod tests {
     }
 
     #[test]
+    fn test_writing_into_vec() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let tc_vec = pus_tc.to_vec().expect("Error writing TC to buffer");
+        assert_eq!(tc_vec.len(), 13);
+        let (tc_from_raw, size) = PusTcReader::new(tc_vec.as_slice())
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(size, 13);
+        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert!(tc_from_raw.user_data().is_empty());
+        verify_test_tc_raw(&tc_vec);
+        verify_crc_no_app_data(&tc_vec);
+    }
+
+    #[test]
     fn test_update_func() {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         let mut tc = PusTcCreator::new_simple(&mut sph, 17, 1, None, false);
