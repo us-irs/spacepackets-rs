@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - Renamed `SerializablePusPacket` to `WritablePusPacket`.
-- Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.written_len` to `len_written`.
+- Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.
 
 # [v0.7.0-beta.2] 2023-09-26
 
