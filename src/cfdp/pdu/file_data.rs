@@ -149,9 +149,6 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         }
         len
     }
-    pub fn written_len(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
 
     pub fn offset(&self) -> u64 {
         self.offset
@@ -197,10 +194,10 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
 
 impl WritablePduPacket for FileDataPdu<'_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        if buf.len() < self.written_len() {
+        if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
-                expected: self.written_len(),
+                expected: self.len_written(),
             }
             .into());
         }
@@ -223,6 +220,10 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
+    }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
 }
 
@@ -247,7 +248,7 @@ mod tests {
         assert_eq!(fd_pdu.offset(), 10);
         assert!(fd_pdu.segment_metadata().is_none());
         assert_eq!(
-            fd_pdu.written_len(),
+            fd_pdu.len_written(),
             fd_pdu.pdu_header.header_len() + core::mem::size_of::<u32>() + 4
         );
     }
@@ -327,7 +328,7 @@ mod tests {
         assert!(fd_pdu.segment_metadata().is_some());
         assert_eq!(*fd_pdu.segment_metadata().unwrap(), segment_meta);
         assert_eq!(
-            fd_pdu.written_len(),
+            fd_pdu.len_written(),
             fd_pdu.pdu_header.header_len()
                 + 1
                 + seg_metadata.len()
@@ -367,7 +368,7 @@ mod tests {
         current_idx += 1;
         assert_eq!(buf[current_idx], 4);
         current_idx += 1;
-        assert_eq!(current_idx, fd_pdu.written_len());
+        assert_eq!(current_idx, fd_pdu.len_written());
     }
 
     #[test]

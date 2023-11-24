@@ -34,7 +34,7 @@
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
-    SerializablePusPacket,
+    WritablePusPacket,
 };
 use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
 use crate::{SpHeader, CRC_CCITT_FALSE};
@@ -216,7 +216,7 @@ pub mod legacy_tc {
     };
     use crate::ecss::{
         ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls,
-        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, SerializablePusPacket,
+        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, WritablePusPacket,
         CCSDS_HEADER_LEN,
     };
     use crate::ecss::{user_data_from_raw, PusVersion};
@@ -347,7 +347,7 @@ pub mod legacy_tc {
         /// is set correctly.
         pub fn update_ccsds_data_len(&mut self) {
             self.sp_header.data_len =
-                self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+                self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
         }
 
         /// This function should be called before the TC packet is serialized if
@@ -447,8 +447,8 @@ pub mod legacy_tc {
         }
     }
 
-    impl SerializablePusPacket for PusTc<'_> {
-        fn len_packed(&self) -> usize {
+    impl WritablePusPacket for PusTc<'_> {
+        fn len_written(&self) -> usize {
             PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
         }
 
@@ -456,7 +456,7 @@ pub mod legacy_tc {
         fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
             let mut curr_idx = 0;
             let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
-            let total_size = self.len_packed();
+            let total_size = self.len_written();
             if total_size > slice.len() {
                 return Err(ByteConversionError::ToSliceTooSmall {
                     found: slice.len(),
@@ -619,7 +619,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     /// is set correctly.
     pub fn update_ccsds_data_len(&mut self) {
         self.sp_header.data_len =
-            self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+            self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
     }
 
     /// This function should be called before the TC packet is serialized if
@@ -653,8 +653,8 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     }
 }
 
-impl SerializablePusPacket for PusTcCreator<'_> {
-    fn len_packed(&self) -> usize {
+impl WritablePusPacket for PusTcCreator<'_> {
+    fn len_written(&self) -> usize {
         PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
     }
 
@@ -662,7 +662,7 @@ impl SerializablePusPacket for PusTcCreator<'_> {
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
         let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
-        let total_size = self.len_packed();
+        let total_size = self.len_written();
         if total_size > slice.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: slice.len(),
@@ -851,7 +851,7 @@ mod tests {
         GenericPusTcSecondaryHeader, PusTcCreator, PusTcReader, PusTcSecondaryHeader, ACK_ALL,
     };
     use crate::ecss::PusVersion::PusC;
-    use crate::ecss::{PusError, PusPacket, SerializablePusPacket};
+    use crate::ecss::{PusError, PusPacket, WritablePusPacket};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::vec::Vec;
@@ -993,7 +993,7 @@ mod tests {
         match err {
             PusError::ByteConversion(err) => match err {
                 ByteConversionError::ToSliceTooSmall { found, expected } => {
-                    assert_eq!(expected, pus_tc.len_packed());
+                    assert_eq!(expected, pus_tc.len_written());
                     assert_eq!(found, 12);
                 }
                 _ => panic!("Unexpected error"),

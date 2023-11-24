@@ -3,7 +3,7 @@
 use crate::ecss::{
     calc_pus_crc16, ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
-    SerializablePusPacket,
+    WritablePusPacket,
 };
 use crate::{
     ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SpHeader, CCSDS_HEADER_LEN,
@@ -203,7 +203,7 @@ pub mod legacy_tm {
     use crate::ecss::PusVersion;
     use crate::ecss::{
         ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
-        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, SerializablePusPacket,
+        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, WritablePusPacket,
         CCSDS_HEADER_LEN,
     };
     use crate::SequenceFlags;
@@ -314,7 +314,7 @@ pub mod legacy_tm {
         /// is set correctly
         pub fn update_ccsds_data_len(&mut self) {
             self.sp_header.data_len =
-                self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+                self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
         }
 
         /// This function should be called before the TM packet is serialized if
@@ -423,8 +423,8 @@ pub mod legacy_tm {
         }
     }
 
-    impl SerializablePusPacket for PusTm<'_> {
-        fn len_packed(&self) -> usize {
+    impl WritablePusPacket for PusTm<'_> {
+        fn len_written(&self) -> usize {
             PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
                 + self.sec_header.timestamp.len()
                 + self.source_data.len()
@@ -432,7 +432,7 @@ pub mod legacy_tm {
         /// Write the raw PUS byte representation to a provided buffer.
         fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
             let mut curr_idx = 0;
-            let total_size = self.len_packed();
+            let total_size = self.len_written();
             if total_size > slice.len() {
                 return Err(ByteConversionError::ToSliceTooSmall {
                     found: slice.len(),
@@ -608,7 +608,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     /// is set correctly
     pub fn update_ccsds_data_len(&mut self) {
         self.sp_header.data_len =
-            self.len_packed() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+            self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
     }
 
     /// This function should be called before the TM packet is serialized if
@@ -650,8 +650,8 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     }
 }
 
-impl SerializablePusPacket for PusTmCreator<'_> {
-    fn len_packed(&self) -> usize {
+impl WritablePusPacket for PusTmCreator<'_> {
+    fn len_written(&self) -> usize {
         PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
             + self.sec_header.timestamp.len()
             + self.source_data.len()
@@ -659,7 +659,7 @@ impl SerializablePusPacket for PusTmCreator<'_> {
     /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = 0;
-        let total_size = self.len_packed();
+        let total_size = self.len_written();
         if total_size > slice.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: slice.len(),
@@ -949,31 +949,31 @@ mod tests {
 
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTmCreator {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, &timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
         PusTmCreator::new(&mut sph, tm_header, None, true)
     }
 
     fn base_hk_reply<'a>(timestamp: &'a [u8], src_data: &'a [u8]) -> PusTmCreator<'a> {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, &timestamp);
+        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
         PusTmCreator::new(&mut sph, tc_header, Some(src_data), true)
     }
 
     fn dummy_timestamp() -> &'static [u8] {
-        return &[0, 1, 2, 3, 4, 5, 6];
+        &[0, 1, 2, 3, 4, 5, 6]
     }
 
     #[test]
     fn test_basic() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
         verify_ping_reply(&pus_tm, false, 22, dummy_timestamp());
     }
 
     #[test]
     fn test_serialization_no_source_data() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1069,7 +1069,7 @@ mod tests {
     #[cfg(feature = "alloc")]
     fn test_append_to_vec() {
         let timestamp = dummy_timestamp();
-        let pus_tm = base_ping_reply_full_ctor(&timestamp);
+        let pus_tm = base_ping_reply_full_ctor(timestamp);
         let mut vec = Vec::new();
         let res = pus_tm.append_to_vec(&mut vec);
         assert!(res.is_ok());
@@ -1124,7 +1124,7 @@ mod tests {
         exp_full_len: usize,
         exp_timestamp: &[u8],
     ) {
-        assert_eq!(tm.len_packed(), exp_full_len);
+        assert_eq!(tm.len_written(), exp_full_len);
         assert_eq!(tm.timestamp(), exp_timestamp);
         verify_ping_reply_generic(tm, has_user_data, exp_full_len);
     }

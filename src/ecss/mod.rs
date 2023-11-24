@@ -360,15 +360,15 @@ pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
 /// Generic trait for PUS packet abstractions which can written to a raw slice as their raw
 /// byte representation. This is especially useful for generic abstractions which depend only
 /// on the serialization of those packets.
-pub trait SerializablePusPacket {
-    fn len_packed(&self) -> usize;
+pub trait WritablePusPacket {
+    fn len_written(&self) -> usize;
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, PusError> {
         // This is the correct way to do this. See
         // [this issue](https://github.com/rust-lang/rust-clippy/issues/4483) for caveats of more
         // "efficient" implementations.
-        let mut vec = alloc::vec![0; self.len_packed()];
+        let mut vec = alloc::vec![0; self.len_written()];
         self.write_to_bytes(&mut vec)?;
         Ok(vec)
     }

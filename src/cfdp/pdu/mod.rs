@@ -3,6 +3,8 @@ use crate::cfdp::*;
 use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
 use crate::ByteConversionError;
 use crate::CRC_CCITT_FALSE;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
@@ -150,7 +152,17 @@ impl From<TlvLvError> for PduError {
 }
 
 pub trait WritablePduPacket {
+    fn len_written(&self) -> usize;
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError>;
+    #[cfg(feature = "alloc")]
+    fn to_vec(&self) -> Result<Vec<u8>, PduError> {
+        // This is the correct way to do this. See
+        // [this issue](https://github.com/rust-lang/rust-clippy/issues/4483) for caveats of more
+        // "efficient" implementations.
+        let mut vec = alloc::vec![0; self.len_written()];
+        self.write_to_bytes(&mut vec)?;
+        Ok(vec)
+    }
 }
 
 /// Common configuration fields for a PDU.
