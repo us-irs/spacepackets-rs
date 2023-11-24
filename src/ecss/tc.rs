@@ -5,7 +5,7 @@
 //!
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
-//! use spacepackets::ecss::{PusPacket, SerializablePusPacket};
+//! use spacepackets::ecss::{PusPacket, WritablePusPacket};
 //! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
 //!
 //! // Create a ping telecommand with no user application data
