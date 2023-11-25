@@ -682,7 +682,7 @@ mod tests {
         TransmissionMode, CFDP_VERSION_2,
     };
     use crate::util::{
-        UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum, UbfU16,
+        UbfU16, UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum,
     };
     use crate::ByteConversionError;
     use std::format;
@@ -786,10 +786,12 @@ mod tests {
 
     #[test]
     fn test_common_pdu_conf_partial_eq() {
-        let common_pdu_cfg_0 = CommonPduConfig::new_with_byte_fields(UbfU8::new(1), UbfU8::new(2), UbfU8::new(3))
-            .expect("common config creation failed");
-        let common_pdu_cfg_1 = CommonPduConfig::new_with_byte_fields(UbfU16::new(1), UbfU16::new(2), UbfU16::new(3))
-            .expect("common config creation failed");
+        let common_pdu_cfg_0 =
+            CommonPduConfig::new_with_byte_fields(UbfU8::new(1), UbfU8::new(2), UbfU8::new(3))
+                .expect("common config creation failed");
+        let common_pdu_cfg_1 =
+            CommonPduConfig::new_with_byte_fields(UbfU16::new(1), UbfU16::new(2), UbfU16::new(3))
+                .expect("common config creation failed");
         assert_eq!(common_pdu_cfg_0, common_pdu_cfg_1);
     }
 
