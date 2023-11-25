@@ -8,7 +8,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::WritablePduPacket;
+use super::{CfdpPdu, WritablePduPacket};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -97,9 +97,6 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         };
         finished_pdu.pdu_header.pdu_datafield_len = finished_pdu.calc_pdu_datafield_len() as u16;
         finished_pdu
-    }
-    pub fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
     }
 
     pub fn condition_code(&self) -> ConditionCode {
@@ -211,6 +208,16 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
             }
         }
         Ok((fs_responses, fault_location))
+    }
+}
+
+impl CfdpPdu for FinishedPdu<'_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::FinishedPdu)
     }
 }
 

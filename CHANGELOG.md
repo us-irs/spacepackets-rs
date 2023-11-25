@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Added
 
 - Add `WritablePduPacket` trait which is a common trait of all CFDP PDU implementations.
+- Add `CfdpPdu` trait which exposes fields and attributes common to all CFDP PDUs.
 
 ## Fixed
 
@@ -21,6 +22,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Renamed `SerializablePusPacket` to `WritablePusPacket`.
 - Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.
+- Introduce custom implementation of `PartialEq` for `CommonPduConfig` which only compares the
+  values for the source entity ID, destination entity ID and transaction sequence number field to
+  allow those fields to have different widths.
 
 # [v0.7.0-beta.2] 2023-09-26
 
@@ -112,7 +116,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   `PusTm` object.
 
 ## Changed
- 
+
 - The `EcssEnumeration` now requires the `UnsignedEnum` trait and only adds the `pfc` method to it.
 - Renamed `byte_width` usages to `size` (part of new `UnsignedEnum` trait)
 - Moved `ecss::CRC_CCITT_FALSE` CRC constant to the root module. This CRC type is not just used by

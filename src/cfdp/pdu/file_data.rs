@@ -8,7 +8,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use super::WritablePduPacket;
+use super::{CfdpPdu, FileDirectiveType, WritablePduPacket};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -189,6 +189,15 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             offset,
             file_data: &buf[current_idx..full_len_without_crc],
         })
+    }
+}
+impl CfdpPdu for FileDataPdu<'_, '_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        None
     }
 }
 
