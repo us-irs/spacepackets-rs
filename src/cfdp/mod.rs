@@ -48,6 +48,24 @@ pub enum CrcFlag {
     WithCrc = 1,
 }
 
+impl From<bool> for CrcFlag {
+    fn from(value: bool) -> Self {
+        if value {
+            return CrcFlag::WithCrc;
+        }
+        CrcFlag::NoCrc
+    }
+}
+
+impl From<CrcFlag> for bool {
+    fn from(value: CrcFlag) -> Self {
+        if value == CrcFlag::WithCrc {
+            return true;
+        }
+        false
+    }
+}
+
 /// Always 0 and ignored for File Directive PDUs (CCSDS 727.0-B-5 P.75)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -117,6 +135,22 @@ pub enum LargeFileFlag {
     Normal = 0,
     /// 64 bit maximum file size and FSS size
     Large = 1,
+}
+
+/// Transaction status for the ACK PDU field according to chapter 5.2.4 of the CFDP standard.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+pub enum TransactionStatus {
+    /// Transaction is not currently active and the CFDP implementation does not retain a
+    /// transaction history.
+    Undefined = 0b00,
+    Active = 0b01,
+    /// Transaction was active in the past and was terminated.
+    Terminated = 0b10,
+    /// The CFDP implementation does retain a tranaction history, and the transaction is not and
+    /// never was active at this entity.
+    Unrecognized = 0b11,
 }
 
 /// Checksum types according to the

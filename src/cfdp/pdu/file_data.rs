@@ -144,7 +144,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             len += self.segment_metadata.as_ref().unwrap().written_len()
         }
         len += self.file_data.len();
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             len += 2;
         }
         len
@@ -225,7 +225,7 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
         )?;
         buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
         current_idx += self.file_data.len();
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
@@ -242,7 +242,6 @@ mod tests {
     use crate::cfdp::pdu::tests::{TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID};
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
     use crate::cfdp::{Direction, SegmentMetadataFlag, SegmentationControl, TransmissionMode};
-    use crate::util::UbfU8;
 
     #[test]
     fn test_basic() {
@@ -328,6 +327,11 @@ mod tests {
         assert!(fd_pdu_read_back.is_ok());
         let fd_pdu_read_back = fd_pdu_read_back.unwrap();
         assert_eq!(fd_pdu_read_back, fd_pdu);
+    }
+
+    #[test]
+    fn test_with_crc() {
+        todo!();
     }
 
     #[test]

@@ -187,7 +187,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         if let Some(opts) = self.options {
             len += opts.len();
         }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             len += 2;
         }
         len
@@ -288,7 +288,7 @@ impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
             buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
             current_idx += opts.len();
         }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
@@ -453,6 +453,7 @@ pub mod tests {
                 + dest_filename.len_full()
                 + 2
         );
+        assert_eq!(written, metadata_pdu.len_written());
         let pdu_read_back = MetadataPdu::from_bytes(&buf).unwrap();
         assert_eq!(pdu_read_back, metadata_pdu);
     }

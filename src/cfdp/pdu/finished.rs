@@ -120,14 +120,17 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
-        let mut base_len = 2;
+        let mut datafield_len = 2;
         if let Some(fs_responses) = self.fs_responses {
-            base_len += fs_responses.len();
+            datafield_len += fs_responses.len();
         }
         if let Some(fault_location) = self.fault_location {
-            base_len += fault_location.len_full();
+            datafield_len += fault_location.len_full();
         }
-        base_len
+        if self.crc_flag() == CrcFlag::WithCrc {
+            datafield_len += 2;
+        }
+        datafield_len
     }
 
     /// Generates [Self] from a raw bytestream.
@@ -246,7 +249,7 @@ impl WritablePduPacket for FinishedPdu<'_> {
         if let Some(fault_location) = self.fault_location {
             current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
         }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
@@ -388,5 +391,10 @@ mod tests {
         assert!(read_back.is_ok());
         let read_back = read_back.unwrap();
         assert_eq!(finished_pdu, read_back);
+    }
+
+    #[test]
+    fn test_with_crc() {
+        todo!();
     }
 }
