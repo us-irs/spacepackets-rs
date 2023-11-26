@@ -63,7 +63,7 @@ impl AckPdu {
         .unwrap()
     }
 
-    pub fn new_for_finished_pdu(
+    pub fn new_for_ack_pdu(
         pdu_header: PduHeader,
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
@@ -192,8 +192,42 @@ impl WritablePduPacket for AckPdu {
 
 #[cfg(test)]
 mod tests {
+    use crate::cfdp::{
+        pdu::tests::{common_pdu_conf, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
+        LargeFileFlag, PduType, TransmissionMode,
+    };
+
+    use super::*;
+
     #[test]
     fn test_basic() {
-        todo!();
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new(
+            pdu_header,
+            FileDirectiveType::FinishedPdu,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        )
+        .expect("creating ACK PDU failed");
+        assert_eq!(
+            ack_pdu.directive_code_of_acked_pdu(),
+            FileDirectiveType::FinishedPdu
+        );
+        assert_eq!(ack_pdu.condition_code(), ConditionCode::NoError);
+        assert_eq!(ack_pdu.transaction_status(), TransactionStatus::Active);
+
+        assert_eq!(ack_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(ack_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(ack_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            ack_pdu.file_directive_type(),
+            Some(FileDirectiveType::AckPdu)
+        );
+        assert_eq!(ack_pdu.transmission_mode(), TransmissionMode::Acknowledged);
+        assert_eq!(ack_pdu.direction(), Direction::TowardsReceiver);
+        assert_eq!(ack_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(ack_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(ack_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 }

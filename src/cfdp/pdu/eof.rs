@@ -253,6 +253,21 @@ mod tests {
 
     #[test]
     fn test_with_crc() {
-        todo!();
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, eof_pdu.len_written());
+        let eof_from_raw = EofPdu::from_bytes(&buf).expect("creating EOF PDU failed");
+        assert_eq!(eof_from_raw, eof_pdu);
+        buf[written - 1] -= 1;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let error = EofPdu::from_bytes(&buf).unwrap_err();
+        if let PduError::ChecksumError(e) = error {
+            assert_eq!(e, crc);
+        } else {
+            panic!("expected crc error");
+        }
     }
 }

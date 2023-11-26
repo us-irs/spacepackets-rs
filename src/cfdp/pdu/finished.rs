@@ -395,6 +395,24 @@ mod tests {
 
     #[test]
     fn test_with_crc() {
-        todo!();
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::WithCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let written = finished_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, finished_pdu.len_written());
+        let finished_pdu_from_raw = FinishedPdu::from_bytes(&buf).unwrap();
+        assert_eq!(finished_pdu_from_raw, finished_pdu);
+        buf[written - 1] -= 1;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let error = FinishedPdu::from_bytes(&buf).unwrap_err();
+        if let PduError::ChecksumError(e) = error {
+            assert_eq!(e, crc);
+        } else {
+            panic!("expected crc error");
+        }
     }
 }
