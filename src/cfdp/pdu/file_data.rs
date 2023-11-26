@@ -239,17 +239,15 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cfdp::pdu::tests::{TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID};
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
-    use crate::cfdp::{SegmentMetadataFlag, SegmentationControl};
+    use crate::cfdp::{Direction, SegmentMetadataFlag, SegmentationControl, TransmissionMode};
     use crate::util::UbfU8;
-
-    const SRC_ID: UbfU8 = UbfU8::new(1);
-    const DEST_ID: UbfU8 = UbfU8::new(2);
-    const SEQ_NUM: UbfU8 = UbfU8::new(3);
 
     #[test]
     fn test_basic() {
-        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -260,11 +258,22 @@ mod tests {
             fd_pdu.len_written(),
             fd_pdu.pdu_header.header_len() + core::mem::size_of::<u32>() + 4
         );
+
+        assert_eq!(fd_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(fd_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(fd_pdu.pdu_type(), PduType::FileData);
+        assert_eq!(fd_pdu.file_directive_type(), None);
+        assert_eq!(fd_pdu.transmission_mode(), TransmissionMode::Acknowledged);
+        assert_eq!(fd_pdu.direction(), Direction::TowardsReceiver);
+        assert_eq!(fd_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(fd_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(fd_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
     #[test]
     fn test_serialization() {
-        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -295,7 +304,8 @@ mod tests {
 
     #[test]
     fn test_write_to_vec() {
-        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -307,7 +317,8 @@ mod tests {
 
     #[test]
     fn test_deserialization() {
-        let common_conf = CommonPduConfig::new_with_byte_fields(SRC_ID, DEST_ID, SEQ_NUM).unwrap();
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
         let file_data: [u8; 4] = [1, 2, 3, 4];
         let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
@@ -321,11 +332,8 @@ mod tests {
 
     #[test]
     fn test_with_seg_metadata_serialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data(
             common_conf,
             0,
@@ -386,11 +394,8 @@ mod tests {
 
     #[test]
     fn test_with_seg_metadata_deserialization() {
-        let src_id = UbfU8::new(1);
-        let dest_id = UbfU8::new(2);
-        let transaction_seq_num = UbfU8::new(3);
         let common_conf =
-            CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_seq_num).unwrap();
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
         let pdu_header = PduHeader::new_for_file_data(
             common_conf,
             0,

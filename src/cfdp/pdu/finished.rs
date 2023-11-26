@@ -260,9 +260,11 @@ impl WritablePduPacket for FinishedPdu<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
+    use crate::cfdp::pdu::tests::{
+        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+    };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
+    use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag, TransmissionMode};
 
     fn generic_finished_pdu(
         crc_flag: CrcFlag,
@@ -292,6 +294,22 @@ mod tests {
         assert_eq!(finished_pdu.filestore_responses(), None);
         assert_eq!(finished_pdu.fault_location(), None);
         assert_eq!(finished_pdu.pdu_header().pdu_datafield_len, 2);
+
+        assert_eq!(finished_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(finished_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(finished_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            finished_pdu.file_directive_type(),
+            Some(FileDirectiveType::FinishedPdu)
+        );
+        assert_eq!(
+            finished_pdu.transmission_mode(),
+            TransmissionMode::Acknowledged
+        );
+        assert_eq!(finished_pdu.direction(), Direction::TowardsSender);
+        assert_eq!(finished_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(finished_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(finished_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
     fn generic_serialization_test_no_error(delivery_code: DeliveryCode, file_status: FileStatus) {
