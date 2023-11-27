@@ -65,7 +65,7 @@ impl AckPdu {
         .unwrap()
     }
 
-    pub fn new_for_ack_pdu(
+    pub fn new_for_finished_pdu(
         pdu_header: PduHeader,
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
@@ -195,7 +195,7 @@ impl WritablePduPacket for AckPdu {
 #[cfg(test)]
 mod tests {
     use crate::cfdp::{
-        pdu::tests::{common_pdu_conf, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
+        pdu::tests::{common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
         LargeFileFlag, PduType, TransmissionMode,
     };
 
@@ -231,5 +231,69 @@ mod tests {
         assert_eq!(ack_pdu.source_id(), TEST_SRC_ID.into());
         assert_eq!(ack_pdu.dest_id(), TEST_DEST_ID.into());
         assert_eq!(ack_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
+    }
+
+    fn generic_serialization_test(
+        condition_code: ConditionCode,
+        transaction_status: TransactionStatus,
+    ) {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_finished_pdu(pdu_header, condition_code, transaction_status);
+        let mut buf: [u8; 64] = [0; 64];
+        let res = ack_pdu.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        assert_eq!(written, ack_pdu.len_written());
+        verify_raw_header(ack_pdu.pdu_header(), &buf);
+
+        assert_eq!(buf[7], FileDirectiveType::AckPdu as u8);
+        assert_eq!((buf[8] >> 4) & 0b1111, FileDirectiveType::FinishedPdu as u8);
+        assert_eq!(buf[8] & 0b1111, 0b0001);
+        assert_eq!(buf[9] >> 4 & 0b1111, condition_code as u8);
+        assert_eq!(buf[9] & 0b11, transaction_status as u8);
+        assert_eq!(written, 10);
+    }
+
+    #[test]
+    fn test_serialization_no_error() {
+        generic_serialization_test(ConditionCode::NoError, TransactionStatus::Active);
+    }
+
+    #[test]
+    fn test_serialization_fs_error() {
+        generic_serialization_test(ConditionCode::FileSizeError, TransactionStatus::Terminated);
+    }
+
+    #[test]
+    fn test_deserialization() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_finished_pdu(
+            pdu_header,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        );
+        let ack_vec = ack_pdu.to_vec().unwrap();
+        let ack_deserialized =
+            AckPdu::from_bytes(&ack_vec).expect("ACK PDU deserialization failed");
+        assert_eq!(ack_deserialized, ack_pdu);
+    }
+
+    #[test]
+    fn test_with_crc() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_finished_pdu(
+            pdu_header,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        );
+        let ack_vec = ack_pdu.to_vec().unwrap();
+        assert_eq!(ack_vec.len(), ack_pdu.len_written());
+        assert_eq!(ack_vec.len(), 12);
+        let ack_deserialized =
+            AckPdu::from_bytes(&ack_vec).expect("ACK PDU deserialization failed");
+        assert_eq!(ack_deserialized, ack_pdu);
     }
 }
