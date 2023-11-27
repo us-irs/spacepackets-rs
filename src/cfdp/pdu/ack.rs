@@ -7,6 +7,8 @@ use super::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, CfdpPdu, FileDirectiveType, PduError,
     PduHeader, WritablePduPacket,
 };
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 /// ACK PDU abstraction.
 ///
