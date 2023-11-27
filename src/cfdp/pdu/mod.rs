@@ -55,6 +55,8 @@ pub enum PduError {
         found: u8,
         expected: Option<FileDirectiveType>,
     },
+    InvalidSegmentRequestFormat,
+    InvalidStartOrEndOfScopeValue,
     /// Invalid condition code. Contains the raw detected value.
     InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
@@ -75,8 +77,14 @@ impl Display for PduError {
             PduError::InvalidEntityLen(raw_id) => {
                 write!(
                     f,
-                    "Invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
+                    "invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
                 )
+            }
+            PduError::InvalidSegmentRequestFormat => {
+                write!(f, "invalid segment request format for NAK PDU")
+            }
+            PduError::InvalidStartOrEndOfScopeValue => {
+                write!(f, "invalid start or end of scope for NAK PDU")
             }
             PduError::InvalidTransactionSeqNumLen(raw_id) => {
                 write!(
