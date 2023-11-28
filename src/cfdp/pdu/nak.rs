@@ -133,18 +133,20 @@ impl WritablePduPacket for NakPduCreator<'_> {
         buf[current_idx] = FileDirectiveType::NakPdu as u8;
         current_idx += 1;
 
+        let mut write_start_end_of_scope_normal = || {
+            let start_of_scope = u32::try_from(self.start_of_scope).unwrap();
+            let end_of_scope = u32::try_from(self.end_of_scope).unwrap();
+            buf[current_idx..current_idx + 4].copy_from_slice(&start_of_scope.to_be_bytes());
+            current_idx += 4;
+            buf[current_idx..current_idx + 4].copy_from_slice(&end_of_scope.to_be_bytes());
+            current_idx += 4;
+        };
         if let Some(ref seg_reqs) = self.segment_requests {
             match seg_reqs {
                 SegmentRequests::U32Pairs(pairs) => {
                     // Unwrap is okay here, the API should prevent invalid values which would trigger a
                     // panic here.
-                    let start_of_scope = u32::try_from(self.start_of_scope).unwrap();
-                    let end_of_scope = u32::try_from(self.end_of_scope).unwrap();
-                    buf[current_idx..current_idx + 4]
-                        .copy_from_slice(&start_of_scope.to_be_bytes());
-                    current_idx += 4;
-                    buf[current_idx..current_idx + 4].copy_from_slice(&end_of_scope.to_be_bytes());
-                    current_idx += 4;
+                    write_start_end_of_scope_normal();
                     for (next_start_offset, next_end_offset) in *pairs {
                         buf[current_idx..current_idx + 4]
                             .copy_from_slice(&next_start_offset.to_be_bytes());
@@ -171,6 +173,8 @@ impl WritablePduPacket for NakPduCreator<'_> {
                     }
                 }
             }
+        } else {
+            write_start_end_of_scope_normal();
         }
 
         if self.crc_flag() == CrcFlag::WithCrc {
@@ -345,7 +349,7 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
 #[cfg(test)]
 mod tests {
     use crate::cfdp::{
-        pdu::tests::{common_pdu_conf, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
+        pdu::tests::{common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
         PduType, TransmissionMode,
     };
 
@@ -377,7 +381,28 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization_empty() {}
+    fn test_serialization_empty() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let nak_pdu = NakPduCreator::new(pdu_header, 100, 300, None)
+            .expect("creating NAK PDU creator failed");
+        let mut buf: [u8; 64] = [0; 64];
+        nak_pdu
+            .write_to_bytes(&mut buf)
+            .expect("writing NAK PDU to buffer failed");
+        verify_raw_header(nak_pdu.pdu_header(), &buf);
+        let mut current_idx = nak_pdu.pdu_header().header_len();
+        assert_eq!(current_idx + 9, nak_pdu.len_written());
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        assert_eq!(start_of_scope, 100);
+        current_idx += 4;
+        let end_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        assert_eq!(end_of_scope, 300);
+    }
 
     #[test]
     fn test_serialization_one_segment() {}
