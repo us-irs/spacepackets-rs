@@ -402,8 +402,12 @@ mod tests {
         let end_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
         assert_eq!(end_of_scope, 300);
+        current_idx += 4;
+        assert_eq!(current_idx, nak_pdu.len_written());
     }
 
     #[test]
-    fn test_serialization_one_segment() {}
+    fn test_serialization_one_segment() {
+
+    }
 }
