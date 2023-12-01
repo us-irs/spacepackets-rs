@@ -9,11 +9,7 @@ use super::{
     PduHeader, WritablePduPacket,
 };
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SegmentRequests<'a> {
     U32Pairs(&'a [(u32, u32)]),
     U64Pairs(&'a [(u64, u64)]),
@@ -33,7 +29,6 @@ impl SegmentRequests<'_> {
 /// It exposes a specialized API which simplifies to generate these NAK PDUs with the
 /// format according to CFDP chapter 5.2.6.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NakPduCreator<'seg_reqs> {
     pdu_header: PduHeader,
     start_of_scope: u64,
