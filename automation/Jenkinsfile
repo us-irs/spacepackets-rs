@@ -1,57 +1,79 @@
 pipeline {
 
-    agent {
-        dockerfile {
-            dir 'automation'
-            reuseNode true
-        }
+  agent {
+    dockerfile {
+      dir 'automation'
+      reuseNode true
+      args '--network host'
     }
+  }
 
-    stages {
-        stage('Rust Toolchain Info') {
-            steps {
-                sh 'rustc --version'
-            }
-        }
-        stage('Clippy') {
-            steps {
-                sh 'cargo clippy'
-            }
-        }
-        stage('Docs') {
-            steps {
-                sh 'cargo +nightly doc --all-features'
-            }
-        }
-        stage('Rustfmt') {
-            steps {
-                sh 'cargo fmt --all --check'
-            }
-        }
-        stage('Test') {
-            steps {
-                sh 'cargo test --all-features'
-            }
-        }
-        stage('Check with all features') {
-            steps {
-                sh 'cargo check --all-features'
-            }
-        }
-        stage('Check with no features') {
-            steps {
-                sh 'cargo check --no-default-features'
-            }
-        }
-        stage('Check Cross Embedded Bare Metal') {
-            steps {
-                sh 'cargo check --target thumbv7em-none-eabihf --no-default-features'
-            }
-        }
-        stage('Check Cross Embedded Linux') {
-            steps {
-                sh 'cargo check --target armv7-unknown-linux-gnueabihf'
-            }
+  stages {
+    stage('Rust Toolchain Info') {
+      steps {
+        sh 'rustc --version'
+      }
+    }
+    stage('Clippy') {
+      steps {
+        sh 'cargo clippy'
+      }
+    }
+    stage('Docs') {
+        steps {
+          sh 'cargo +nightly doc --all-features'
         }
     }
+    stage('Rustfmt') {
+        steps {
+          sh 'cargo fmt --all --check'
+        }
+    }
+    stage('Test') {
+      steps {
+        sh 'cargo test --all-features'
+      }
+    }
+    stage('Check with all features') {
+      steps {
+        sh 'cargo check --all-features'
+      }
+    }
+    stage('Check with no features') {
+      steps {
+        sh 'cargo check --no-default-features'
+      }
+    }
+    stage('Check Cross Embedded Bare Metal') {
+      steps {
+        sh 'cargo check --target thumbv7em-none-eabihf --no-default-features'
+      }
+    }
+    stage('Check Cross Embedded Linux') {
+      steps {
+        sh 'cargo check --target armv7-unknown-linux-gnueabihf'
+      }
+    }
+    stage('Run test with Coverage') {
+      when {
+        anyOf {
+          branch 'main';
+          branch pattern: 'cov-deployment*'
+        }
+      }
+      steps {
+        script {
+          withEnv(['RUSTFLAGS=-Cinstrument-coverage', 'LLVM_PROFILE_FILE=target/coverage/%p-%m.profraw']) {
+            echo "Executing tests with coverage"
+            sh 'cargo test'
+            sh 'grcov . -s . --binary-path ./target/debug -t html --branch --ignore-not-existing -o ./target/debug/coverage/'
+            sshagent(credentials: ['documentation-buildfix']) {
+              // Deploy to Apache webserver
+              sh 'rsync --mkpath -r --delete ./target/debug/coverage/ buildfix@documentation.irs.uni-stuttgart.de:/projects/spacepackets-rs/coverage/latest'
+            }
+          }
+        }
+      }
+    }
+  }
 }
