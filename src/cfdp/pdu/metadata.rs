@@ -55,13 +55,10 @@ pub fn build_metadata_opts_from_vec(
 /// This abstraction exposes a specialized API for creating metadata PDUs as specified in
 /// CFDP chapter 5.2.5.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataPduCreator<'src_name, 'dest_name, 'opts> {
     pdu_header: PduHeader,
     metadata_params: MetadataGenericParams,
-    #[cfg_attr(feature = "serde", serde(borrow))]
     src_file_name: Lv<'src_name>,
-    #[cfg_attr(feature = "serde", serde(borrow))]
     dest_file_name: Lv<'dest_name>,
     options: &'opts [Tlv<'opts>],
 }
