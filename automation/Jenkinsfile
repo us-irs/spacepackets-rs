@@ -69,7 +69,7 @@ pipeline {
             sh 'grcov . -s . --binary-path ./target/debug -t html --branch --ignore-not-existing -o ./target/debug/coverage/'
             sshagent(credentials: ['documentation-buildfix']) {
               // Deploy to Apache webserver
-              sh 'rsync -r --delete ./target/debug/coverage/ buildfix@absatsw.irs.uni-stuttgart.de:/projects/spacepackets-rs/coverage/latest'
+              sh 'rsync -r --delete ./target/debug/coverage/ buildfix@documentation.irs.uni-stuttgart.de:/projects/spacepackets-rs/coverage/latest'
             }
           }
         }
