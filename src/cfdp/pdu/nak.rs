@@ -13,6 +13,7 @@ use super::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SegmentRequests<'a> {
     U32Pairs(&'a [(u32, u32)]),
     U64Pairs(&'a [(u64, u64)]),
