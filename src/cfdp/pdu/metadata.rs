@@ -243,6 +243,7 @@ impl<'opts> Iterator for OptionsIter<'opts> {
 /// This abstraction exposes a specialized API for reading a metadata PDU with minimal copying
 /// involved.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MetadataPduReader<'buf> {
     pdu_header: PduHeader,
     metadata_params: MetadataGenericParams,
