@@ -63,6 +63,9 @@ impl EofPdu {
         if let Some(fault_location) = self.fault_location {
             len += fault_location.len_full();
         }
+        if self.crc_flag() == CrcFlag::WithCrc {
+            len += 2;
+        }
         len
     }
 
@@ -146,7 +149,7 @@ impl WritablePduPacket for EofPdu {
         if let Some(fault_location) = self.fault_location {
             current_idx += fault_location.write_to_be_bytes(buf)?;
         }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
@@ -160,9 +163,11 @@ impl WritablePduPacket for EofPdu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
+    use crate::cfdp::pdu::tests::{
+        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+    };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag};
+    use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
 
     #[test]
     fn test_basic() {
@@ -173,6 +178,19 @@ mod tests {
         assert_eq!(eof_pdu.file_checksum(), 0x01020304);
         assert_eq!(eof_pdu.file_size(), 12);
         assert_eq!(eof_pdu.condition_code(), ConditionCode::NoError);
+
+        assert_eq!(eof_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(eof_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(eof_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            eof_pdu.file_directive_type(),
+            Some(FileDirectiveType::EofPdu)
+        );
+        assert_eq!(eof_pdu.transmission_mode(), TransmissionMode::Acknowledged);
+        assert_eq!(eof_pdu.direction(), Direction::TowardsReceiver);
+        assert_eq!(eof_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(eof_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(eof_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
     #[test]
@@ -215,8 +233,7 @@ mod tests {
         let mut buf: [u8; 64] = [0; 64];
         eof_pdu.write_to_bytes(&mut buf).unwrap();
         let eof_read_back = EofPdu::from_bytes(&buf);
-        if eof_read_back.is_err() {
-            let e = eof_read_back.unwrap_err();
+        if let Err(e) = eof_read_back {
             panic!("deserialization failed with: {e}")
         }
         let eof_read_back = eof_read_back.unwrap();
@@ -232,5 +249,25 @@ mod tests {
         let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
         let pdu_vec = eof_pdu.to_vec().unwrap();
         assert_eq!(buf[0..written], pdu_vec);
+    }
+
+    #[test]
+    fn test_with_crc() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        let mut buf: [u8; 64] = [0; 64];
+        let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, eof_pdu.len_written());
+        let eof_from_raw = EofPdu::from_bytes(&buf).expect("creating EOF PDU failed");
+        assert_eq!(eof_from_raw, eof_pdu);
+        buf[written - 1] -= 1;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let error = EofPdu::from_bytes(&buf).unwrap_err();
+        if let PduError::ChecksumError(e) = error {
+            assert_eq!(e, crc);
+        } else {
+            panic!("expected crc error");
+        }
     }
 }

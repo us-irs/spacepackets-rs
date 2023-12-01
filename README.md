@@ -47,3 +47,15 @@ deserializing them with an appropriate `serde` provider like
 
 You can check the [documentation](https://docs.rs/spacepackets) of individual modules for various
 usage examples.
+
+# Coverage
+
+Coverage was generated using [`grcov`](https://github.com/mozilla/grcov). If you have not done so
+already, install the `llvm-tools-preview`:
+
+```sh
+rustup component add llvm-tools-preview
+```
+
+After that, you can simply run `coverage.py` to test the project with coverage. You can optionally
+supply the `--open` flag to open the coverage report in your webbrowser.

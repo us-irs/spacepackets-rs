@@ -9,10 +9,12 @@ use core::fmt::{Display, Formatter};
 #[cfg(feature = "std")]
 use std::error::Error;
 
+pub mod ack;
 pub mod eof;
 pub mod file_data;
 pub mod finished;
 pub mod metadata;
+pub mod nak;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -41,15 +43,20 @@ pub enum PduError {
         src_id_len: usize,
         dest_id_len: usize,
     },
+    /// Wrong directive type, for example when parsing the directive field for a file directive
+    /// PDU.
     WrongDirectiveType {
         found: FileDirectiveType,
         expected: FileDirectiveType,
     },
-    /// The directive type field contained a value not in the range of permitted values.
+    /// The directive type field contained a value not in the range of permitted values. This can
+    /// also happen if an invalid value is passed to the ACK PDU constructor.
     InvalidDirectiveType {
         found: u8,
         expected: Option<FileDirectiveType>,
     },
+    InvalidSegmentRequestFormat,
+    InvalidStartOrEndOfScopeValue,
     /// Invalid condition code. Contains the raw detected value.
     InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
@@ -70,8 +77,14 @@ impl Display for PduError {
             PduError::InvalidEntityLen(raw_id) => {
                 write!(
                     f,
-                    "Invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
+                    "invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
                 )
+            }
+            PduError::InvalidSegmentRequestFormat => {
+                write!(f, "invalid segment request format for NAK PDU")
+            }
+            PduError::InvalidStartOrEndOfScopeValue => {
+                write!(f, "invalid start or end of scope for NAK PDU")
             }
             PduError::InvalidTransactionSeqNumLen(raw_id) => {
                 write!(

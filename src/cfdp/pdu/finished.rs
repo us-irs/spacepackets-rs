@@ -120,14 +120,17 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
-        let mut base_len = 2;
+        let mut datafield_len = 2;
         if let Some(fs_responses) = self.fs_responses {
-            base_len += fs_responses.len();
+            datafield_len += fs_responses.len();
         }
         if let Some(fault_location) = self.fault_location {
-            base_len += fault_location.len_full();
+            datafield_len += fault_location.len_full();
         }
-        base_len
+        if self.crc_flag() == CrcFlag::WithCrc {
+            datafield_len += 2;
+        }
+        datafield_len
     }
 
     /// Generates [Self] from a raw bytestream.
@@ -246,7 +249,7 @@ impl WritablePduPacket for FinishedPdu<'_> {
         if let Some(fault_location) = self.fault_location {
             current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
         }
-        if self.pdu_header.pdu_conf.crc_flag == CrcFlag::WithCrc {
+        if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
         Ok(current_idx)
@@ -260,9 +263,11 @@ impl WritablePduPacket for FinishedPdu<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cfdp::pdu::tests::{common_pdu_conf, verify_raw_header};
+    use crate::cfdp::pdu::tests::{
+        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+    };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
+    use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag, TransmissionMode};
 
     fn generic_finished_pdu(
         crc_flag: CrcFlag,
@@ -292,6 +297,22 @@ mod tests {
         assert_eq!(finished_pdu.filestore_responses(), None);
         assert_eq!(finished_pdu.fault_location(), None);
         assert_eq!(finished_pdu.pdu_header().pdu_datafield_len, 2);
+
+        assert_eq!(finished_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(finished_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(finished_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            finished_pdu.file_directive_type(),
+            Some(FileDirectiveType::FinishedPdu)
+        );
+        assert_eq!(
+            finished_pdu.transmission_mode(),
+            TransmissionMode::Acknowledged
+        );
+        assert_eq!(finished_pdu.direction(), Direction::TowardsSender);
+        assert_eq!(finished_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(finished_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(finished_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
     fn generic_serialization_test_no_error(delivery_code: DeliveryCode, file_status: FileStatus) {
@@ -370,5 +391,28 @@ mod tests {
         assert!(read_back.is_ok());
         let read_back = read_back.unwrap();
         assert_eq!(finished_pdu, read_back);
+    }
+
+    #[test]
+    fn test_with_crc() {
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::WithCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let written = finished_pdu.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, finished_pdu.len_written());
+        let finished_pdu_from_raw = FinishedPdu::from_bytes(&buf).unwrap();
+        assert_eq!(finished_pdu_from_raw, finished_pdu);
+        buf[written - 1] -= 1;
+        let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
+        let error = FinishedPdu::from_bytes(&buf).unwrap_err();
+        if let PduError::ChecksumError(e) = error {
+            assert_eq!(e, crc);
+        } else {
+            panic!("expected crc error");
+        }
     }
 }
