@@ -772,4 +772,26 @@ mod tests {
             _ => panic!("unexpected error {e}"),
         }
     }
+
+    #[test]
+    fn test_with_crc() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 0, 0)
+            .expect("creating NAK PDU creator failed");
+        let mut nak_vec = nak_pdu.to_vec().expect("writing NAK to vector failed");
+        assert_eq!(nak_vec.len(), pdu_header.header_len() + 9 + 2);
+        assert_eq!(nak_vec.len(), nak_pdu.len_written());
+        let nak_pdu_deser = NakPduReader::new(&nak_vec).expect("reading NAK PDU failed");
+        assert_eq!(nak_pdu_deser, nak_pdu);
+        nak_vec[nak_pdu.len_written() - 1] -= 1;
+        let nak_pdu_deser = NakPduReader::new(&nak_vec);
+        assert!(nak_pdu_deser.is_err());
+        if let Err(PduError::ChecksumError(raw)) = nak_pdu_deser {
+            assert_eq!(
+                raw,
+                u16::from_be_bytes(nak_vec[nak_pdu.len_written() - 2..].try_into().unwrap())
+            );
+        }
+    }
 }
