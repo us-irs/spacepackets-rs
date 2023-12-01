@@ -50,6 +50,163 @@ pub fn build_metadata_opts_from_vec(
     build_metadata_opts_from_slice(buf, tlvs.as_slice())
 }
 
+/// Metadata PDU creator abstraction.
+///
+/// This abstraction exposes a specialized API for creating metadata PDUs as specified in
+/// CFDP chapter 5.2.5.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct MetadataPduCreator<'src_name, 'dest_name, 'opts> {
+    pdu_header: PduHeader,
+    metadata_params: MetadataGenericParams,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    src_file_name: Lv<'src_name>,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    dest_file_name: Lv<'dest_name>,
+    options: &'opts [Tlv<'opts>],
+}
+
+impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'opts> {
+    pub fn new_no_opts(
+        pdu_header: PduHeader,
+        metadata_params: MetadataGenericParams,
+        src_file_name: Lv<'src_name>,
+        dest_file_name: Lv<'dest_name>,
+    ) -> Self {
+        Self::new(
+            pdu_header,
+            metadata_params,
+            src_file_name,
+            dest_file_name,
+            &[],
+        )
+    }
+
+    pub fn new_with_opts(
+        pdu_header: PduHeader,
+        metadata_params: MetadataGenericParams,
+        src_file_name: Lv<'src_name>,
+        dest_file_name: Lv<'dest_name>,
+        options: &'opts [Tlv<'opts>],
+    ) -> Self {
+        Self::new(
+            pdu_header,
+            metadata_params,
+            src_file_name,
+            dest_file_name,
+            options,
+        )
+    }
+
+    pub fn new(
+        mut pdu_header: PduHeader,
+        metadata_params: MetadataGenericParams,
+        src_file_name: Lv<'src_name>,
+        dest_file_name: Lv<'dest_name>,
+        options: &'opts [Tlv<'opts>],
+    ) -> Self {
+        pdu_header.pdu_type = PduType::FileDirective;
+        pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
+        let mut pdu = Self {
+            pdu_header,
+            metadata_params,
+            src_file_name,
+            dest_file_name,
+            options,
+        };
+        pdu.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
+        pdu
+    }
+
+    pub fn metadata_params(&self) -> &MetadataGenericParams {
+        &self.metadata_params
+    }
+
+    pub fn src_file_name(&self) -> Lv<'src_name> {
+        self.src_file_name
+    }
+
+    pub fn dest_file_name(&self) -> Lv<'dest_name> {
+        self.dest_file_name
+    }
+
+    pub fn options(&self) -> &'opts [Tlv<'opts>] {
+        self.options
+    }
+
+    fn calc_pdu_datafield_len(&self) -> usize {
+        // One directve type octet and one byte of the directive parameter field.
+        let mut len = 2;
+        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
+            len += 8;
+        } else {
+            len += 4;
+        }
+        len += self.src_file_name.len_full();
+        len += self.dest_file_name.len_full();
+        for tlv in self.options() {
+            len += tlv.len_full()
+        }
+        if self.crc_flag() == CrcFlag::WithCrc {
+            len += 2;
+        }
+        len
+    }
+}
+
+impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::MetadataPdu)
+    }
+}
+
+impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let expected_len = self.len_written();
+        if buf.len() < expected_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
+        current_idx += 1;
+        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
+            | (self.metadata_params.checksum_type as u8);
+        current_idx += 1;
+        current_idx += write_fss_field(
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.metadata_params.file_size,
+            &mut buf[current_idx..],
+        )?;
+        current_idx += self
+            .src_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
+        current_idx += self
+            .dest_file_name
+            .write_to_be_bytes(&mut buf[current_idx..])?;
+        for opt in self.options() {
+            opt.write_to_bytes(&mut buf[current_idx..current_idx + opt.len_full()])?;
+            current_idx += opt.len_full();
+        }
+        if self.crc_flag() == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
 /// Helper structure to loop through all options of a metadata PDU. It should be noted that
 /// iterators in Rust are not fallible, but the TLV creation can fail, for example if the raw TLV
 /// data is invalid for some reason. In that case, the iterator will yield [None] because there
@@ -81,121 +238,27 @@ impl<'opts> Iterator for OptionsIter<'opts> {
     }
 }
 
-/// Metadata PDU abstraction.
+/// Metadata PDU reader abstraction.
 ///
-/// For more information, refer to CFDP chapter 5.2.5.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct MetadataPdu<'src_name, 'dest_name, 'opts> {
+/// This abstraction exposes a specialized API for reading a metadata PDU with minimal copying
+/// involved.
+#[derive(Debug)]
+pub struct MetadataPduReader<'buf> {
     pdu_header: PduHeader,
     metadata_params: MetadataGenericParams,
     #[cfg_attr(feature = "serde", serde(borrow))]
-    src_file_name: Lv<'src_name>,
+    src_file_name: Lv<'buf>,
     #[cfg_attr(feature = "serde", serde(borrow))]
-    dest_file_name: Lv<'dest_name>,
-    options: Option<&'opts [u8]>,
+    dest_file_name: Lv<'buf>,
+    options: &'buf [u8],
 }
 
-impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
-    pub fn new_no_opts(
-        pdu_header: PduHeader,
-        metadata_params: MetadataGenericParams,
-        src_file_name: Lv<'src_name>,
-        dest_file_name: Lv<'dest_name>,
-    ) -> Self {
-        Self::new(
-            pdu_header,
-            metadata_params,
-            src_file_name,
-            dest_file_name,
-            None,
-        )
+impl<'raw> MetadataPduReader<'raw> {
+    pub fn new(buf: &'raw [u8]) -> Result<Self, PduError> {
+        Self::from_bytes(buf)
     }
 
-    pub fn new_with_opts(
-        pdu_header: PduHeader,
-        metadata_params: MetadataGenericParams,
-        src_file_name: Lv<'src_name>,
-        dest_file_name: Lv<'dest_name>,
-        options: &'opts [u8],
-    ) -> Self {
-        Self::new(
-            pdu_header,
-            metadata_params,
-            src_file_name,
-            dest_file_name,
-            Some(options),
-        )
-    }
-
-    pub fn new(
-        mut pdu_header: PduHeader,
-        metadata_params: MetadataGenericParams,
-        src_file_name: Lv<'src_name>,
-        dest_file_name: Lv<'dest_name>,
-        options: Option<&'opts [u8]>,
-    ) -> Self {
-        pdu_header.pdu_type = PduType::FileDirective;
-        pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
-        let mut pdu = Self {
-            pdu_header,
-            metadata_params,
-            src_file_name,
-            dest_file_name,
-            options,
-        };
-        pdu.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
-        pdu
-    }
-
-    pub fn metadata_params(&self) -> &MetadataGenericParams {
-        &self.metadata_params
-    }
-
-    pub fn src_file_name(&self) -> Lv<'src_name> {
-        self.src_file_name
-    }
-
-    pub fn dest_file_name(&self) -> Lv<'dest_name> {
-        self.dest_file_name
-    }
-
-    pub fn options(&self) -> Option<&'opts [u8]> {
-        self.options
-    }
-
-    /// Yield an iterator which can be used to loop through all options. Returns [None] if the
-    /// options field is empty.
-    pub fn options_iter(&self) -> Option<OptionsIter<'opts>> {
-        self.options?;
-        Some(OptionsIter {
-            opt_buf: self.options.unwrap(),
-            current_idx: 0,
-        })
-    }
-
-    fn calc_pdu_datafield_len(&self) -> usize {
-        // One directve type octet and one byte of the directive parameter field.
-        let mut len = 2;
-        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
-            len += 8;
-        } else {
-            len += 4;
-        }
-        len += self.src_file_name.len_full();
-        len += self.dest_file_name.len_full();
-        if let Some(opts) = self.options {
-            len += opts.len();
-        }
-        if self.crc_flag() == CrcFlag::WithCrc {
-            len += 2;
-        }
-        len
-    }
-
-    pub fn from_bytes<'longest: 'src_name + 'dest_name + 'opts>(
-        buf: &'longest [u8],
-    ) -> Result<Self, PduError> {
+    pub fn from_bytes(buf: &'raw [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
         let is_large_file = pdu_header.pdu_conf.file_flag == LargeFileFlag::Large;
@@ -232,21 +295,42 @@ impl<'src_name, 'dest_name, 'opts> MetadataPdu<'src_name, 'dest_name, 'opts> {
         let dest_file_name = Lv::from_bytes(&buf[current_idx..])?;
         current_idx += dest_file_name.len_full();
         // All left-over bytes are options.
-        let mut options = None;
-        if current_idx < full_len_without_crc {
-            options = Some(&buf[current_idx..full_len_without_crc]);
-        }
         Ok(Self {
             pdu_header,
             metadata_params,
             src_file_name,
             dest_file_name,
-            options,
+            options: &buf[current_idx..full_len_without_crc],
         })
+    }
+
+    /// Yield an iterator which can be used to loop through all options. Returns [None] if the
+    /// options field is empty.
+    pub fn options_iter(&self) -> Option<OptionsIter<'_>> {
+        Some(OptionsIter {
+            opt_buf: self.options,
+            current_idx: 0,
+        })
+    }
+
+    pub fn options(&self) -> &'raw [u8] {
+        self.options
+    }
+
+    pub fn metadata_params(&self) -> &MetadataGenericParams {
+        &self.metadata_params
+    }
+
+    pub fn src_file_name(&self) -> Lv {
+        self.src_file_name
+    }
+
+    pub fn dest_file_name(&self) -> Lv {
+        self.dest_file_name
     }
 }
 
-impl CfdpPdu for MetadataPdu<'_, '_, '_> {
+impl CfdpPdu for MetadataPduReader<'_> {
     fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
@@ -256,55 +340,12 @@ impl CfdpPdu for MetadataPdu<'_, '_, '_> {
     }
 }
 
-impl WritablePduPacket for MetadataPdu<'_, '_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.len_written();
-        if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: expected_len,
-            }
-            .into());
-        }
-
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
-        current_idx += 1;
-        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
-            | (self.metadata_params.checksum_type as u8);
-        current_idx += 1;
-        current_idx += write_fss_field(
-            self.pdu_header.common_pdu_conf().file_flag,
-            self.metadata_params.file_size,
-            &mut buf[current_idx..],
-        )?;
-        current_idx += self
-            .src_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
-        current_idx += self
-            .dest_file_name
-            .write_to_be_bytes(&mut buf[current_idx..])?;
-        if let Some(opts) = self.options {
-            buf[current_idx..current_idx + opts.len()].copy_from_slice(opts);
-            current_idx += opts.len();
-        }
-        if self.crc_flag() == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
-    }
-
-    fn len_written(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
-    }
-}
-
 #[cfg(test)]
 pub mod tests {
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
-        MetadataPdu,
+        MetadataPduCreator, MetadataPduReader,
     };
     use crate::cfdp::pdu::tests::{
         common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
@@ -321,11 +362,15 @@ pub mod tests {
     const SRC_FILENAME: &str = "hello-world.txt";
     const DEST_FILENAME: &str = "hello-world2.txt";
 
-    fn generic_metadata_pdu(
+    fn generic_metadata_pdu<'opts>(
         crc_flag: CrcFlag,
         fss: LargeFileFlag,
-        opts: Option<&[u8]>,
-    ) -> (Lv<'static>, Lv<'static>, MetadataPdu<'static, 'static, '_>) {
+        opts: &'opts [Tlv],
+    ) -> (
+        Lv<'static>,
+        Lv<'static>,
+        MetadataPduCreator<'static, 'static, 'opts>,
+    ) {
         let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
         let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 0x1010);
         let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
@@ -334,7 +379,7 @@ pub mod tests {
         (
             src_filename,
             dest_filename,
-            MetadataPdu::new(
+            MetadataPduCreator::new(
                 pdu_header,
                 metadata_params,
                 src_filename,
@@ -347,7 +392,7 @@ pub mod tests {
     #[test]
     fn test_basic() {
         let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
         assert_eq!(
             metadata_pdu.len_written(),
             metadata_pdu.pdu_header().header_len()
@@ -359,7 +404,7 @@ pub mod tests {
         );
         assert_eq!(metadata_pdu.src_file_name(), src_filename);
         assert_eq!(metadata_pdu.dest_file_name(), dest_filename);
-        assert_eq!(metadata_pdu.options(), None);
+        assert!(metadata_pdu.options().is_empty());
         assert_eq!(metadata_pdu.crc_flag(), CrcFlag::NoCrc);
         assert_eq!(metadata_pdu.file_flag(), LargeFileFlag::Normal);
         assert_eq!(metadata_pdu.pdu_type(), PduType::FileDirective);
@@ -380,7 +425,7 @@ pub mod tests {
     #[test]
     fn test_serialization() {
         let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
         let mut buf: [u8; 64] = [0; 64];
         let res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -414,30 +459,38 @@ pub mod tests {
 
     #[test]
     fn test_write_to_vec() {
-        let (_, _, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
         let mut buf: [u8; 64] = [0; 64];
         let pdu_vec = metadata_pdu.to_vec().unwrap();
         let written = metadata_pdu.write_to_bytes(&mut buf).unwrap();
         assert_eq!(buf[0..written], pdu_vec);
     }
 
+    fn compare_read_pdu_to_written_pdu(written: &MetadataPduCreator, read: &MetadataPduReader) {
+        assert_eq!(written.metadata_params(), read.metadata_params());
+        assert_eq!(written.src_file_name(), read.src_file_name());
+        assert_eq!(written.dest_file_name(), read.dest_file_name());
+        let opts = written.options();
+        for (tlv_written, tlv_read) in opts.iter().zip(read.options_iter().unwrap()) {
+            assert_eq!(tlv_written, &tlv_read);
+        }
+    }
+
     #[test]
     fn test_deserialization() {
-        let (_, _, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, None);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
         let mut buf: [u8; 64] = [0; 64];
         metadata_pdu.write_to_bytes(&mut buf).unwrap();
-        let pdu_read_back = MetadataPdu::from_bytes(&buf);
+        let pdu_read_back = MetadataPduReader::from_bytes(&buf);
         assert!(pdu_read_back.is_ok());
         let pdu_read_back = pdu_read_back.unwrap();
-        assert_eq!(pdu_read_back, metadata_pdu);
+        compare_read_pdu_to_written_pdu(&metadata_pdu, &pdu_read_back);
     }
 
     #[test]
     fn test_with_crc_flag() {
         let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::WithCrc, LargeFileFlag::Normal, None);
+            generic_metadata_pdu(CrcFlag::WithCrc, LargeFileFlag::Normal, &[]);
         assert_eq!(metadata_pdu.crc_flag(), CrcFlag::WithCrc);
         let mut buf: [u8; 64] = [0; 64];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
@@ -454,14 +507,14 @@ pub mod tests {
                 + 2
         );
         assert_eq!(written, metadata_pdu.len_written());
-        let pdu_read_back = MetadataPdu::from_bytes(&buf).unwrap();
-        assert_eq!(pdu_read_back, metadata_pdu);
+        let pdu_read_back = MetadataPduReader::new(&buf).unwrap();
+        compare_read_pdu_to_written_pdu(&metadata_pdu, &pdu_read_back);
     }
 
     #[test]
     fn test_with_large_file_flag() {
         let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, None);
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
         let mut buf: [u8; 64] = [0; 64];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(write_res.is_ok());
@@ -475,8 +528,8 @@ pub mod tests {
                 + src_filename.len_full()
                 + dest_filename.len_full()
         );
-        let pdu_read_back = MetadataPdu::from_bytes(&buf).unwrap();
-        assert_eq!(pdu_read_back, metadata_pdu);
+        let pdu_read_back = MetadataPduReader::new(&buf).unwrap();
+        compare_read_pdu_to_written_pdu(&metadata_pdu, &pdu_read_back);
     }
 
     #[test]
@@ -519,13 +572,9 @@ pub mod tests {
         let msg_to_user: [u8; 4] = [1, 2, 3, 4];
         let tlv2 = Tlv::new(TlvType::MsgToUser, &msg_to_user).unwrap();
         let tlv_vec = vec![tlv1, tlv2];
-        let mut opts_buf: [u8; 32] = [0; 32];
-        let opts_len = build_metadata_opts_from_vec(&mut opts_buf, &tlv_vec).unwrap();
-        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
-            CrcFlag::NoCrc,
-            LargeFileFlag::Normal,
-            Some(&opts_buf[..opts_len]),
-        );
+        let opts_len = tlv1.len_full() + tlv2.len_full();
+        let (src_filename, dest_filename, metadata_pdu) =
+            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &tlv_vec);
         let mut buf: [u8; 128] = [0; 128];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(write_res.is_ok());
@@ -540,8 +589,8 @@ pub mod tests {
                 + dest_filename.len_full()
                 + opts_len
         );
-        let pdu_read_back = MetadataPdu::from_bytes(&buf).unwrap();
-        assert_eq!(pdu_read_back, metadata_pdu);
+        let pdu_read_back = MetadataPduReader::from_bytes(&buf).unwrap();
+        compare_read_pdu_to_written_pdu(&metadata_pdu, &pdu_read_back);
         let opts_iter = pdu_read_back.options_iter();
         assert!(opts_iter.is_some());
         let opts_iter = opts_iter.unwrap();
@@ -550,7 +599,7 @@ pub mod tests {
             assert_eq!(tlv_vec[idx], opt);
             accumulated_len += opt.len_full();
         }
-        assert_eq!(accumulated_len, pdu_read_back.options().unwrap().len());
+        assert_eq!(accumulated_len, pdu_read_back.options().len());
     }
 
     #[test]
@@ -565,8 +614,12 @@ pub mod tests {
         let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
         let dest_filename =
             Lv::new_from_str(DEST_FILENAME).expect("Generating destination LV failed");
-        let metadata_pdu =
-            MetadataPdu::new_no_opts(pdu_header, metadata_params, src_filename, dest_filename);
+        let metadata_pdu = MetadataPduCreator::new_no_opts(
+            pdu_header,
+            metadata_params,
+            src_filename,
+            dest_filename,
+        );
         assert_eq!(metadata_pdu.pdu_header().pdu_type(), PduType::FileDirective);
     }
 }

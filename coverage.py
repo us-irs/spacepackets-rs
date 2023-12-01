@@ -18,8 +18,12 @@ def generate_cov_report(open_report: bool):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate coverage report and optionally open it in a browser")
-    parser.add_argument("--open", action="store_true", help="Open the coverage report in a browser")
+    parser = argparse.ArgumentParser(
+        description="Generate coverage report and optionally open it in a browser"
+    )
+    parser.add_argument(
+        "--open", action="store_true", help="Open the coverage report in a browser"
+    )
     args = parser.parse_args()
     generate_cov_report(args.open)
 
