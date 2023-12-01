@@ -2,13 +2,15 @@ use crate::{
     cfdp::{CrcFlag, Direction, LargeFileFlag},
     ByteConversionError,
 };
-use core::marker::PhantomData;
+use core::{marker::PhantomData, mem::size_of};
 
 use super::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, CfdpPdu, FileDirectiveType, PduError,
     PduHeader, WritablePduPacket,
 };
 
+/// Helper type to encapsulate both normal file size segment requests and large file size segment
+/// requests.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SegmentRequests<'a> {
     U32Pairs(&'a [(u32, u32)]),
@@ -246,7 +248,7 @@ impl WritablePduPacket for NakPduCreator<'_> {
 pub struct SegmentRequestIter<'a, T> {
     seq_req_raw: &'a [u8],
     current_idx: usize,
-    phantom: std::marker::PhantomData<T>,
+    phantom: core::marker::PhantomData<T>,
 }
 
 pub trait SegReqFromBytes {
@@ -273,7 +275,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = self.next_at_offset(self.current_idx);
-        self.current_idx += 2 * std::mem::size_of::<T>();
+        self.current_idx += 2 * size_of::<T>();
         value
     }
 }
@@ -314,7 +316,7 @@ where
         if pairs.is_empty() && self.seq_req_raw.is_empty() {
             return true;
         }
-        let size = std::mem::size_of::<T>();
+        let size = size_of::<T>();
         if pairs.len() * 2 * size != self.seq_req_raw.len() {
             return false;
         }
@@ -332,16 +334,16 @@ where
 
 impl<T: SegReqFromBytes> SegmentRequestIter<'_, T> {
     fn next_at_offset(&self, mut offset: usize) -> Option<(T, T)> {
-        if offset + std::mem::size_of::<T>() * 2 > self.seq_req_raw.len() {
+        if offset + size_of::<T>() * 2 > self.seq_req_raw.len() {
             return None;
         }
 
         let start_offset =
-            T::from_bytes(&self.seq_req_raw[offset..offset + std::mem::size_of::<T>()]);
-        offset += std::mem::size_of::<T>();
+            T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
+        offset += size_of::<T>();
 
         let end_offset =
-            T::from_bytes(&self.seq_req_raw[offset..offset + std::mem::size_of::<T>()]);
+            T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
         Some((start_offset, end_offset))
     }
 }
