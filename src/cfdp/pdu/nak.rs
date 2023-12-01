@@ -512,17 +512,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_basic_creator() {
-        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 0, 0)
-            .expect("creating NAK PDU creator failed");
-        assert_eq!(nak_pdu.start_of_scope(), 0);
-        assert_eq!(nak_pdu.end_of_scope(), 0);
-        assert_eq!(nak_pdu.segment_requests(), None);
-        assert_eq!(nak_pdu.num_segment_reqs(), 0);
-
+    fn check_generic_fields(nak_pdu: &impl CfdpPdu) {
         assert_eq!(nak_pdu.crc_flag(), CrcFlag::NoCrc);
         assert_eq!(nak_pdu.file_flag(), LargeFileFlag::Normal);
         assert_eq!(nak_pdu.pdu_type(), PduType::FileDirective);
@@ -535,6 +525,27 @@ mod tests {
         assert_eq!(nak_pdu.source_id(), TEST_SRC_ID.into());
         assert_eq!(nak_pdu.dest_id(), TEST_DEST_ID.into());
         assert_eq!(nak_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
+    }
+
+    #[test]
+    fn test_seg_request_api() {
+        let seg_req = SegmentRequests::U32Pairs(&[]);
+        assert!(seg_req.is_empty());
+        let seg_req = SegmentRequests::U64Pairs(&[]);
+        assert!(seg_req.is_empty());
+    }
+
+    #[test]
+    fn test_basic_creator() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 0, 0)
+            .expect("creating NAK PDU creator failed");
+        assert_eq!(nak_pdu.start_of_scope(), 0);
+        assert_eq!(nak_pdu.end_of_scope(), 0);
+        assert_eq!(nak_pdu.segment_requests(), None);
+        assert_eq!(nak_pdu.num_segment_reqs(), 0);
+        check_generic_fields(&nak_pdu);
     }
 
     #[test]
@@ -619,6 +630,7 @@ mod tests {
             .expect("writing NAK PDU to buffer failed");
         let nak_pdu_deser = NakPduReader::from_bytes(&buf).expect("deserializing NAK PDU failed");
         assert_eq!(nak_pdu_deser, nak_pdu);
+        check_generic_fields(&nak_pdu_deser);
     }
 
     #[test]
@@ -719,5 +731,45 @@ mod tests {
         assert_eq!(nak_pdu_0, nak_pdu_1);
         // Assert the segment request is mapped to None.
         assert!(nak_pdu_0.segment_requests().is_none());
+    }
+
+    #[test]
+    fn test_new_generic_invalid_input() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let u32_list = SegmentRequests::U32Pairs(&[(0, 50), (50, 100)]);
+        if let Err(PduError::InvalidStartOrEndOfScopeValue) = NakPduCreator::new_generic(
+            pdu_header,
+            u32::MAX as u64 + 1,
+            u32::MAX as u64 + 2,
+            Some(u32_list),
+        ) {
+        } else {
+            panic!("API call did not fail");
+        }
+    }
+
+    #[test]
+    fn test_target_buf_too_small() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
+            .expect("creating NAK PDU creator failed");
+        assert_eq!(nak_pdu.start_of_scope(), 100);
+        assert_eq!(nak_pdu.end_of_scope(), 300);
+        let mut buf: [u8; 5] = [0; 5];
+        let error = nak_pdu.write_to_bytes(&mut buf);
+        assert!(error.is_err());
+        let e = error.unwrap_err();
+        match e {
+            PduError::ByteConversionError(conv_error) => match conv_error {
+                ByteConversionError::ToSliceTooSmall { found, expected } => {
+                    assert_eq!(expected, nak_pdu.len_written());
+                    assert_eq!(found, 5);
+                }
+                _ => panic!("unexpected error {conv_error}"),
+            },
+            _ => panic!("unexpected error {e}"),
+        }
     }
 }
