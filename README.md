@@ -56,6 +56,7 @@ already, install the `llvm-tools-preview`:
 
 ```sh
 rustup component add llvm-tools-preview
+cargo install grcov --locked
 ```
 
 After that, you can simply run `coverage.py` to test the project with coverage. You can optionally
