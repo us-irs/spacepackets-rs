@@ -338,12 +338,10 @@ impl<T: SegReqFromBytes> SegmentRequestIter<'_, T> {
             return None;
         }
 
-        let start_offset =
-            T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
+        let start_offset = T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
         offset += size_of::<T>();
 
-        let end_offset =
-            T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
+        let end_offset = T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
         Some((start_offset, end_offset))
     }
 }
