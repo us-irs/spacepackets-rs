@@ -43,6 +43,14 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         })
     }
 
+    pub fn record_continuation_state(&self) -> RecordContinuationState {
+        self.record_continuation_state
+    }
+
+    pub fn metadata(&self) -> Option<&'seg_meta [u8]> {
+        self.metadata
+    }
+
     pub fn written_len(&self) -> usize {
         // Map empty metadata to 0 and slice to its length.
         1 + self.metadata.map_or(0, |meta| meta.len())
@@ -162,9 +170,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         self.segment_metadata.as_ref()
     }
 
-    pub fn from_bytes<'longest: 'seg_meta + 'file_data>(
-        buf: &'longest [u8],
-    ) -> Result<Self, PduError> {
+    pub fn from_bytes<'buf: 'seg_meta + 'file_data>(buf: &'buf [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
         let min_expected_len = current_idx + core::mem::size_of::<u32>();
