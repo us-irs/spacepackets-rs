@@ -1205,8 +1205,22 @@ mod tests {
 
     #[test]
     fn test_reader_buf_too_small() {
-        let small_buf: [u8; 5] = [0; 5];
-        let error = PusTcReader::new(&small_buf);
-        // if let PusError::RawDataTooShort()
+        let app_data = &[1, 2, 3, 4];
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(app_data);
+        let mut buf = [0; 32];
+        let written_len = pus_tc.write_to_bytes(&mut buf).unwrap();
+        let error = PusTcReader::new(&buf[0..PUS_TC_MIN_LEN_WITHOUT_APP_DATA + 1]);
+        assert!(error.is_err());
+        let error = error.unwrap_err();
+        if let PusError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+            found,
+            expected,
+        }) = error
+        {
+            assert_eq!(found, PUS_TC_MIN_LEN_WITHOUT_APP_DATA + 1);
+            assert_eq!(expected, written_len);
+        } else {
+            panic!("unexpected error {error}")
+        }
     }
 }
