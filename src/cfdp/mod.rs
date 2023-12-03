@@ -180,7 +180,7 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlvLvError {
     DataTooLarge(usize),
-    ByteConversionError(ByteConversionError),
+    ByteConversion(ByteConversionError),
     /// First value: Found value. Second value: Expected value if there is one.
     InvalidTlvTypeField((u8, Option<u8>)),
     /// Logically invalid value length detected. The value length may not exceed 255 bytes.
@@ -195,7 +195,7 @@ pub enum TlvLvError {
 
 impl From<ByteConversionError> for TlvLvError {
     fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversionError(value)
+        Self::ByteConversion(value)
     }
 }
 
@@ -210,7 +210,7 @@ impl Display for TlvLvError {
                     u8::MAX
                 )
             }
-            TlvLvError::ByteConversionError(e) => {
+            TlvLvError::ByteConversion(e) => {
                 write!(f, "{}", e)
             }
             TlvLvError::InvalidTlvTypeField((found, expected)) => {
@@ -236,8 +236,32 @@ impl Display for TlvLvError {
 impl Error for TlvLvError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            TlvLvError::ByteConversionError(e) => Some(e),
+            TlvLvError::ByteConversion(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_crc_from_bool() {
+        assert_eq!(CrcFlag::from(false), CrcFlag::NoCrc);
+    }
+
+    #[test]
+    fn test_crc_flag_to_bool() {
+        let is_true: bool = CrcFlag::WithCrc.into();
+        assert!(is_true);
+        let is_false: bool = CrcFlag::NoCrc.into();
+        assert!(!is_false);
+    }
+
+    #[test]
+    fn test_default_checksum_type() {
+        let checksum = ChecksumType::default();
+        assert_eq!(checksum, ChecksumType::NullChecksum);
     }
 }

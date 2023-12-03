@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   allow those fields to have different widths.
 - Removed the `PusError::RawDataTooShort` variant which is already covered by
   `PusError::ByteConversionError` variant.
+- Ranamed `TlvLvError::ByteConversionError` to `TlvLvError::ByteConversion`.
+
+## Removed
+
+- Removed `PusError::NoRawData` and renamed `PusError::IncorrectCrc` to
+  `PusError::ChecksumFailure`.
 
 # [v0.7.0-beta.2] 2023-09-26
 

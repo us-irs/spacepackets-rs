@@ -241,7 +241,7 @@ impl EntityIdTlv {
         self.entity_id
             .write_to_be_bytes(&mut buf[2..2 + self.entity_id.size()])?;
         Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).map_err(|e| match e {
-            TlvLvError::ByteConversionError(e) => e,
+            TlvLvError::ByteConversion(e) => e,
             // All other errors are impossible.
             _ => panic!("unexpected TLV error"),
         })
