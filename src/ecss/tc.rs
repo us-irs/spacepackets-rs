@@ -878,6 +878,7 @@ mod tests {
     use crate::ecss::{PusError, PusPacket, WritablePusPacket};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
+    use alloc::string::ToString;
     use alloc::vec::Vec;
 
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
@@ -1013,10 +1014,19 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         test_buf[12] = 0;
+        test_buf[11] = 0;
         let res = PusTcReader::new(&test_buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
-        assert!(matches!(err, PusError::IncorrectCrc { .. }));
+        if let PusError::ChecksumFailure(crc) = err {
+            assert_eq!(crc, 0);
+            assert_eq!(
+                err.to_string(),
+                "checksum verification for crc16 0x0000 failed"
+            );
+        } else {
+            panic!("unexpected error {err}");
+        }
     }
 
     #[test]

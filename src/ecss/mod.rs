@@ -152,8 +152,7 @@ pub enum RealPfc {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
-    IncorrectCrc(u16),
-    NoRawData,
+    ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
     ByteConversion(ByteConversionError),
@@ -165,11 +164,8 @@ impl Display for PusError {
             PusError::VersionNotSupported(v) => {
                 write!(f, "PUS version {v:?} not supported")
             }
-            PusError::IncorrectCrc(crc) => {
-                write!(f, "crc16 {crc:#04x} is incorrect")
-            }
-            PusError::NoRawData => {
-                write!(f, "no raw data provided")
+            PusError::ChecksumFailure(crc) => {
+                write!(f, "checksum verification for crc16 {crc:#06x} failed")
             }
             PusError::CrcCalculationMissing => {
                 write!(f, "crc16 was not calculated")
@@ -269,7 +265,7 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
 ) -> Result<(), PusError> {
     verify_crc16_ccitt_false_from_raw(raw_data)
         .then(|| ())
-        .ok_or(PusError::IncorrectCrc(crc16))
+        .ok_or(PusError::ChecksumFailure(crc16))
 }
 
 pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
@@ -391,6 +387,9 @@ mod tests {
     fn test_enum_u8() {
         let mut buf = [0, 0, 0];
         let my_enum = EcssEnumU8::new(1);
+        assert_eq!(EcssEnumU8::ptc(), Ptc::Enumerated);
+        assert_eq!(my_enum.size(), 1);
+        assert_eq!(my_enum.pfc(), 8);
         my_enum
             .write_to_be_bytes(&mut buf[1..2])
             .expect("To byte conversion of u8 failed");
@@ -404,6 +403,8 @@ mod tests {
         my_enum
             .write_to_be_bytes(&mut buf[1..3])
             .expect("To byte conversion of u8 failed");
+        assert_eq!(my_enum.size(), 2);
+        assert_eq!(my_enum.pfc(), 16);
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
     }
@@ -476,5 +477,19 @@ mod tests {
         let ptc_raw = Ptc::AbsoluteTime as u8;
         let ptc = Ptc::try_from(ptc_raw).unwrap();
         assert_eq!(ptc, Ptc::AbsoluteTime);
+    }
+
+    #[test]
+    fn test_unsigned_pfc_from_u8() {
+        let pfc_raw = UnsignedPfc::OneByte as u8;
+        let pfc = UnsignedPfc::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, UnsignedPfc::OneByte);
+    }
+
+    #[test]
+    fn test_real_pfc_from_u8() {
+        let pfc_raw = RealPfc::Double as u8;
+        let pfc = RealPfc::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, RealPfc::Double);
     }
 }
