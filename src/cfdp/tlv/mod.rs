@@ -208,6 +208,10 @@ impl EntityIdTlv {
         Ok(())
     }
 
+    pub fn entity_id(&self) -> &UnsignedByteField {
+        &self.entity_id
+    }
+
     pub fn len_value(&self) -> usize {
         self.entity_id.size()
     }
@@ -220,7 +224,7 @@ impl EntityIdTlv {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.size() as u8;
-        self.entity_id.write_to_be_bytes(&mut buf[2..])
+        Ok(2 + self.entity_id.write_to_be_bytes(&mut buf[2..])?)
     }
 
     pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
@@ -481,10 +485,13 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 
 #[cfg(test)]
 mod tests {
+    use std::println;
+
+    use super::*;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::tlv::{FilestoreActionCode, FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
     use crate::cfdp::TlvLvError;
-    use crate::util::{UbfU8, UnsignedEnum};
+    use crate::util::{UbfU16, UbfU8, UnsignedEnum};
 
     const TLV_TEST_STR_0: &str = "hello.txt";
     const TLV_TEST_STR_1: &str = "hello2.txt";
@@ -542,6 +549,30 @@ mod tests {
         assert_eq!(tlv_from_raw.value().len(), 1);
         assert_eq!(tlv_from_raw.len_full(), 3);
         assert_eq!(tlv_from_raw.value()[0], 5);
+    }
+
+    #[test]
+    fn test_entity_id_tlv() {
+        let entity_id = UbfU16::new(0x0102);
+        let entity_id_tlv = EntityIdTlv::new(entity_id.into());
+        let mut buf: [u8; 16] = [0; 16];
+        let written_len = entity_id_tlv.write_to_be_bytes(&mut buf).unwrap();
+        assert_eq!(written_len, entity_id_tlv.len_full());
+        assert_eq!(buf[0], TlvType::EntityId as u8);
+        assert_eq!(buf[1], 2);
+        assert_eq!(u16::from_be_bytes(buf[2..4].try_into().unwrap()), 0x0102);
+    }
+
+    #[test]
+    fn test_entity_id_from_raw() {
+        let entity_id = UbfU16::new(0x0102);
+        let entity_id_tlv = EntityIdTlv::new(entity_id.into());
+        let mut buf: [u8; 16] = [0; 16];
+        let _ = entity_id_tlv.write_to_be_bytes(&mut buf).unwrap();
+        let entity_tlv_from_raw =
+            EntityIdTlv::from_bytes(&buf).expect("creating entity ID TLV failed");
+        assert_eq!(entity_tlv_from_raw, entity_id_tlv);
+        assert_eq!(entity_tlv_from_raw.entity_id(), &entity_id.into());
     }
 
     #[test]

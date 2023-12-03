@@ -97,17 +97,6 @@ pub enum FaultHandlerCode {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum LenInBytes {
-    ZeroOrNone = 0,
-    OneByte = 1,
-    TwoBytes = 2,
-    ThreeBytes = 4,
-    FourBytes = 8,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(u8)]
 pub enum ConditionCode {
     /// This is not an error condition for which a faulty handler override can be specified
     NoError = 0b0000,
@@ -263,5 +252,12 @@ mod tests {
     fn test_default_checksum_type() {
         let checksum = ChecksumType::default();
         assert_eq!(checksum, ChecksumType::NullChecksum);
+    }
+
+    #[test]
+    fn test_fault_handler_code_from_u8() {
+        let fault_handler_code_raw = FaultHandlerCode::NoticeOfSuspension as u8;
+        let fault_handler_code = FaultHandlerCode::try_from(fault_handler_code_raw).unwrap();
+        assert_eq!(fault_handler_code, FaultHandlerCode::NoticeOfSuspension);
     }
 }
