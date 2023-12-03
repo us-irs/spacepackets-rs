@@ -381,14 +381,29 @@ pub mod legacy_tm {
         ) -> Result<(Self, usize), PusError> {
             let raw_data_len = slice.len();
             if raw_data_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-                return Err(PusError::RawDataTooShort(raw_data_len));
+                return Err(ByteConversionError::FromSliceTooSmall {
+                    found: raw_data_len,
+                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+                }
+                .into());
             }
             let mut current_idx = 0;
             let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
             current_idx += 6;
             let total_len = sp_header.total_len();
-            if raw_data_len < total_len || total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-                return Err(PusError::RawDataTooShort(raw_data_len));
+            if raw_data_len < total_len {
+                return Err(ByteConversionError::FromSliceTooSmall {
+                    found: raw_data_len,
+                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+                }
+                .into());
+            }
+            if total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
+                return Err(ByteConversionError::FromSliceTooSmall {
+                    found: total_len,
+                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+                }
+                .into());
             }
             let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
                 &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
@@ -405,7 +420,7 @@ pub mod legacy_tm {
                 sp_header,
                 sec_header: PusTmSecondaryHeader::try_from(zc_sec_header_wrapper).unwrap(),
                 raw_data: Some(&slice[0..total_len]),
-                source_data: user_data_from_raw(current_idx, total_len, raw_data_len, slice)?,
+                source_data: user_data_from_raw(current_idx, total_len, slice)?,
                 calc_crc_on_serialization: false,
                 crc16: Some(crc_from_raw_data(raw_data)?),
             };
@@ -760,14 +775,29 @@ impl<'raw_data> PusTmReader<'raw_data> {
     pub fn new(slice: &'raw_data [u8], timestamp_len: usize) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-            return Err(PusError::RawDataTooShort(raw_data_len));
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: raw_data_len,
+                expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+            }
+            .into());
         }
         let mut current_idx = 0;
         let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
         current_idx += 6;
         let total_len = sp_header.total_len();
-        if raw_data_len < total_len || total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-            return Err(PusError::RawDataTooShort(raw_data_len));
+        if raw_data_len < total_len {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: raw_data_len,
+                expected: total_len,
+            }
+            .into());
+        }
+        if total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: total_len,
+                expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+            }
+            .into());
         }
         let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
             &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
@@ -784,7 +814,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
             sp_header,
             sec_header: PusTmSecondaryHeader::try_from(zc_sec_header_wrapper).unwrap(),
             raw_data: &slice[0..total_len],
-            source_data: user_data_from_raw(current_idx, total_len, raw_data_len, slice)?,
+            source_data: user_data_from_raw(current_idx, total_len, slice)?,
             crc16: crc_from_raw_data(raw_data)?,
         };
         verify_crc16_ccitt_false_from_raw_to_pus_error(raw_data, pus_tm.crc16)?;
