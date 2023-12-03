@@ -74,6 +74,7 @@ pub enum PusServiceId {
 /// All PUS versions. Only PUS C is supported by this library.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
 pub enum PusVersion {
     EsaPus = 0,
     PusA = 1,
@@ -95,8 +96,9 @@ impl TryFrom<u8> for PusVersion {
 }
 
 /// ECSS Packet Type Codes (PTC)s.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
 pub enum PacketTypeCodes {
     Boolean = 1,
     Enumerated = 2,
@@ -115,8 +117,9 @@ pub enum PacketTypeCodes {
 pub type Ptc = PacketTypeCodes;
 
 /// ECSS Packet Field Codes (PFC)s for the unsigned [Ptc].
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
 pub enum UnsignedPfc {
     OneByte = 4,
     TwelveBits = 8,
@@ -131,8 +134,9 @@ pub enum UnsignedPfc {
 }
 
 /// ECSS Packet Field Codes (PFC)s for the real (floating point) [Ptc].
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
 pub enum RealPfc {
     /// 4 octets simple precision format (IEEE)
     Float = 1,
@@ -376,8 +380,12 @@ pub trait WritablePusPacket {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, UnsignedEnum};
     use crate::ByteConversionError;
+
+    use super::*;
 
     #[test]
     fn test_enum_u8() {
@@ -447,5 +455,26 @@ mod tests {
                 panic!("Unexpected error {:?}", error);
             }
         }
+    }
+
+    #[test]
+    fn test_pus_error_display() {
+        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus);
+        let write_str = unsupport_version.to_string();
+        assert_eq!(write_str, "PUS version EsaPus not supported")
+    }
+
+    #[test]
+    fn test_service_id_from_u8() {
+        let verification_id_raw = 1;
+        let verification_id = PusServiceId::try_from(verification_id_raw).unwrap();
+        assert_eq!(verification_id, PusServiceId::Verification);
+    }
+
+    #[test]
+    fn test_ptc_from_u8() {
+        let ptc_raw = Ptc::AbsoluteTime as u8;
+        let ptc = Ptc::try_from(ptc_raw).unwrap();
+        assert_eq!(ptc, Ptc::AbsoluteTime);
     }
 }
