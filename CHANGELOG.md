@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Introduce custom implementation of `PartialEq` for `CommonPduConfig` which only compares the
   values for the source entity ID, destination entity ID and transaction sequence number field to
   allow those fields to have different widths.
+- Removed the `PusError::RawDataTooShort` variant which is already covered by
+  `PusError::ByteConversionError` variant.
 
 # [v0.7.0-beta.2] 2023-09-26
 
