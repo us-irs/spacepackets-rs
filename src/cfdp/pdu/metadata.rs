@@ -3,7 +3,7 @@ use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::Tlv;
+use crate::cfdp::tlv::{Tlv, WritableTlv};
 use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
 use crate::ByteConversionError;
 #[cfg(feature = "alloc")]

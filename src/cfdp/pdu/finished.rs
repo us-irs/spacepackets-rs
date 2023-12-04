@@ -1,7 +1,7 @@
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::{EntityIdTlv, Tlv, TlvType, TlvTypeField};
+use crate::cfdp::tlv::{EntityIdTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType, TlvLvError};
 use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -255,7 +255,7 @@ impl WritablePduPacket for FinishedPdu<'_> {
             current_idx += fs_responses.len();
         }
         if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_be_bytes(&mut buf[current_idx..])?;
+            current_idx += fault_location.write_to_bytes(&mut buf[current_idx..])?;
         }
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);

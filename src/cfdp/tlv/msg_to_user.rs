@@ -1,5 +1,5 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
-use super::{Tlv, TlvLvError, TlvType, TlvTypeField};
+use super::{GenericTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::ByteConversionError;
 use delegate::delegate;
 
@@ -18,8 +18,6 @@ impl<'data> MsgToUserTlv<'data> {
 
     delegate! {
         to self.tlv {
-            pub fn tlv_type_field(&self) -> TlvTypeField;
-            pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
             pub fn value(&self) -> &[u8];
             /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
             /// [Self::value]
@@ -69,13 +67,31 @@ impl<'data> MsgToUserTlv<'data> {
                 }
             }
             TlvTypeField::Custom(raw) => {
-                return Err(TlvLvError::InvalidTlvTypeField{
+                return Err(TlvLvError::InvalidTlvTypeField {
                     found: raw,
                     expected: Some(TlvType::MsgToUser as u8),
                 });
             }
         }
         Ok(msg_to_user)
+    }
+}
+
+impl WritableTlv for MsgToUserTlv<'_> {
+    fn len_written(&self) -> usize {
+        self.len_full()
+    }
+
+    delegate!(
+        to self.tlv {
+            fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+        }
+    );
+}
+
+impl GenericTlv for MsgToUserTlv<'_> {
+    fn tlv_type_field(&self) -> TlvTypeField {
+        TlvTypeField::Standard(TlvType::MsgToUser)
     }
 }
 

@@ -2,7 +2,7 @@ use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::EntityIdTlv;
+use crate::cfdp::tlv::{EntityIdTlv, WritableTlv};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
 use crate::ByteConversionError;
 #[cfg(feature = "serde")]
@@ -147,7 +147,7 @@ impl WritablePduPacket for EofPdu {
             &mut buf[current_idx..],
         )?;
         if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_be_bytes(buf)?;
+            current_idx += fault_location.write_to_bytes(buf)?;
         }
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Add `WritablePduPacket` trait which is a common trait of all CFDP PDU implementations.
 - Add `CfdpPdu` trait which exposes fields and attributes common to all CFDP PDUs.
+- Add `GenericTlv` and `WritableTlv` trait as abstractions for the various TLV types.
 
 ## Fixed
 

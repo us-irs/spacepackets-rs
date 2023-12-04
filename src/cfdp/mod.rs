@@ -205,14 +205,14 @@ impl Display for TlvLvError {
             TlvLvError::ByteConversion(e) => {
                 write!(f, "tlv or lv byte conversion: {}", e)
             }
-            TlvLvError::InvalidTlvTypeField((found, expected)) => {
+            TlvLvError::InvalidTlvTypeField { found, expected } => {
                 write!(
                     f,
-                    "invalid TLV type field, found {found}, possibly expected {expected:?}"
+                    "invalid TLV type field, found {found}, expected {expected:?}"
                 )
             }
             TlvLvError::InvalidValueLength(len) => {
-                write!(f, "invalid value length {len} detected")
+                write!(f, "invalid value length {len}")
             }
             TlvLvError::SecondNameMissing => {
                 write!(f, "second name missing for filestore request or response")
