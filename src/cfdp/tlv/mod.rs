@@ -176,13 +176,15 @@ impl<'data> Tlv<'data> {
 }
 
 pub(crate) fn verify_tlv_type(raw_type: u8, expected_tlv_type: TlvType) -> Result<(), TlvLvError> {
-    let tlv_type = TlvType::try_from(raw_type)
-        .map_err(|_| TlvLvError::InvalidTlvTypeField((raw_type, Some(expected_tlv_type as u8))))?;
+    let tlv_type = TlvType::try_from(raw_type).map_err(|_| TlvLvError::InvalidTlvTypeField {
+        found: raw_type,
+        expected: Some(expected_tlv_type.into()),
+    })?;
     if tlv_type != expected_tlv_type {
-        return Err(TlvLvError::InvalidTlvTypeField((
-            tlv_type as u8,
-            Some(expected_tlv_type as u8),
-        )));
+        return Err(TlvLvError::InvalidTlvTypeField {
+            found: tlv_type as u8,
+            expected: Some(expected_tlv_type as u8),
+        });
     }
     Ok(())
 }
@@ -259,17 +261,17 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
         match value.tlv_type_field {
             TlvTypeField::Standard(tlv_type) => {
                 if tlv_type != TlvType::EntityId {
-                    return Err(TlvLvError::InvalidTlvTypeField((
-                        tlv_type as u8,
-                        Some(TlvType::EntityId as u8),
-                    )));
+                    return Err(TlvLvError::InvalidTlvTypeField {
+                        found: tlv_type as u8,
+                        expected: Some(TlvType::EntityId as u8),
+                    });
                 }
             }
             TlvTypeField::Custom(val) => {
-                return Err(TlvLvError::InvalidTlvTypeField((
-                    val,
-                    Some(TlvType::EntityId as u8),
-                )));
+                return Err(TlvLvError::InvalidTlvTypeField {
+                    found: val,
+                    expected: Some(TlvType::EntityId as u8),
+                });
             }
         }
         let len_value = value.value().len();
@@ -485,7 +487,8 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 
 #[cfg(test)]
 mod tests {
-    use std::println;
+
+    use alloc::string::ToString;
 
     use super::*;
     use crate::cfdp::lv::Lv;
@@ -623,6 +626,10 @@ mod tests {
         let error = tlv_res.unwrap_err();
         if let TlvLvError::DataTooLarge(size) = error {
             assert_eq!(size, u8::MAX as usize + 1);
+            assert_eq!(
+                error.to_string(),
+                "data with size 256 larger than allowed 255 bytes"
+            );
         } else {
             panic!("unexpected error {:?}", error);
         }
@@ -825,5 +832,20 @@ mod tests {
         assert!(req_conv_back.is_ok());
         let req_conv_back = req_conv_back.unwrap();
         assert_eq!(req_conv_back, req);
+    }
+
+    #[test]
+    fn test_entity_it_tlv_to_tlv() {
+        let entity_id = UbfU16::new(0x0102);
+        let entity_id_tlv = EntityIdTlv::new(entity_id.into());
+        let mut binding = [0; 16];
+        let tlv = entity_id_tlv.to_tlv(&mut binding).unwrap();
+        assert_eq!(
+            tlv.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::EntityId)
+        );
+        assert_eq!(tlv.len_full(), 4);
+        assert_eq!(tlv.len_value(), 2);
+        assert_eq!(tlv.value(), &[0x01, 0x02]);
     }
 }

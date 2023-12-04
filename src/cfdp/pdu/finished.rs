@@ -202,11 +202,19 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
                             return Err(PduError::FormatError);
                         }
                     } else {
-                        return Err(TlvLvError::InvalidTlvTypeField((tlv_type as u8, None)).into());
+                        return Err(TlvLvError::InvalidTlvTypeField {
+                            found: tlv_type.into(),
+                            expected: Some(TlvType::FilestoreResponse.into()),
+                        }
+                        .into());
                     }
                 }
                 TlvTypeField::Custom(raw) => {
-                    return Err(TlvLvError::InvalidTlvTypeField((raw, None)).into());
+                    return Err(TlvLvError::InvalidTlvTypeField {
+                        found: raw,
+                        expected: None,
+                    }
+                    .into());
                 }
             }
         }

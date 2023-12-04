@@ -62,17 +62,17 @@ impl<'data> MsgToUserTlv<'data> {
         match msg_to_user.tlv_type_field() {
             TlvTypeField::Standard(tlv_type) => {
                 if tlv_type != TlvType::MsgToUser {
-                    return Err(TlvLvError::InvalidTlvTypeField((
-                        tlv_type as u8,
-                        Some(TlvType::MsgToUser as u8),
-                    )));
+                    return Err(TlvLvError::InvalidTlvTypeField {
+                        found: tlv_type as u8,
+                        expected: Some(TlvType::MsgToUser as u8),
+                    });
                 }
             }
             TlvTypeField::Custom(raw) => {
-                return Err(TlvLvError::InvalidTlvTypeField((
-                    raw,
-                    Some(TlvType::MsgToUser as u8),
-                )));
+                return Err(TlvLvError::InvalidTlvTypeField{
+                    found: raw,
+                    expected: Some(TlvType::MsgToUser as u8),
+                });
             }
         }
         Ok(msg_to_user)

@@ -171,7 +171,10 @@ pub enum TlvLvError {
     DataTooLarge(usize),
     ByteConversion(ByteConversionError),
     /// First value: Found value. Second value: Expected value if there is one.
-    InvalidTlvTypeField((u8, Option<u8>)),
+    InvalidTlvTypeField {
+        found: u8,
+        expected: Option<u8>,
+    },
     /// Logically invalid value length detected. The value length may not exceed 255 bytes.
     /// Depending on the concrete TLV type, the value length may also be logically invalid.
     InvalidValueLength(usize),
@@ -200,7 +203,7 @@ impl Display for TlvLvError {
                 )
             }
             TlvLvError::ByteConversion(e) => {
-                write!(f, "{}", e)
+                write!(f, "tlv or lv byte conversion: {}", e)
             }
             TlvLvError::InvalidTlvTypeField((found, expected)) => {
                 write!(

@@ -165,7 +165,9 @@ impl<'data> Lv<'data> {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::cfdp::lv::Lv;
+    use super::*;
+    use alloc::string::ToString;
+
     use crate::cfdp::TlvLvError;
     use crate::ByteConversionError;
     use std::string::String;
@@ -176,7 +178,7 @@ pub mod tests {
         let lv_res = Lv::new(&lv_data);
         assert!(lv_res.is_ok());
         let lv = lv_res.unwrap();
-        assert!(lv.value().len() > 0);
+        assert!(!lv.value().is_empty());
         let val = lv.value();
         assert_eq!(val[0], 1);
         assert_eq!(val[1], 2);
@@ -259,6 +261,10 @@ pub mod tests {
         let error = lv.unwrap_err();
         if let TlvLvError::DataTooLarge(size) = error {
             assert_eq!(size, u8::MAX as usize + 1);
+            assert_eq!(
+                error.to_string(),
+                "data with size 256 larger than allowed 255 bytes"
+            );
         } else {
             panic!("invalid exception {:?}", error)
         }
