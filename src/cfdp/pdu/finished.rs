@@ -334,6 +334,7 @@ mod tests {
         let written = finished_pdu.write_to_bytes(&mut buf);
         assert!(written.is_ok());
         let written = written.unwrap();
+        assert_eq!(written, 9);
         assert_eq!(written, finished_pdu.len_written());
         assert_eq!(written, finished_pdu.pdu_header().header_len() + 2);
         assert_eq!(
@@ -422,5 +423,48 @@ mod tests {
         } else {
             panic!("expected crc error");
         }
+    }
+
+    #[test]
+    fn test_with_fault_location() {
+        let pdu_header =
+            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let finished_pdu = FinishedPdu::new_with_error(
+            pdu_header,
+            ConditionCode::NakLimitReached,
+            DeliveryCode::Incomplete,
+            FileStatus::DiscardDeliberately,
+            EntityIdTlv::new(TEST_DEST_ID.into()),
+        );
+        let finished_pdu_vec = finished_pdu.to_vec().unwrap();
+        assert_eq!(finished_pdu_vec.len(), 12);
+        assert_eq!(finished_pdu_vec[9], TlvType::EntityId.into());
+        assert_eq!(finished_pdu_vec[10], 1);
+        assert_eq!(finished_pdu_vec[11], TEST_DEST_ID.value());
+        assert_eq!(
+            finished_pdu.fault_location().unwrap().entity_id(),
+            &TEST_DEST_ID.into()
+        );
+    }
+
+    #[test]
+    fn test_deserialization_with_fault_location() {
+        let pdu_header =
+            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let entity_id_tlv = EntityIdTlv::new(TEST_DEST_ID.into());
+        let finished_pdu = FinishedPdu::new_with_error(
+            pdu_header,
+            ConditionCode::NakLimitReached,
+            DeliveryCode::Incomplete,
+            FileStatus::DiscardDeliberately,
+            entity_id_tlv,
+        );
+        let finished_pdu_vec = finished_pdu.to_vec().unwrap();
+        let finished_pdu_deserialized = FinishedPdu::from_bytes(&finished_pdu_vec).unwrap();
+        assert!(finished_pdu_deserialized.fault_location().is_some());
+        assert_eq!(
+            finished_pdu_deserialized.fault_location().unwrap(),
+            entity_id_tlv
+        )
     }
 }

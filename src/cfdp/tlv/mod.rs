@@ -131,6 +131,13 @@ impl<'data> Tlv<'data> {
         })
     }
 
+    pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Result<Tlv, TlvLvError> {
+        Ok(Tlv {
+            tlv_type_field: TlvTypeField::Custom(tlv_type),
+            lv: Lv::new(data)?,
+        })
+    }
+
     /// Creates a TLV with an empty value field.
     pub fn new_empty(tlv_type: TlvType) -> Tlv<'data> {
         Tlv {
@@ -608,10 +615,24 @@ mod tests {
         let mut buf: [u8; 16] = [0; 16];
         let written_len = entity_id_tlv.write_to_bytes(&mut buf).unwrap();
         assert_eq!(written_len, entity_id_tlv.len_full());
+        assert_eq!(entity_id_tlv.len_value(), 2);
         assert!(entity_id_tlv.is_standard_tlv());
+        assert_eq!(entity_id_tlv.tlv_type().unwrap(), TlvType::EntityId);
         assert_eq!(buf[0], TlvType::EntityId as u8);
         assert_eq!(buf[1], 2);
         assert_eq!(u16::from_be_bytes(buf[2..4].try_into().unwrap()), 0x0102);
+        let entity_id_as_vec = entity_id_tlv.to_vec();
+        assert_eq!(entity_id_as_vec, buf[0..written_len].to_vec());
+    }
+
+    #[test]
+    fn test_entity_id_from_generic_tlv() {
+        let entity_id = UbfU16::new(0x0102);
+        let entity_id_tlv = EntityIdTlv::new(entity_id.into());
+        let mut buf: [u8; 16] = [0; 16];
+        let entity_id_as_tlv: Tlv = entity_id_tlv.to_tlv(&mut buf).unwrap();
+        let entity_id_converted_back: EntityIdTlv = entity_id_as_tlv.try_into().unwrap();
+        assert_eq!(entity_id_converted_back, entity_id_tlv);
     }
 
     #[test]
@@ -931,5 +952,20 @@ mod tests {
         } else {
             panic!("unexpected error");
         }
+    }
+
+    #[test]
+    fn test_custom_tlv() {
+        let custom_tlv = Tlv::new_with_custom_type(20, &[]).unwrap();
+        assert!(custom_tlv.tlv_type().is_none());
+        if let TlvTypeField::Custom(val) = custom_tlv.tlv_type_field() {
+            assert_eq!(val, 20);
+        } else {
+            panic!("unexpected type field");
+        }
+        let tlv_as_vec = custom_tlv.to_vec();
+        assert_eq!(tlv_as_vec.len(), 2);
+        assert_eq!(tlv_as_vec[0], 20);
+        assert_eq!(tlv_as_vec[1], 0);
     }
 }

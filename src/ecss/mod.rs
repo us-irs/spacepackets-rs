@@ -315,11 +315,11 @@ pub trait EcssEnumerationExt: EcssEnumeration + Debug + Copy + Clone + PartialEq
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericEcssEnumWrapper<TYPE> {
+pub struct GenericEcssEnumWrapper<TYPE: Copy> {
     field: GenericUnsignedByteField<TYPE>,
 }
 
-impl<TYPE> GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy> GenericEcssEnumWrapper<TYPE> {
     pub const fn ptc() -> PacketTypeCodes {
         PacketTypeCodes::Enumerated
     }
@@ -331,7 +331,7 @@ impl<TYPE> GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     fn size(&self) -> usize {
         (self.pfc() / 8) as usize
     }
@@ -341,7 +341,7 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     fn pfc(&self) -> u8 {
         size_of::<TYPE>() as u8 * 8_u8
     }
