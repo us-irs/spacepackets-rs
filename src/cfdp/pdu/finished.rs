@@ -190,7 +190,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
                         }
                     } else if tlv_type == TlvType::EntityId {
                         // At least one FS response is included.
-                        if current_idx > full_len_without_crc {
+                        if current_idx > start_of_fs_responses {
                             fs_responses = Some(&buf[start_of_fs_responses..current_idx]);
                         }
                         fault_location = Some(EntityIdTlv::from_bytes(&buf[current_idx..])?);
@@ -403,6 +403,27 @@ mod tests {
     }
 
     #[test]
+    fn test_serialization_buf_too_small() {
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::NoCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+        let mut buf: [u8; 8] = [0; 8];
+        let error = finished_pdu.write_to_bytes(&mut buf);
+        assert!(error.is_err());
+        if let PduError::ByteConversion(ByteConversionError::ToSliceTooSmall { found, expected }) =
+            error.unwrap_err()
+        {
+            assert_eq!(found, 8);
+            assert_eq!(expected, 9);
+        } else {
+            panic!("expected to_slice_too_small error");
+        }
+    }
+
+    #[test]
     fn test_with_crc() {
         let finished_pdu = generic_finished_pdu(
             CrcFlag::WithCrc,
@@ -467,4 +488,7 @@ mod tests {
             entity_id_tlv
         )
     }
+
+    #[test]
+    fn test_deserialization_with_fs_responses() {}
 }

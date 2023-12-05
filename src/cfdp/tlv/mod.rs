@@ -337,21 +337,27 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+struct FilestoreTlvBase<'first_name, 'second_name> {
+    pub action_code: FilestoreActionCode,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    pub first_name: Lv<'first_name>,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    pub second_name: Option<Lv<'second_name>>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FilestoreRequestTlv<'first_name, 'second_name> {
-    action_code: FilestoreActionCode,
-    #[cfg_attr(feature = "serde", serde(borrow))]
-    first_name: Lv<'first_name>,
-    #[cfg_attr(feature = "serde", serde(borrow))]
-    second_name: Option<Lv<'second_name>>,
+    base: FilestoreTlvBase<'first_name, 'second_name>,
 }
 
 impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
-    pub fn new_create_file(first_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
-        Self::new(FilestoreActionCode::CreateFile, first_name, None)
+    pub fn new_create_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::CreateFile, file_name, None)
     }
 
-    pub fn new_delete_file(first_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
-        Self::new(FilestoreActionCode::DeleteFile, first_name, None)
+    pub fn new_delete_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
+        Self::new(FilestoreActionCode::DeleteFile, file_name, None)
     }
 
     pub fn new_rename_file(
@@ -413,7 +419,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
     /// only one is passed. It will also returns [None] if the cumulative length of the first
     /// name and the second name exceeds 255 bytes.
     ///
-    /// This is the case for the rename, append and replace filestore request.
+    /// Two file paths are required for the rename, append and replace filestore request.
     pub fn new(
         action_code: FilestoreActionCode,
         first_name: Lv<'first_name>,
@@ -430,9 +436,11 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
             return Err(TlvLvError::InvalidValueLength(base_value_len));
         }
         Ok(Self {
-            action_code,
-            first_name,
-            second_name,
+            base: FilestoreTlvBase {
+                action_code,
+                first_name,
+                second_name,
+            },
         })
     }
 
@@ -447,20 +455,20 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
     }
 
     pub fn action_code(&self) -> FilestoreActionCode {
-        self.action_code
+        self.base.action_code
     }
 
     pub fn first_name(&self) -> Lv<'first_name> {
-        self.first_name
+        self.base.first_name
     }
 
     pub fn second_name(&self) -> Option<Lv<'second_name>> {
-        self.second_name
+        self.base.second_name
     }
 
     pub fn len_value(&self) -> usize {
-        let mut len = 1 + self.first_name.len_full();
-        if let Some(second_name) = self.second_name {
+        let mut len = 1 + self.base.first_name.len_full();
+        if let Some(second_name) = self.base.second_name {
             len += second_name.len_full();
         }
         len
@@ -497,9 +505,11 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
             second_name = Some(Lv::from_bytes(&buf[current_idx..])?);
         }
         Ok(Self {
-            action_code,
-            first_name,
-            second_name,
+            base: FilestoreTlvBase {
+                action_code,
+                first_name,
+                second_name,
+            },
         })
     }
 }
@@ -514,14 +524,14 @@ impl WritableTlv for FilestoreRequestTlv<'_, '_> {
         }
         buf[0] = TlvType::FilestoreRequest as u8;
         buf[1] = self.len_value() as u8;
-        buf[2] = (self.action_code as u8) << 4;
+        buf[2] = (self.base.action_code as u8) << 4;
         let mut current_idx = 3;
         // Length checks were already performed.
-        self.first_name.write_to_be_bytes_no_len_check(
-            &mut buf[current_idx..current_idx + self.first_name.len_full()],
+        self.base.first_name.write_to_be_bytes_no_len_check(
+            &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
         );
-        current_idx += self.first_name.len_full();
-        if let Some(second_name) = self.second_name {
+        current_idx += self.base.first_name.len_full();
+        if let Some(second_name) = self.base.second_name {
             second_name.write_to_be_bytes_no_len_check(
                 &mut buf[current_idx..current_idx + second_name.len_full()],
             );
@@ -538,6 +548,191 @@ impl WritableTlv for FilestoreRequestTlv<'_, '_> {
 impl GenericTlv for FilestoreRequestTlv<'_, '_> {
     fn tlv_type_field(&self) -> TlvTypeField {
         TlvTypeField::Standard(TlvType::FilestoreRequest)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FilestoreResponseTlv<'first_name, 'second_name, 'fs_msg> {
+    base: FilestoreTlvBase<'first_name, 'second_name>,
+    status_code: u8,
+    filestore_message: Lv<'fs_msg>,
+}
+
+impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'second_name, 'fs_msg> {
+    /// This function will return [None] if the respective action code requires two names but
+    /// only one is passed. It will also returns [None] if the cumulative length of the first
+    /// name and the second name exceeds 255 bytes.
+    ///
+    /// Two file paths are required for the rename, append and replace filestore request.
+    pub fn new_no_filestore_message(
+        action_code: FilestoreActionCode,
+        status_code: u8,
+        first_name: Lv<'first_name>,
+        second_name: Option<Lv<'second_name>>,
+    ) -> Result<Self, TlvLvError> {
+        Self::new(
+            action_code,
+            status_code,
+            first_name,
+            second_name,
+            Lv::new_empty(),
+        )
+    }
+    pub fn new(
+        action_code: FilestoreActionCode,
+        status_code: u8,
+        first_name: Lv<'first_name>,
+        second_name: Option<Lv<'second_name>>,
+        filestore_message: Lv<'fs_msg>,
+    ) -> Result<Self, TlvLvError> {
+        let mut base_value_len = first_name.len_full();
+        if Self::has_second_filename(action_code) {
+            if second_name.is_none() {
+                return Err(TlvLvError::SecondNameMissing);
+            }
+            base_value_len += second_name.as_ref().unwrap().len_full();
+        }
+        if base_value_len > u8::MAX as usize {
+            return Err(TlvLvError::InvalidValueLength(base_value_len));
+        }
+        Ok(Self {
+            base: FilestoreTlvBase {
+                action_code,
+                first_name,
+                second_name,
+            },
+            status_code,
+            filestore_message,
+        })
+    }
+
+    pub fn has_second_filename(action_code: FilestoreActionCode) -> bool {
+        if action_code == FilestoreActionCode::RenameFile
+            || action_code == FilestoreActionCode::AppendFile
+            || action_code == FilestoreActionCode::ReplaceFile
+        {
+            return true;
+        }
+        false
+    }
+
+    pub fn action_code(&self) -> FilestoreActionCode {
+        self.base.action_code
+    }
+
+    pub fn first_name(&self) -> Lv<'first_name> {
+        self.base.first_name
+    }
+
+    pub fn second_name(&self) -> Option<Lv<'second_name>> {
+        self.base.second_name
+    }
+
+    pub fn len_value(&self) -> usize {
+        let mut len = 1 + self.base.first_name.len_full();
+        if let Some(second_name) = self.base.second_name {
+            len += second_name.len_full();
+        }
+        len += self.filestore_message.len_full();
+        len
+    }
+
+    pub fn len_full(&self) -> usize {
+        2 + self.len_value()
+    }
+
+    pub fn from_bytes<'buf: 'first_name + 'second_name + 'fs_msg>(
+        buf: &'buf [u8],
+    ) -> Result<Self, TlvLvError> {
+        if buf.len() < 2 {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: buf.len(),
+                expected: 2,
+            }
+            .into());
+        }
+        verify_tlv_type(buf[0], TlvType::FilestoreRequest)?;
+        let len = buf[1] as usize;
+        let mut current_idx = 2;
+        let len_check = |current_idx: &mut usize, add_len: usize| -> Result<(), TlvLvError> {
+            if *current_idx + add_len > buf.len() {
+                return Err(ByteConversionError::FromSliceTooSmall {
+                    found: buf.len(),
+                    expected: *current_idx,
+                }
+                .into());
+            }
+            Ok(())
+        };
+        len_check(&mut current_idx, len)?;
+        let action_code = FilestoreActionCode::try_from((buf[2] >> 4) & 0b1111)
+            .map_err(|_| TlvLvError::InvalidFilestoreActionCode((buf[2] >> 4) & 0b1111))?;
+        let status_code = buf[2] & 0b1111;
+        current_idx += 1;
+        let first_name = Lv::from_bytes(&buf[current_idx..])?;
+        len_check(&mut current_idx, first_name.len_full())?;
+        current_idx += first_name.len_full();
+
+        let mut second_name = None;
+        if Self::has_second_filename(action_code) {
+            if current_idx >= 2 + len {
+                return Err(TlvLvError::SecondNameMissing);
+            }
+            let second_name_lv = Lv::from_bytes(&buf[current_idx..])?;
+            current_idx += second_name_lv.len_full();
+            second_name = Some(second_name_lv);
+        }
+        let filestore_message = Lv::from_bytes(&buf[current_idx..])?;
+        len_check(&mut current_idx, filestore_message.len_full())?;
+        Ok(Self {
+            base: FilestoreTlvBase {
+                action_code,
+                first_name,
+                second_name,
+            },
+            status_code,
+            filestore_message,
+        })
+    }
+}
+
+impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        if buf.len() < self.len_full() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: self.len_full(),
+            });
+        }
+        buf[0] = TlvType::FilestoreRequest as u8;
+        buf[1] = self.len_value() as u8;
+        buf[2] = ((self.base.action_code as u8) << 4) | (self.status_code & 0b1111);
+        let mut current_idx = 3;
+        // Length checks were already performed.
+        self.base.first_name.write_to_be_bytes_no_len_check(
+            &mut buf[current_idx..current_idx + self.base.first_name.len_full()],
+        );
+        current_idx += self.base.first_name.len_full();
+        if let Some(second_name) = self.base.second_name {
+            current_idx += second_name.write_to_be_bytes_no_len_check(
+                &mut buf[current_idx..current_idx + second_name.len_full()],
+            );
+        }
+        current_idx += self.filestore_message.write_to_be_bytes_no_len_check(
+            &mut buf[current_idx..current_idx + self.filestore_message.len_full()],
+        );
+        Ok(current_idx)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_full()
+    }
+}
+
+impl GenericTlv for FilestoreResponseTlv<'_, '_, '_> {
+    fn tlv_type_field(&self) -> TlvTypeField {
+        TlvTypeField::Standard(TlvType::FilestoreResponse)
     }
 }
 
@@ -901,6 +1096,21 @@ mod tests {
         assert!(req_conv_back.is_ok());
         let req_conv_back = req_conv_back.unwrap();
         assert_eq!(req_conv_back, req);
+    }
+
+    #[test]
+    fn test_fs_response_serialization() {
+        let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
+        let response = FilestoreResponseTlv::new_no_filestore_message(
+            FilestoreActionCode::CreateFile,
+            0b0001,
+            lv_0,
+            None,
+        )
+        .expect("creating response failed");
+        let mut buf: [u8; 32] = [0; 32];
+        let written_len = response.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written_len, 2 + 1 + lv_0.len_full() + 1);
     }
 
     #[test]
