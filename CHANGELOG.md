@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   `PusError::ByteConversionError` variant.
 - Ranamed `TlvLvError::ByteConversionError` to `TlvLvError::ByteConversion`.
 - Renamed `PusError::IncorrectCrc` to `PusError::ChecksumFailure`.
+- Some more struct variant changes for error enumerations.
 
 ## Removed
 

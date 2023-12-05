@@ -1233,4 +1233,22 @@ mod tests {
             panic!("unexpected error {error}")
         }
     }
+
+    #[test]
+    fn test_reader_input_too_small() {
+        let buf: [u8; 5] = [0; 5];
+        let error = PusTcReader::new(&buf);
+        assert!(error.is_err());
+        let error = error.unwrap_err();
+        if let PusError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+            found,
+            expected,
+        }) = error
+        {
+            assert_eq!(found, 5);
+            assert_eq!(expected, PUS_TC_MIN_LEN_WITHOUT_APP_DATA);
+        } else {
+            panic!("unexpected error {error}")
+        }
+    }
 }
