@@ -880,6 +880,7 @@ mod tests {
     fn test_invalid_seq_count() {
         let mut psc = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77)
             .expect("PSC creation failed");
+        assert_eq!(psc.seq_count(), 77);
         assert!(!psc.set_seq_count(0xffff));
     }
 
