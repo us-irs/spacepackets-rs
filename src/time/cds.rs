@@ -1190,7 +1190,7 @@ impl TimeWriter for TimeProvider<DaysLen16Bits> {
         buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
         match self.submillis_precision() {
             SubmillisPrecision::Microseconds => {
-                buf[7..9].copy_from_slice(self.submillis().to_be_bytes().as_slice());
+                buf[7..9].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
             }
             SubmillisPrecision::Picoseconds => {
                 buf[7..11].copy_from_slice(self.submillis().to_be_bytes().as_slice());
@@ -1210,7 +1210,7 @@ impl TimeWriter for TimeProvider<DaysLen24Bits> {
         buf[4..8].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
         match self.submillis_precision() {
             SubmillisPrecision::Microseconds => {
-                buf[8..10].copy_from_slice(self.submillis().to_be_bytes().as_slice());
+                buf[8..10].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
             }
             SubmillisPrecision::Picoseconds => {
                 buf[8..12].copy_from_slice(self.submillis().to_be_bytes().as_slice());
@@ -1658,7 +1658,6 @@ mod tests {
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 9);
-        assert_eq!(stamp_deserialized.len_as_bytes(), 11);
         assert_eq!(
             stamp_deserialized.submillis_precision(),
             SubmillisPrecision::Microseconds
@@ -2163,7 +2162,10 @@ mod tests {
             dyn_provider.len_of_day_seg(),
             LengthOfDaySegment::Short16Bits
         );
-        assert_eq!(dyn_provider.submillis_precision(), SubmillisPrecision::Microseconds);
+        assert_eq!(
+            dyn_provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
         assert_eq!(dyn_provider.submillis(), 666);
     }
 
