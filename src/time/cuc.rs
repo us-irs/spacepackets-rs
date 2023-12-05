@@ -322,6 +322,14 @@ impl TimeProviderCcsdsEpoch {
         self.counter
     }
 
+    pub fn width(&self) -> u8 {
+        self.counter.0
+    }
+
+    pub fn counter(&self) -> u32 {
+        self.counter.1
+    }
+
     pub fn width_fractions_pair(&self) -> Option<FractionalPart> {
         self.fractions
     }
@@ -742,6 +750,8 @@ mod tests {
     fn test_basic_zero_epoch() {
         let zero_cuc = TimeProviderCcsdsEpoch::new(0);
         assert_eq!(zero_cuc.len_as_bytes(), 5);
+        assert_eq!(zero_cuc.width(), zero_cuc.width_counter_pair().0);
+        assert_eq!(zero_cuc.counter(), zero_cuc.width_counter_pair().1);
         assert_eq!(zero_cuc.ccdsd_time_code(), CcsdsTimeCodes::CucCcsdsEpoch);
         let counter = zero_cuc.width_counter_pair();
         assert_eq!(counter.0, 4);
@@ -1162,5 +1172,32 @@ mod tests {
         } else {
             panic!("unexpected error: {}", error);
         }
+    }
+
+    #[test]
+    fn test_from_dt() {
+        let dt = Utc.with_ymd_and_hms(2021, 1, 1, 0, 0, 0).unwrap();
+        let cuc =
+            TimeProviderCcsdsEpoch::from_date_time(&dt, FractionalResolution::Seconds).unwrap();
+        assert_eq!(cuc.counter(), dt.timestamp() as u32);
+    }
+
+    #[test]
+    fn test_new_u16_width() {
+        let cuc = TimeProviderCcsdsEpoch::new_u16_counter(0);
+        assert_eq!(cuc.width(), 2);
+        assert_eq!(cuc.counter(), 0);
+    }
+
+    #[test]
+    fn from_unix_stamp() {
+        let unix_stamp = UnixTimestamp::new(0, 0).unwrap();
+        let cuc =
+            TimeProviderCcsdsEpoch::from_unix_stamp(&unix_stamp, FractionalResolution::Seconds)
+                .expect("failed to create cuc from unix stamp");
+        assert_eq!(
+            cuc.counter(),
+            (-DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as u32
+        );
     }
 }
