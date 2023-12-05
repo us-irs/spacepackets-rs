@@ -1307,6 +1307,7 @@ mod tests {
     use super::*;
     use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
+    use alloc::string::ToString;
     use chrono::{Datelike, NaiveDate, Timelike};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
@@ -1415,6 +1416,11 @@ mod tests {
     fn test_write() {
         let mut buf = [0; 16];
         let time_stamper_0 = TimeProvider::new_with_u16_days(0, 0);
+        let unix_stamp = time_stamper_0.unix_stamp();
+        assert_eq!(
+            unix_stamp.unix_seconds,
+            (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32).into()
+        );
         let mut res = time_stamper_0.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
@@ -1447,10 +1453,15 @@ mod tests {
         for i in 0..6 {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
-            match res.unwrap_err() {
+            let error = res.unwrap_err();
+            match error {
                 ByteConversion(ToSliceTooSmall { found, expected }) => {
                     assert_eq!(found, i);
                     assert_eq!(expected, 7);
+                    assert_eq!(
+                        error.to_string(),
+                        "time stamp: target slice with size 0 is too small, expected size of at least 7"
+                    );
                 }
                 _ => panic!(
                     "{}",
@@ -1492,12 +1503,13 @@ mod tests {
         let res = TimeProvider::<DaysLen16Bits>::from_bytes(&buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
-        match err {
-            InvalidTimeCode { expected, found } => {
-                assert_eq!(expected, CcsdsTimeCodes::Cds);
-                assert_eq!(found, 0);
-            }
-            _ => {}
+        if let InvalidTimeCode { expected, found } = err {
+            assert_eq!(expected, CcsdsTimeCodes::Cds);
+            assert_eq!(found, 0);
+            assert_eq!(
+                err.to_string(),
+                "invalid raw time code value 0 for time code Cds"
+            );
         }
     }
 
@@ -1942,7 +1954,7 @@ mod tests {
         let invalid_unix_secs: i64 = (u16::MAX as i64 + 1) * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
         match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            invalid_unix_secs as i64,
+            invalid_unix_secs,
             subsec_millis,
         )) {
             Ok(_) => {
@@ -1954,6 +1966,7 @@ mod tests {
                         days,
                         unix_to_ccsds_days(invalid_unix_secs / SECONDS_PER_DAY as i64)
                     );
+                    assert_eq!(e.to_string(), "cds error: invalid ccsds days 69919");
                 } else {
                     panic!("unexpected error {}", e)
                 }

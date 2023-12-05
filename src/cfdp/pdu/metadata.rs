@@ -343,7 +343,6 @@ pub mod tests {
     use alloc::string::ToString;
 
     use crate::cfdp::lv::Lv;
-    use crate::cfdp::pdu::eof::EofPdu;
     use crate::cfdp::pdu::metadata::{
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
         MetadataPduCreator, MetadataPduReader,
