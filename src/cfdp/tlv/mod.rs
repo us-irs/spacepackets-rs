@@ -1142,6 +1142,22 @@ mod tests {
     }
 
     #[test]
+    fn test_fs_response_deserialization() {
+        let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
+        let response = FilestoreResponseTlv::new_no_filestore_message(
+            FilestoreActionCode::CreateFile,
+            0b0001,
+            lv_0,
+            None,
+        )
+        .expect("creating response failed");
+        let mut buf: [u8; 32] = [0; 32];
+        response.write_to_bytes(&mut buf).unwrap();
+        let response_read_back = FilestoreResponseTlv::from_bytes(&buf).unwrap();
+        assert_eq!(response_read_back, response);
+    }
+
+    #[test]
     fn test_entity_it_tlv_to_tlv() {
         let entity_id = UbfU16::new(0x0102);
         let entity_id_tlv = EntityIdTlv::new(entity_id.into());
