@@ -55,7 +55,6 @@ pub enum PduError {
         found: u8,
         expected: Option<FileDirectiveType>,
     },
-    InvalidSegmentRequestFormat,
     InvalidStartOrEndOfScopeValue,
     /// Invalid condition code. Contains the raw detected value.
     InvalidConditionCode(u8),
@@ -79,9 +78,6 @@ impl Display for PduError {
                     f,
                     "invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
                 )
-            }
-            PduError::InvalidSegmentRequestFormat => {
-                write!(f, "invalid segment request format for NAK PDU")
             }
             PduError::InvalidStartOrEndOfScopeValue => {
                 write!(f, "invalid start or end of scope for NAK PDU")
@@ -855,6 +851,7 @@ mod tests {
         // 4 byte fixed header plus three bytes src, dest ID and transaction ID
         assert_eq!(res.unwrap(), 7);
         verify_raw_header(&pdu_header, &buf);
+        assert_eq!(pdu_header.pdu_datafield_len(), 5);
     }
 
     #[test]
@@ -948,7 +945,10 @@ mod tests {
         let error = res.unwrap_err();
         if let PduError::CfdpVersionMissmatch(raw_version) = error {
             assert_eq!(raw_version, CFDP_VERSION_2 + 1);
-            assert_eq!(error.to_string(), "cfdp version missmatch, found 2, expected 1");
+            assert_eq!(
+                error.to_string(),
+                "cfdp version missmatch, found 2, expected 1"
+            );
         } else {
             panic!("invalid exception: {}", error);
         }
@@ -1048,6 +1048,10 @@ mod tests {
         {
             assert_eq!(src_id_len, 1);
             assert_eq!(dest_id_len, 2);
+            assert_eq!(
+                error.to_string(),
+                "missmatch of PDU source length 1 and destination length 2"
+            );
         }
     }
 
@@ -1110,7 +1114,7 @@ mod tests {
     fn test_pdu_config_clonable_and_comparable() {
         let common_pdu_cfg_0 =
             CommonPduConfig::new_with_byte_fields(UbfU8::new(1), UbfU8::new(2), UbfU8::new(3))
-            .expect("common config creation failed");
+                .expect("common config creation failed");
         let common_pdu_cfg_1 = common_pdu_cfg_0;
         assert_eq!(common_pdu_cfg_0, common_pdu_cfg_1);
     }

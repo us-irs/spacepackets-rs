@@ -501,6 +501,8 @@ impl<'a, 'b> PartialEq<NakPduCreator<'a>> for NakPduReader<'b> {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use crate::cfdp::{
         pdu::tests::{common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
         PduType, TransmissionMode,
@@ -742,11 +744,14 @@ mod tests {
             Some(u32_list),
         );
         assert!(error.is_err());
-
-        if let Err(PduError::InvalidStartOrEndOfScopeValue) = error {
-            assert_eq!(error.to_string(), )
+        let error = error.unwrap_err();
+        if let PduError::InvalidStartOrEndOfScopeValue = error {
+            assert_eq!(
+                error.to_string(),
+                "invalid start or end of scope for NAK PDU"
+            );
         } else {
-            panic!("API call did not fail");
+            panic!("unexpected error {error}");
         }
     }
 
