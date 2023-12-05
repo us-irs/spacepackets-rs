@@ -335,6 +335,16 @@ impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
     }
 }
 
+pub fn fs_request_has_second_filename(action_code: FilestoreActionCode) -> bool {
+    if action_code == FilestoreActionCode::RenameFile
+        || action_code == FilestoreActionCode::AppendFile
+        || action_code == FilestoreActionCode::ReplaceFile
+    {
+        return true;
+    }
+    false
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct FilestoreTlvBase<'first_name, 'second_name> {
@@ -426,7 +436,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         second_name: Option<Lv<'second_name>>,
     ) -> Result<Self, TlvLvError> {
         let mut base_value_len = first_name.len_full();
-        if Self::has_second_filename(action_code) {
+        if fs_request_has_second_filename(action_code) {
             if second_name.is_none() {
                 return Err(TlvLvError::SecondNameMissing);
             }
@@ -442,16 +452,6 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
                 second_name,
             },
         })
-    }
-
-    pub fn has_second_filename(action_code: FilestoreActionCode) -> bool {
-        if action_code == FilestoreActionCode::RenameFile
-            || action_code == FilestoreActionCode::AppendFile
-            || action_code == FilestoreActionCode::ReplaceFile
-        {
-            return true;
-        }
-        false
     }
 
     pub fn action_code(&self) -> FilestoreActionCode {
@@ -498,7 +498,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         let mut second_name = None;
 
         current_idx += first_name.len_full();
-        if Self::has_second_filename(action_code) {
+        if fs_request_has_second_filename(action_code) {
             if current_idx >= 2 + len {
                 return Err(TlvLvError::SecondNameMissing);
             }
@@ -621,6 +621,10 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         self.base.action_code
     }
 
+    pub fn status_code(&self) -> u8 {
+        self.status_code
+    }
+
     pub fn first_name(&self) -> Lv<'first_name> {
         self.base.first_name
     }
@@ -652,7 +656,7 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
             }
             .into());
         }
-        verify_tlv_type(buf[0], TlvType::FilestoreRequest)?;
+        verify_tlv_type(buf[0], TlvType::FilestoreResponse)?;
         let len = buf[1] as usize;
         let mut current_idx = 2;
         let len_check = |current_idx: &mut usize, add_len: usize| -> Result<(), TlvLvError> {
@@ -705,7 +709,7 @@ impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
                 expected: self.len_full(),
             });
         }
-        buf[0] = TlvType::FilestoreRequest as u8;
+        buf[0] = TlvType::FilestoreResponse as u8;
         buf[1] = self.len_value() as u8;
         buf[2] = ((self.base.action_code as u8) << 4) | (self.status_code & 0b1111);
         let mut current_idx = 3;
@@ -916,7 +920,7 @@ mod tests {
     fn generic_fs_request_test_one_file(
         action_code: FilestoreActionCode,
     ) -> FilestoreRequestTlv<'static, 'static> {
-        assert!(!FilestoreRequestTlv::has_second_filename(action_code));
+        assert!(!fs_request_has_second_filename(action_code));
         let first_name = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
         let fs_request = match action_code {
             FilestoreActionCode::CreateFile => FilestoreRequestTlv::new_create_file(first_name),
@@ -946,7 +950,7 @@ mod tests {
     fn generic_fs_request_test_two_files(
         action_code: FilestoreActionCode,
     ) -> FilestoreRequestTlv<'static, 'static> {
-        assert!(FilestoreRequestTlv::has_second_filename(action_code));
+        assert!(fs_request_has_second_filename(action_code));
         let first_name = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
         let second_name = Lv::new_from_str(TLV_TEST_STR_1).unwrap();
         let fs_request = match action_code {
@@ -1099,6 +1103,21 @@ mod tests {
     }
 
     #[test]
+    fn test_fs_response_state() {
+        let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
+        let response = FilestoreResponseTlv::new_no_filestore_message(
+            FilestoreActionCode::CreateFile,
+            0b0001,
+            lv_0,
+            None,
+        )
+        .expect("creating response failed");
+        assert_eq!(response.status_code(), 0b0001);
+        assert_eq!(response.first_name(), lv_0);
+        assert!(response.second_name().is_none());
+    }
+
+    #[test]
     fn test_fs_response_serialization() {
         let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
         let response = FilestoreResponseTlv::new_no_filestore_message(
@@ -1111,6 +1130,15 @@ mod tests {
         let mut buf: [u8; 32] = [0; 32];
         let written_len = response.write_to_bytes(&mut buf).unwrap();
         assert_eq!(written_len, 2 + 1 + lv_0.len_full() + 1);
+        assert_eq!(buf[0], TlvType::FilestoreResponse as u8);
+        assert_eq!(buf[1], written_len as u8 - 2);
+        assert_eq!((buf[2] >> 4) & 0b1111, FilestoreActionCode::CreateFile as u8);
+        assert_eq!(buf[2] & 0b1111, 0b0001);
+        let lv_read_back = Lv::from_bytes(&buf[3..]).unwrap();
+        assert_eq!(lv_0, lv_read_back);
+        let current_idx = 3 + lv_0.len_full();
+        let fs_msg_empty = Lv::from_bytes(&buf[current_idx..]).unwrap();
+        assert!(fs_msg_empty.is_empty());
     }
 
     #[test]
