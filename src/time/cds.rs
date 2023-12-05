@@ -1460,7 +1460,7 @@ mod tests {
                     assert_eq!(expected, 7);
                     assert_eq!(
                         error.to_string(),
-                        "time stamp: target slice with size 0 is too small, expected size of at least 7"
+                        format!("time stamp: target slice with size {i} is too small, expected size of at least 7")
                     );
                 }
                 _ => panic!(
