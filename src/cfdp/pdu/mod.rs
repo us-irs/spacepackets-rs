@@ -32,7 +32,7 @@ pub enum FileDirectiveType {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PduError {
-    ByteConversionError(ByteConversionError),
+    ByteConversion(ByteConversionError),
     /// Found version ID invalid, not equal to [CFDP_VERSION_2].
     CfdpVersionMissmatch(u8),
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
@@ -107,7 +107,7 @@ impl Display for PduError {
                     "missmatch of PDU source length {src_id_len} and destination length {dest_id_len}"
                 )
             }
-            PduError::ByteConversionError(e) => {
+            PduError::ByteConversion(e) => {
                 write!(f, "{}", e)
             }
             PduError::FileSizeTooLarge(value) => {
@@ -145,7 +145,7 @@ impl Display for PduError {
 impl Error for PduError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            PduError::ByteConversionError(e) => Some(e),
+            PduError::ByteConversion(e) => Some(e),
             PduError::TlvLvError(e) => Some(e),
             _ => None,
         }
@@ -154,7 +154,7 @@ impl Error for PduError {
 
 impl From<ByteConversionError> for PduError {
     fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversionError(value)
+        Self::ByteConversion(value)
     }
 }
 
@@ -526,7 +526,7 @@ impl PduHeader {
     /// function.
     pub fn from_bytes(buf: &[u8]) -> Result<(Self, usize), PduError> {
         if buf.len() < FIXED_HEADER_LEN {
-            return Err(PduError::ByteConversionError(
+            return Err(PduError::ByteConversion(
                 ByteConversionError::FromSliceTooSmall {
                     found: buf.len(),
                     expected: FIXED_HEADER_LEN,
@@ -689,6 +689,8 @@ pub(crate) fn add_pdu_crc(buf: &mut [u8], mut current_idx: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use crate::cfdp::pdu::{CommonPduConfig, PduError, PduHeader, FIXED_HEADER_LEN};
     use crate::cfdp::{
         CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
@@ -946,6 +948,7 @@ mod tests {
         let error = res.unwrap_err();
         if let PduError::CfdpVersionMissmatch(raw_version) = error {
             assert_eq!(raw_version, CFDP_VERSION_2 + 1);
+            assert_eq!(error.to_string(), "cfdp version missmatch, found 2, expected 1");
         } else {
             panic!("invalid exception: {}", error);
         }
@@ -957,7 +960,7 @@ mod tests {
         let res = PduHeader::from_bytes(&buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall {
+        if let PduError::ByteConversion(ByteConversionError::FromSliceTooSmall {
             found,
             expected,
         }) = error
@@ -983,13 +986,17 @@ mod tests {
         let header = PduHeader::from_bytes(&buf[0..6]);
         assert!(header.is_err());
         let error = header.unwrap_err();
-        if let PduError::ByteConversionError(ByteConversionError::FromSliceTooSmall {
+        if let PduError::ByteConversion(ByteConversionError::FromSliceTooSmall {
             found,
             expected,
         }) = error
         {
             assert_eq!(found, 6);
             assert_eq!(expected, 7);
+            assert_eq!(
+                error.to_string(),
+                "source slice with size 6 too small, expected at least 7 bytes"
+            );
         }
     }
 
@@ -1017,6 +1024,10 @@ mod tests {
         let error = pdu_conf_res.unwrap_err();
         if let PduError::InvalidEntityLen(len) = error {
             assert_eq!(len, 3);
+            assert_eq!(
+                error.to_string(),
+                "invalid PDU entity ID length 3, only [1, 2, 4, 8] are allowed"
+            );
         } else {
             panic!("Invalid exception: {}", error)
         }
@@ -1086,5 +1097,21 @@ mod tests {
         } else {
             panic!("invalid exception {:?}", error)
         }
+    }
+
+    #[test]
+    fn test_pdu_error_clonable_and_comparable() {
+        let pdu_error = PduError::InvalidEntityLen(0);
+        let pdu_error_2 = pdu_error;
+        assert_eq!(pdu_error, pdu_error_2);
+    }
+
+    #[test]
+    fn test_pdu_config_clonable_and_comparable() {
+        let common_pdu_cfg_0 =
+            CommonPduConfig::new_with_byte_fields(UbfU8::new(1), UbfU8::new(2), UbfU8::new(3))
+            .expect("common config creation failed");
+        let common_pdu_cfg_1 = common_pdu_cfg_0;
+        assert_eq!(common_pdu_cfg_0, common_pdu_cfg_1);
     }
 }

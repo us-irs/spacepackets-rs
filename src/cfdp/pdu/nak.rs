@@ -398,7 +398,7 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
         let end_of_scope;
         if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
             if current_idx + 16 > buf.len() {
-                return Err(PduError::ByteConversionError(
+                return Err(PduError::ByteConversion(
                     ByteConversionError::FromSliceTooSmall {
                         found: buf.len(),
                         expected: current_idx + 16,
@@ -734,12 +734,17 @@ mod tests {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let u32_list = SegmentRequests::U32Pairs(&[(0, 50), (50, 100)]);
-        if let Err(PduError::InvalidStartOrEndOfScopeValue) = NakPduCreator::new_generic(
+        //let error = NakPduCreator::new_generic(pdu_header, 100, 300, Some(u32_list));
+        let error = NakPduCreator::new_generic(
             pdu_header,
             u32::MAX as u64 + 1,
             u32::MAX as u64 + 2,
             Some(u32_list),
-        ) {
+        );
+        assert!(error.is_err());
+
+        if let Err(PduError::InvalidStartOrEndOfScopeValue) = error {
+            assert_eq!(error.to_string(), )
         } else {
             panic!("API call did not fail");
         }
@@ -758,7 +763,7 @@ mod tests {
         assert!(error.is_err());
         let e = error.unwrap_err();
         match e {
-            PduError::ByteConversionError(conv_error) => match conv_error {
+            PduError::ByteConversion(conv_error) => match conv_error {
                 ByteConversionError::ToSliceTooSmall { found, expected } => {
                     assert_eq!(expected, nak_pdu.len_written());
                     assert_eq!(found, 5);
