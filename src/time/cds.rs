@@ -2253,6 +2253,14 @@ mod tests {
     }
 
     #[test]
+    fn test_update_from_now() {
+        let mut stamp = TimeProvider::new_with_u16_days(0, 0);
+        stamp.update_from_now();
+        let dt = stamp.as_date_time();
+        assert!(dt.year() > 2020);
+    }
+
+    #[test]
     #[cfg(feature = "serde")]
     fn test_serialization() {
         let stamp_now = TimeProvider::from_now_with_u16_days().expect("Error retrieving time");

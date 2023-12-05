@@ -887,6 +887,41 @@ mod tests {
     }
 
     #[test]
+    fn test_write_buf_too_small() {
+        let mut buf: [u8; 2] = [0; 2];
+        let fs_request =
+            FilestoreRequestTlv::new_create_file(Lv::new_from_str(TLV_TEST_STR_0).unwrap())
+                .unwrap();
+        let error = fs_request.write_to_bytes(&mut buf);
+        assert!(error.is_err());
+        let error = error.unwrap_err();
+        if let ByteConversionError::ToSliceTooSmall { found, expected } = error {
+            assert_eq!(found, 2);
+            assert_eq!(expected, 13);
+        } else {
+            panic!("unexpected error {:?}", error);
+        }
+    }
+
+    #[test]
+    fn test_read_from_buf_too_small() {
+        let buf: [u8; 1] = [0; 1];
+        let error = FilestoreRequestTlv::from_bytes(&buf);
+        assert!(error.is_err());
+        let error = error.unwrap_err();
+        if let TlvLvError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+            found,
+            expected,
+        }) = error
+        {
+            assert_eq!(found, 1);
+            assert_eq!(expected, 2);
+        } else {
+            panic!("unexpected error {:?}", error);
+        }
+    }
+
+    #[test]
     fn test_buf_too_large() {
         let buf_too_large: [u8; u8::MAX as usize + 1] = [0; u8::MAX as usize + 1];
         let tlv_res = Tlv::new(TlvType::MsgToUser, &buf_too_large);
@@ -1132,7 +1167,10 @@ mod tests {
         assert_eq!(written_len, 2 + 1 + lv_0.len_full() + 1);
         assert_eq!(buf[0], TlvType::FilestoreResponse as u8);
         assert_eq!(buf[1], written_len as u8 - 2);
-        assert_eq!((buf[2] >> 4) & 0b1111, FilestoreActionCode::CreateFile as u8);
+        assert_eq!(
+            (buf[2] >> 4) & 0b1111,
+            FilestoreActionCode::CreateFile as u8
+        );
         assert_eq!(buf[2] & 0b1111, 0b0001);
         let lv_read_back = Lv::from_bytes(&buf[3..]).unwrap();
         assert_eq!(lv_0, lv_read_back);
