@@ -355,9 +355,20 @@ struct FilestoreTlvBase<'first_name, 'second_name> {
     pub second_name: Option<Lv<'second_name>>,
 }
 
+impl FilestoreTlvBase<'_, '_> {
+    fn base_len_value(&self) -> usize {
+        let mut len = 1 + self.first_name.len_full();
+        if let Some(second_name) = self.second_name {
+            len += second_name.len_full();
+        }
+        len
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FilestoreRequestTlv<'first_name, 'second_name> {
+    #[cfg_attr(feature = "serde", serde(borrow))]
     base: FilestoreTlvBase<'first_name, 'second_name>,
 }
 
@@ -467,11 +478,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
     }
 
     pub fn len_value(&self) -> usize {
-        let mut len = 1 + self.base.first_name.len_full();
-        if let Some(second_name) = self.base.second_name {
-            len += second_name.len_full();
-        }
-        len
+        self.base.base_len_value()
     }
 
     pub fn len_full(&self) -> usize {
@@ -554,8 +561,10 @@ impl GenericTlv for FilestoreRequestTlv<'_, '_> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FilestoreResponseTlv<'first_name, 'second_name, 'fs_msg> {
+    #[cfg_attr(feature = "serde", serde(borrow))]
     base: FilestoreTlvBase<'first_name, 'second_name>,
     status_code: u8,
+    #[cfg_attr(feature = "serde", serde(borrow))]
     filestore_message: Lv<'fs_msg>,
 }
 
@@ -634,12 +643,7 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
     }
 
     pub fn len_value(&self) -> usize {
-        let mut len = 1 + self.base.first_name.len_full();
-        if let Some(second_name) = self.base.second_name {
-            len += second_name.len_full();
-        }
-        len += self.filestore_message.len_full();
-        len
+        self.base.base_len_value() + self.filestore_message.len_full()
     }
 
     pub fn len_full(&self) -> usize {
@@ -948,6 +952,7 @@ mod tests {
         assert!(tlv.is_ok());
         let tlv = tlv.unwrap();
         assert_eq!(tlv.tlv_type_field(), TlvTypeField::Custom(3));
+        assert!(!tlv.is_standard_tlv());
         assert_eq!(tlv.value().len(), 1);
         assert_eq!(tlv.len_full(), 3);
     }
@@ -1006,7 +1011,12 @@ mod tests {
             fs_request.len_value(),
             1 + first_name.len_full() + second_name.len_full()
         );
+        assert_eq!(
+            fs_request.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::FilestoreRequest)
+        );
         assert_eq!(fs_request.len_full(), fs_request.len_value() + 2);
+        assert_eq!(fs_request.len_written(), fs_request.len_full());
         assert_eq!(fs_request.action_code(), action_code);
         assert_eq!(fs_request.first_name(), first_name);
         assert!(fs_request.second_name().is_some());
@@ -1138,7 +1148,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fs_response_state() {
+    fn test_fs_response_state_one_path() {
         let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
         let response = FilestoreResponseTlv::new_no_filestore_message(
             FilestoreActionCode::CreateFile,
@@ -1148,8 +1158,30 @@ mod tests {
         )
         .expect("creating response failed");
         assert_eq!(response.status_code(), 0b0001);
+        assert_eq!(response.action_code(), FilestoreActionCode::CreateFile);
         assert_eq!(response.first_name(), lv_0);
         assert!(response.second_name().is_none());
+    }
+    #[test]
+    fn test_fs_response_state_two_paths() {
+        let lv_0 = Lv::new_from_str(TLV_TEST_STR_0).unwrap();
+        let lv_1 = Lv::new_from_str(TLV_TEST_STR_1).unwrap();
+        let response = FilestoreResponseTlv::new_no_filestore_message(
+            FilestoreActionCode::RenameFile,
+            0b0001,
+            lv_0,
+            Some(lv_1),
+        )
+        .expect("creating response failed");
+        assert_eq!(response.status_code(), 0b0001);
+        assert_eq!(response.action_code(), FilestoreActionCode::RenameFile);
+        assert_eq!(response.first_name(), lv_0);
+        assert!(response.second_name().is_some());
+        assert!(response.second_name().unwrap() == lv_1);
+        assert_eq!(
+            response.len_full(),
+            2 + 1 + lv_0.len_full() + lv_1.len_full() + 1
+        );
     }
 
     #[test]

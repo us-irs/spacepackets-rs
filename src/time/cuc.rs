@@ -94,7 +94,6 @@ pub fn fractional_part_from_subsec_ns(
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CucError {
     InvalidCounterWidth(u8),
-    InvalidFractionResolution(FractionalResolution),
     /// Invalid counter supplied.
     InvalidCounter {
         width: u8,
@@ -111,9 +110,6 @@ impl Display for CucError {
         match self {
             CucError::InvalidCounterWidth(w) => {
                 write!(f, "invalid cuc counter byte width {w}")
-            }
-            CucError::InvalidFractionResolution(w) => {
-                write!(f, "invalid cuc fractional part byte width {w:?}")
             }
             CucError::InvalidCounter { width, counter } => {
                 write!(f, "invalid cuc counter {counter} for width {width}")
@@ -288,6 +284,8 @@ impl TimeProviderCcsdsEpoch {
         .map_err(|e| e.into())
     }
 
+    /// Generates a CUC timestamp from a UNIX timestamp with a width of 4. This width is able
+    /// to accomodate all possible UNIX timestamp values.
     pub fn from_unix_stamp(
         unix_stamp: &UnixTimestamp,
         res: FractionalResolution,
@@ -298,13 +296,6 @@ impl TimeProviderCcsdsEpoch {
             return Err(TimestampError::DateBeforeCcsdsEpoch(
                 unix_stamp.as_date_time().unwrap(),
             ));
-        }
-        if ccsds_epoch > u32::MAX as i64 {
-            return Err(CucError::InvalidCounter {
-                width: 4,
-                counter: ccsds_epoch as u64,
-            }
-            .into());
         }
         let mut fractions = None;
         if let Some(subsec_millis) = unix_stamp.subsecond_millis {
@@ -335,7 +326,6 @@ impl TimeProviderCcsdsEpoch {
     }
 
     pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
-        Self::verify_fractions_width(fractions.0)?;
         Self::verify_fractions_value(fractions)?;
         self.fractions = Some(fractions);
         self.update_p_field_fractions();
@@ -371,7 +361,6 @@ impl TimeProviderCcsdsEpoch {
             });
         }
         if let Some(fractions) = fractions {
-            Self::verify_fractions_width(fractions.0)?;
             Self::verify_fractions_value(fractions)?;
         }
         Ok(Self {
@@ -453,13 +442,6 @@ impl TimeProviderCcsdsEpoch {
     fn verify_counter_width(width: u8) -> Result<(), CucError> {
         if width == 0 || width > 4 {
             return Err(CucError::InvalidCounterWidth(width));
-        }
-        Ok(())
-    }
-
-    fn verify_fractions_width(width: FractionalResolution) -> Result<(), CucError> {
-        if width as u8 > 3 {
-            return Err(CucError::InvalidFractionResolution(width));
         }
         Ok(())
     }
@@ -1134,12 +1116,7 @@ mod tests {
         assert_eq!(fractions.1, 2_u32.pow(3 * 8) - 2);
     }
 
-    #[test]
-    fn add_duration_basic() {
-        let mut cuc_stamp = TimeProviderCcsdsEpoch::new(200);
-        cuc_stamp.set_fractional_resolution(FractionalResolution::FifteenUs);
-        let duration = Duration::from_millis(2500);
-        cuc_stamp += duration;
+    fn check_stamp_after_addition(cuc_stamp: &TimeProviderCcsdsEpoch) {
         assert_eq!(cuc_stamp.width_counter_pair().1, 202);
         let fractions = cuc_stamp.width_fractions_pair().unwrap().1;
         let expected_val =
@@ -1152,6 +1129,41 @@ mod tests {
         assert!(cuc_stamp2.subsecond_millis().unwrap() <= 1);
     }
 
+    #[test]
+    fn add_duration_basic() {
+        let mut cuc_stamp = TimeProviderCcsdsEpoch::new(200);
+        cuc_stamp.set_fractional_resolution(FractionalResolution::FifteenUs);
+        let duration = Duration::from_millis(2500);
+        cuc_stamp += duration;
+        check_stamp_after_addition(&cuc_stamp);
+    }
+
+    #[test]
+    fn add_duration_basic_on_ref() {
+        let mut cuc_stamp = TimeProviderCcsdsEpoch::new(200);
+        cuc_stamp.set_fractional_resolution(FractionalResolution::FifteenUs);
+        let duration = Duration::from_millis(2500);
+        let new_stamp = cuc_stamp + duration;
+        check_stamp_after_addition(&new_stamp);
+    }
+
+    #[test]
+    fn add_duration_basic_no_fractions() {
+        let mut cuc_stamp = TimeProviderCcsdsEpoch::new(200);
+        let duration = Duration::from_millis(2000);
+        cuc_stamp += duration;
+        assert_eq!(cuc_stamp.counter(), 202);
+        assert_eq!(cuc_stamp.width_fractions_pair(), None);
+    }
+
+    #[test]
+    fn add_duration_basic_on_ref_no_fractions() {
+        let cuc_stamp = TimeProviderCcsdsEpoch::new(200);
+        let duration = Duration::from_millis(2000);
+        let new_stamp = cuc_stamp + duration;
+        assert_eq!(new_stamp.counter(), 202);
+        assert_eq!(new_stamp.width_fractions_pair(), None);
+    }
     #[test]
     fn add_duration_overflow() {
         let mut cuc_stamp =
@@ -1199,5 +1211,19 @@ mod tests {
             cuc.counter(),
             (-DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as u32
         );
+    }
+
+    #[test]
+    fn test_invalid_counter() {
+        let cuc_error = TimeProviderCcsdsEpoch::new_generic(WidthCounterPair(1, 256), None);
+        assert!(cuc_error.is_err());
+        let cuc_error = cuc_error.unwrap_err();
+        if let CucError::InvalidCounter { width, counter } = cuc_error {
+            assert_eq!(width, 1);
+            assert_eq!(counter, 256);
+            assert_eq!(cuc_error.to_string(), "invalid cuc counter 256 for width 1");
+        } else {
+            panic!("unexpected error: {}", cuc_error);
+        }
     }
 }

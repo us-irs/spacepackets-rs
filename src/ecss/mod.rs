@@ -171,7 +171,7 @@ impl Display for PusError {
                 write!(f, "crc16 was not calculated")
             }
             PusError::ByteConversion(e) => {
-                write!(f, "low level byte conversion error: {e}")
+                write!(f, "pus error: {e}")
             }
         }
     }

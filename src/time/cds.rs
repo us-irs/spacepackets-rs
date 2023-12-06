@@ -408,7 +408,9 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 /// # Example
 ///
 /// ```
-/// use spacepackets::time::cds::{TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes};
+/// use spacepackets::time::cds::{
+///     TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes, SubmillisPrecision,
+/// };
 /// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
 ///
 /// let timestamp_now = TimeProvider::new_with_u16_days(24, 24);
@@ -423,7 +425,7 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 ///     assert_eq!(dyn_provider.len_of_day_seg(), LengthOfDaySegment::Short16Bits);
 ///     assert_eq!(dyn_provider.ccsds_days_as_u32(), 24);
 ///     assert_eq!(dyn_provider.ms_of_day(), 24);
-///     assert_eq!(dyn_provider.submillis_precision(), None);
+///     assert_eq!(dyn_provider.submillis_precision(), SubmillisPrecision::Absent);
 /// }
 /// ```
 #[cfg(feature = "alloc")]
@@ -510,7 +512,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     /// using picosecond resolution, but significantly simplifies comparison of timestamps.
     pub fn precision_as_ns(&self) -> Option<u32> {
         match self.submillis_precision() {
-            SubmillisPrecision::Microseconds => Some(self.submillis as u32 * 1000),
+            SubmillisPrecision::Microseconds => Some(self.submillis * 1000),
             SubmillisPrecision::Picoseconds => Some(self.submillis / 1000),
             _ => None,
         }
@@ -1159,7 +1161,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
         let mut ns_since_last_sec = (self.ms_of_day % 1000) * 10_u32.pow(6);
         match self.submillis_precision() {
             SubmillisPrecision::Microseconds => {
-                ns_since_last_sec += self.submillis() as u32 * 1000;
+                ns_since_last_sec += self.submillis() * 1000;
             }
             SubmillisPrecision::Picoseconds => {
                 ns_since_last_sec += self.submillis() / 1000;

@@ -873,6 +873,8 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
+    use std::error::Error;
+
     use super::*;
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket, WritablePusPacket};
@@ -1062,16 +1064,21 @@ mod tests {
         let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());
         assert!(res.is_err());
         let err = res.unwrap_err();
-        match err {
-            PusError::ByteConversion(err) => {
-                if let ByteConversionError::ToSliceTooSmall { found, expected } = err {
-                    assert_eq!(expected, pus_tc.len_written());
-                    assert_eq!(found, 12);
-                } else {
-                    panic!("Unexpected error")
+        if let PusError::ByteConversion(e) = err {
+            assert_eq!(
+                e,
+                ByteConversionError::ToSliceTooSmall {
+                    found: 12,
+                    expected: 13
                 }
-            }
-            _ => panic!("Unexpected error"),
+            );
+            assert_eq!(
+                err.to_string(),
+                "pus error: target slice with size 12 is too small, expected size of at least 13"
+            );
+            assert_eq!(err.source().unwrap().to_string(), e.to_string());
+        } else {
+            panic!("unexpected error {err}");
         }
     }
 
