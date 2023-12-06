@@ -237,6 +237,9 @@ impl Error for TlvLvError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
+
 
     #[test]
     fn test_crc_from_bool() {
@@ -262,5 +265,29 @@ mod tests {
         let fault_handler_code_raw = FaultHandlerCode::NoticeOfSuspension as u8;
         let fault_handler_code = FaultHandlerCode::try_from(fault_handler_code_raw).unwrap();
         assert_eq!(fault_handler_code, FaultHandlerCode::NoticeOfSuspension);
+    }
+
+    #[test]
+    #[cfg(feature="serde")]
+    fn test_serde_impl_pdu_type() {
+        let pdu_type = PduType::FileData;
+        let output = to_allocvec(&pdu_type).unwrap();
+        assert_eq!(from_bytes::<PduType>(&output).unwrap(), pdu_type);
+    }
+
+    #[test]
+    #[cfg(feature="serde")]
+    fn test_serde_impl_direction() {
+        let direction = Direction::TowardsReceiver;
+        let output = to_allocvec(&direction).unwrap();
+        assert_eq!(from_bytes::<Direction>(&output).unwrap(), direction);
+    }
+
+    #[test]
+    #[cfg(feature="serde")]
+    fn test_serde_impl_transmission_mode() {
+        let mode = TransmissionMode::Unacknowledged;
+        let output = to_allocvec(&mode).unwrap();
+        assert_eq!(from_bytes::<TransmissionMode>(&output).unwrap(), mode);
     }
 }

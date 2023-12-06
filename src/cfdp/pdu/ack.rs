@@ -200,6 +200,8 @@ mod tests {
     };
 
     use super::*;
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     fn verify_state(ack_pdu: &AckPdu, expected_crc_flag: CrcFlag, expected_dir: Direction) {
         assert_eq!(ack_pdu.condition_code(), ConditionCode::NoError);
@@ -315,5 +317,19 @@ mod tests {
             FileDirectiveType::EofPdu
         );
         verify_state(&ack_pdu, CrcFlag::WithCrc, Direction::TowardsSender);
+    }
+
+    #[test]
+    #[cfg(feature="serde")]
+    fn test_ack_pdu_serialization() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_eof_pdu(
+            pdu_header,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        );
+        let output = to_allocvec(&ack_pdu).unwrap();
+        assert_eq!(from_bytes::<AckPdu>(&output).unwrap(), ack_pdu);
     }
 }
