@@ -39,7 +39,6 @@ pub struct FinishedPduCreator<'fs_responses> {
     condition_code: ConditionCode,
     delivery_code: DeliveryCode,
     file_status: FileStatus,
-    #[cfg_attr(feature = "serde", serde(borrow))]
     fs_responses:
         &'fs_responses [FilestoreResponseTlv<'fs_responses, 'fs_responses, 'fs_responses>],
     fault_location: Option<EntityIdTlv>,
@@ -391,8 +390,6 @@ mod tests {
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::FilestoreResponseTlv;
     use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag, TransmissionMode};
-    #[cfg(feature = "serde")]
-    use postcard::{from_bytes, to_allocvec};
 
     fn generic_finished_pdu(
         crc_flag: CrcFlag,
