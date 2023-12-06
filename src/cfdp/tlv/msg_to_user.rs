@@ -1,5 +1,5 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
-use super::{Tlv, TlvLvError, TlvType, TlvTypeField};
+use super::{GenericTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::ByteConversionError;
 use delegate::delegate;
 
@@ -18,8 +18,6 @@ impl<'data> MsgToUserTlv<'data> {
 
     delegate! {
         to self.tlv {
-            pub fn tlv_type_field(&self) -> TlvTypeField;
-            pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
             pub fn value(&self) -> &[u8];
             /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
             /// [Self::value]
@@ -59,29 +57,48 @@ impl<'data> MsgToUserTlv<'data> {
         let msg_to_user = Self {
             tlv: Tlv::from_bytes(buf)?,
         };
-        match msg_to_user.tlv_type_field() {
+        match msg_to_user.tlv.tlv_type_field() {
             TlvTypeField::Standard(tlv_type) => {
                 if tlv_type != TlvType::MsgToUser {
-                    return Err(TlvLvError::InvalidTlvTypeField((
-                        tlv_type as u8,
-                        Some(TlvType::MsgToUser as u8),
-                    )));
+                    return Err(TlvLvError::InvalidTlvTypeField {
+                        found: tlv_type as u8,
+                        expected: Some(TlvType::MsgToUser as u8),
+                    });
                 }
             }
             TlvTypeField::Custom(raw) => {
-                return Err(TlvLvError::InvalidTlvTypeField((
-                    raw,
-                    Some(TlvType::MsgToUser as u8),
-                )));
+                return Err(TlvLvError::InvalidTlvTypeField {
+                    found: raw,
+                    expected: Some(TlvType::MsgToUser as u8),
+                });
             }
         }
         Ok(msg_to_user)
     }
 }
 
+impl WritableTlv for MsgToUserTlv<'_> {
+    fn len_written(&self) -> usize {
+        self.len_full()
+    }
+
+    delegate!(
+        to self.tlv {
+            fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+        }
+    );
+}
+
+impl GenericTlv for MsgToUserTlv<'_> {
+    fn tlv_type_field(&self) -> TlvTypeField {
+        self.tlv.tlv_type_field()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_basic() {
         let custom_value: [u8; 4] = [1, 2, 3, 4];
@@ -90,6 +107,10 @@ mod tests {
         let msg_to_user = msg_to_user.unwrap();
         assert!(msg_to_user.is_standard_tlv());
         assert_eq!(msg_to_user.tlv_type().unwrap(), TlvType::MsgToUser);
+        assert_eq!(
+            msg_to_user.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::MsgToUser)
+        );
         assert_eq!(msg_to_user.value(), custom_value);
         assert_eq!(msg_to_user.value().len(), 4);
         assert_eq!(msg_to_user.len_value(), 4);
@@ -97,6 +118,48 @@ mod tests {
         assert!(!msg_to_user.is_empty());
         assert!(msg_to_user.raw_data().is_none());
         assert!(!msg_to_user.is_reserved_cfdp_msg());
+    }
+
+    #[test]
+    fn test_reserved_msg_serialization() {
+        let custom_value: [u8; 4] = [1, 2, 3, 4];
+        let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
+        let mut buf: [u8; 6] = [0; 6];
+        msg_to_user.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(
+            buf,
+            [
+                TlvType::MsgToUser as u8,
+                custom_value.len() as u8,
+                1,
+                2,
+                3,
+                4
+            ]
+        );
+    }
+
+    #[test]
+    fn test_reserved_msg_deserialization() {
+        let custom_value: [u8; 3] = [1, 2, 3];
+        let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
+        let msg_to_user_vec = msg_to_user.to_vec();
+        let msg_to_user_from_bytes = MsgToUserTlv::from_bytes(&msg_to_user_vec).unwrap();
+        assert!(!msg_to_user.is_reserved_cfdp_msg());
+        assert_eq!(msg_to_user_from_bytes, msg_to_user);
+        assert_eq!(msg_to_user_from_bytes.value(), msg_to_user.value());
+        assert_eq!(msg_to_user_from_bytes.tlv_type(), msg_to_user.tlv_type());
+    }
+    #[test]
+    fn test_reserved_msg_deserialization_invalid_type() {
+        let trash: [u8; 5] = [TlvType::FlowLabel as u8, 3, 1, 2, 3];
+        let error = MsgToUserTlv::from_bytes(&trash).unwrap_err();
+        if let TlvLvError::InvalidTlvTypeField { found, expected } = error {
+            assert_eq!(found, TlvType::FlowLabel as u8);
+            assert_eq!(expected, Some(TlvType::MsgToUser as u8));
+        } else {
+            panic!("Wrong error type returned: {:?}", error);
+        }
     }
 
     #[test]

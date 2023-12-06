@@ -200,6 +200,26 @@ mod tests {
     };
 
     use super::*;
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
+
+    fn verify_state(ack_pdu: &AckPdu, expected_crc_flag: CrcFlag, expected_dir: Direction) {
+        assert_eq!(ack_pdu.condition_code(), ConditionCode::NoError);
+        assert_eq!(ack_pdu.transaction_status(), TransactionStatus::Active);
+
+        assert_eq!(ack_pdu.crc_flag(), expected_crc_flag);
+        assert_eq!(ack_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(ack_pdu.pdu_type(), PduType::FileDirective);
+        assert_eq!(
+            ack_pdu.file_directive_type(),
+            Some(FileDirectiveType::AckPdu)
+        );
+        assert_eq!(ack_pdu.transmission_mode(), TransmissionMode::Acknowledged);
+        assert_eq!(ack_pdu.direction(), expected_dir);
+        assert_eq!(ack_pdu.source_id(), TEST_SRC_ID.into());
+        assert_eq!(ack_pdu.dest_id(), TEST_DEST_ID.into());
+        assert_eq!(ack_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
+    }
 
     #[test]
     fn test_basic() {
@@ -216,21 +236,7 @@ mod tests {
             ack_pdu.directive_code_of_acked_pdu(),
             FileDirectiveType::FinishedPdu
         );
-        assert_eq!(ack_pdu.condition_code(), ConditionCode::NoError);
-        assert_eq!(ack_pdu.transaction_status(), TransactionStatus::Active);
-
-        assert_eq!(ack_pdu.crc_flag(), CrcFlag::NoCrc);
-        assert_eq!(ack_pdu.file_flag(), LargeFileFlag::Normal);
-        assert_eq!(ack_pdu.pdu_type(), PduType::FileDirective);
-        assert_eq!(
-            ack_pdu.file_directive_type(),
-            Some(FileDirectiveType::AckPdu)
-        );
-        assert_eq!(ack_pdu.transmission_mode(), TransmissionMode::Acknowledged);
-        assert_eq!(ack_pdu.direction(), Direction::TowardsReceiver);
-        assert_eq!(ack_pdu.source_id(), TEST_SRC_ID.into());
-        assert_eq!(ack_pdu.dest_id(), TEST_DEST_ID.into());
-        assert_eq!(ack_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
+        verify_state(&ack_pdu, CrcFlag::NoCrc, Direction::TowardsReceiver);
     }
 
     fn generic_serialization_test(
@@ -295,5 +301,34 @@ mod tests {
         let ack_deserialized =
             AckPdu::from_bytes(&ack_vec).expect("ACK PDU deserialization failed");
         assert_eq!(ack_deserialized, ack_pdu);
+    }
+
+    #[test]
+    fn test_for_eof_pdu() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_eof_pdu(
+            pdu_header,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        );
+        assert_eq!(
+            ack_pdu.directive_code_of_acked_pdu(),
+            FileDirectiveType::EofPdu
+        );
+        verify_state(&ack_pdu, CrcFlag::WithCrc, Direction::TowardsSender);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_ack_pdu_serialization() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new_for_eof_pdu(
+            pdu_header,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        );
+        generic_serde_test(ack_pdu);
     }
 }

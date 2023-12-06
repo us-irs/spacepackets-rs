@@ -2,7 +2,7 @@ use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::EntityIdTlv;
+use crate::cfdp::tlv::{EntityIdTlv, WritableTlv};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
 use crate::ByteConversionError;
 #[cfg(feature = "serde")]
@@ -147,7 +147,7 @@ impl WritablePduPacket for EofPdu {
             &mut buf[current_idx..],
         )?;
         if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_be_bytes(buf)?;
+            current_idx += fault_location.write_to_bytes(buf)?;
         }
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
@@ -168,19 +168,16 @@ mod tests {
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
 
-    #[test]
-    fn test_basic() {
-        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
-        assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 4 + 4);
+    fn verify_state(&eof_pdu: &EofPdu, file_flag: LargeFileFlag) {
         assert_eq!(eof_pdu.file_checksum(), 0x01020304);
         assert_eq!(eof_pdu.file_size(), 12);
         assert_eq!(eof_pdu.condition_code(), ConditionCode::NoError);
 
         assert_eq!(eof_pdu.crc_flag(), CrcFlag::NoCrc);
-        assert_eq!(eof_pdu.file_flag(), LargeFileFlag::Normal);
+        assert_eq!(eof_pdu.file_flag(), file_flag);
         assert_eq!(eof_pdu.pdu_type(), PduType::FileDirective);
         assert_eq!(
             eof_pdu.file_directive_type(),
@@ -191,6 +188,15 @@ mod tests {
         assert_eq!(eof_pdu.source_id(), TEST_SRC_ID.into());
         assert_eq!(eof_pdu.dest_id(), TEST_DEST_ID.into());
         assert_eq!(eof_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
+    }
+
+    #[test]
+    fn test_basic() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 4 + 4);
+        verify_state(&eof_pdu, LargeFileFlag::Normal);
     }
 
     #[test]
@@ -269,5 +275,23 @@ mod tests {
         } else {
             panic!("expected crc error");
         }
+    }
+
+    #[test]
+    fn test_with_large_file_flag() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        verify_state(&eof_pdu, LargeFileFlag::Large);
+        assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 8 + 4);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_eof_serde() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        generic_serde_test(eof_pdu);
     }
 }

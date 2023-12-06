@@ -64,10 +64,10 @@ pub enum LengthOfDaySegment {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SubmillisPrecision {
-    Absent,
-    Microseconds(u16),
-    Picoseconds(u32),
-    Reserved,
+    Absent = 0b00,
+    Microseconds = 0b01,
+    Picoseconds = 0b10,
+    Reserved = 0b11,
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -107,8 +107,8 @@ pub fn length_of_day_segment_from_pfield(pfield: u8) -> LengthOfDaySegment {
 
 pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
     match pfield & 0b11 {
-        0b01 => SubmillisPrecision::Microseconds(0),
-        0b10 => SubmillisPrecision::Picoseconds(0),
+        0b01 => SubmillisPrecision::Microseconds,
+        0b10 => SubmillisPrecision::Picoseconds,
         0b00 => SubmillisPrecision::Absent,
         0b11 => SubmillisPrecision::Reserved,
         _ => panic!("pfield to SubmillisPrecision failed"),
@@ -164,7 +164,8 @@ pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     pfield: u8,
     ccsds_days: DaysLen::FieldType,
     ms_of_day: u32,
-    submillis_precision: Option<SubmillisPrecision>,
+    // submillis_precision: SubmillisPrecision,
+    submillis: u32,
     /// This is not strictly necessary but still cached because it significantly simplifies the
     /// calculation of [`DateTime<Utc>`].
     unix_stamp: UnixTimestamp,
@@ -174,7 +175,8 @@ pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
 ///
 /// Also exists to encapsulate properties used by private converters.
 pub trait CdsCommon {
-    fn submillis_precision(&self) -> Option<SubmillisPrecision>;
+    fn submillis_precision(&self) -> SubmillisPrecision;
+    fn submillis(&self) -> u32;
     fn ms_of_day(&self) -> u32;
     fn ccsds_days_as_u32(&self) -> u32;
 }
@@ -220,8 +222,8 @@ impl ConversionFromUnix {
 }
 
 impl CdsCommon for ConversionFromUnix {
-    fn submillis_precision(&self) -> Option<SubmillisPrecision> {
-        None
+    fn submillis_precision(&self) -> SubmillisPrecision {
+        SubmillisPrecision::Absent
     }
 
     fn ms_of_day(&self) -> u32 {
@@ -230,6 +232,10 @@ impl CdsCommon for ConversionFromUnix {
 
     fn ccsds_days_as_u32(&self) -> u32 {
         self.ccsds_days
+    }
+
+    fn submillis(&self) -> u32 {
+        0
     }
 }
 
@@ -241,11 +247,12 @@ impl CdsConverter for ConversionFromUnix {
 /// Helper struct which generates fields for the CDS time provider from a datetime.
 struct ConversionFromDatetime {
     unix_conversion: ConversionFromUnix,
-    submillis_prec: Option<SubmillisPrecision>,
+    submillis_prec: SubmillisPrecision,
+    submillis: u32,
 }
 
 impl CdsCommon for ConversionFromDatetime {
-    fn submillis_precision(&self) -> Option<SubmillisPrecision> {
+    fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
 
@@ -254,6 +261,10 @@ impl CdsCommon for ConversionFromDatetime {
             fn ms_of_day(&self) -> u32;
             fn ccsds_days_as_u32(&self) -> u32;
         }
+    }
+
+    fn submillis(&self) -> u32 {
+        self.submillis
     }
 }
 
@@ -276,21 +287,18 @@ fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
 
 impl ConversionFromDatetime {
     fn new(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
-        Self::new_generic(dt, None)
+        Self::new_generic(dt, SubmillisPrecision::Absent)
     }
 
     fn new_with_submillis_us_prec(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
-        Self::new_generic(dt, Some(SubmillisPrecision::Microseconds(0)))
+        Self::new_generic(dt, SubmillisPrecision::Microseconds)
     }
 
     fn new_with_submillis_ps_prec(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
-        Self::new_generic(dt, Some(SubmillisPrecision::Picoseconds(0)))
+        Self::new_generic(dt, SubmillisPrecision::Picoseconds)
     }
 
-    fn new_generic(
-        dt: &DateTime<Utc>,
-        mut prec: Option<SubmillisPrecision>,
-    ) -> Result<Self, TimestampError> {
+    fn new_generic(dt: &DateTime<Utc>, prec: SubmillisPrecision) -> Result<Self, TimestampError> {
         // The CDS timestamp does not support timestamps before the CCSDS epoch.
         if dt.year() < 1958 {
             return Err(TimestampError::DateBeforeCcsdsEpoch(*dt));
@@ -298,24 +306,20 @@ impl ConversionFromDatetime {
         // The contained values in the conversion should be all positive now
         let unix_conversion =
             ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_millis())?;
-        if let Some(submilli_prec) = prec {
-            match submilli_prec {
-                SubmillisPrecision::Microseconds(_) => {
-                    prec = Some(SubmillisPrecision::Microseconds(
-                        (dt.timestamp_subsec_micros() % 1000) as u16,
-                    ));
-                }
-                SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds(
-                        (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000,
-                    ));
-                }
-                _ => (),
+        let mut submillis = 0;
+        match prec {
+            SubmillisPrecision::Microseconds => {
+                submillis = dt.timestamp_subsec_micros() % 1000;
             }
+            SubmillisPrecision::Picoseconds => {
+                submillis = (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000;
+            }
+            _ => (),
         }
         Ok(Self {
             unix_conversion,
             submillis_prec: prec,
+            submillis,
         })
     }
 }
@@ -323,55 +327,52 @@ impl ConversionFromDatetime {
 #[cfg(feature = "std")]
 struct ConversionFromNow {
     unix_conversion: ConversionFromUnix,
-    submillis_prec: Option<SubmillisPrecision>,
+    submillis_prec: SubmillisPrecision,
+    submillis: u32,
 }
 
 #[cfg(feature = "std")]
 impl ConversionFromNow {
     fn new() -> Result<Self, SystemTimeError> {
-        Self::new_generic(None)
+        Self::new_generic(SubmillisPrecision::Absent)
     }
 
     fn new_with_submillis_us_prec() -> Result<Self, SystemTimeError> {
-        Self::new_generic(Some(SubmillisPrecision::Microseconds(0)))
+        Self::new_generic(SubmillisPrecision::Microseconds)
     }
 
     fn new_with_submillis_ps_prec() -> Result<Self, SystemTimeError> {
-        Self::new_generic(Some(SubmillisPrecision::Picoseconds(0)))
+        Self::new_generic(SubmillisPrecision::Picoseconds)
     }
 
-    fn new_generic(mut prec: Option<SubmillisPrecision>) -> Result<Self, SystemTimeError> {
+    fn new_generic(prec: SubmillisPrecision) -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
         // This should always return a value with valid (non-negative) CCSDS days,
         // so it is okay to unwrap
         let unix_conversion = ConversionFromUnix::new(epoch as i64, now.subsec_millis()).unwrap();
-        // Both values should now be positive
-        if let Some(submilli_prec) = prec {
-            match submilli_prec {
-                SubmillisPrecision::Microseconds(_) => {
-                    prec = Some(SubmillisPrecision::Microseconds(
-                        (now.subsec_micros() % 1000) as u16,
-                    ));
-                }
-                SubmillisPrecision::Picoseconds(_) => {
-                    prec = Some(SubmillisPrecision::Picoseconds(
-                        (now.subsec_nanos() % 10_u32.pow(6)) * 1000,
-                    ));
-                }
-                _ => (),
+        let mut submillis = 0;
+
+        match prec {
+            SubmillisPrecision::Microseconds => {
+                submillis = now.subsec_micros() % 1000;
             }
+            SubmillisPrecision::Picoseconds => {
+                submillis = (now.subsec_nanos() % 10_u32.pow(6)) * 1000;
+            }
+            _ => (),
         }
         Ok(Self {
             unix_conversion,
             submillis_prec: prec,
+            submillis,
         })
     }
 }
 
 #[cfg(feature = "std")]
 impl CdsCommon for ConversionFromNow {
-    fn submillis_precision(&self) -> Option<SubmillisPrecision> {
+    fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
     delegate! {
@@ -379,6 +380,10 @@ impl CdsCommon for ConversionFromNow {
             fn ms_of_day(&self) -> u32;
             fn ccsds_days_as_u32(&self) -> u32;
         }
+    }
+
+    fn submillis(&self) -> u32 {
+        self.submillis
     }
 }
 
@@ -403,7 +408,9 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 /// # Example
 ///
 /// ```
-/// use spacepackets::time::cds::{TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes};
+/// use spacepackets::time::cds::{
+///     TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes, SubmillisPrecision,
+/// };
 /// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
 ///
 /// let timestamp_now = TimeProvider::new_with_u16_days(24, 24);
@@ -418,7 +425,7 @@ impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
 ///     assert_eq!(dyn_provider.len_of_day_seg(), LengthOfDaySegment::Short16Bits);
 ///     assert_eq!(dyn_provider.ccsds_days_as_u32(), 24);
 ///     assert_eq!(dyn_provider.ms_of_day(), 24);
-///     assert_eq!(dyn_provider.submillis_precision(), None);
+///     assert_eq!(dyn_provider.submillis_precision(), SubmillisPrecision::Absent);
 /// }
 /// ```
 #[cfg(feature = "alloc")]
@@ -448,8 +455,8 @@ pub fn get_dyn_time_provider_from_bytes(
 }
 
 impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDaysLen> {
-    fn submillis_precision(&self) -> Option<SubmillisPrecision> {
-        self.submillis_precision
+    fn submillis_precision(&self) -> SubmillisPrecision {
+        precision_from_pfield(self.pfield)
     }
 
     fn ms_of_day(&self) -> u32 {
@@ -459,31 +466,42 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDay
     fn ccsds_days_as_u32(&self) -> u32 {
         self.ccsds_days.into()
     }
+
+    fn submillis(&self) -> u32 {
+        self.submillis
+    }
 }
 
 impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     /// Please note that a precision value of 0 will be converted to [None] (no precision).
-    pub fn set_submillis_precision(&mut self, prec: SubmillisPrecision) {
+    pub fn set_submillis(&mut self, prec: SubmillisPrecision, value: u32) -> bool {
         self.pfield &= !(0b11);
         if let SubmillisPrecision::Absent = prec {
-            self.submillis_precision = None;
-            return;
+            // self.submillis_precision = prec;
+            self.submillis = 0;
+            return true;
         }
-        self.submillis_precision = Some(prec);
+        // self.submillis_precision = prec;
         match prec {
-            SubmillisPrecision::Microseconds(_) => {
-                self.pfield |= 0b01;
+            SubmillisPrecision::Microseconds => {
+                if value > u16::MAX as u32 {
+                    return false;
+                }
+                self.pfield |= SubmillisPrecision::Microseconds as u8;
+                self.submillis = value;
             }
-            SubmillisPrecision::Picoseconds(_) => {
-                self.pfield |= 0b10;
+            SubmillisPrecision::Picoseconds => {
+                self.pfield |= SubmillisPrecision::Picoseconds as u8;
+                self.submillis = value;
             }
             _ => (),
         }
+        true
     }
 
-    pub fn clear_submillis_precision(&mut self) {
+    pub fn clear_submillis(&mut self) {
         self.pfield &= !(0b11);
-        self.submillis_precision = None;
+        self.submillis = 0;
     }
 
     pub fn ccsds_days(&self) -> ProvidesDaysLen::FieldType {
@@ -493,20 +511,11 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     /// Maps the submillisecond precision to a nanosecond value. This will reduce precision when
     /// using picosecond resolution, but significantly simplifies comparison of timestamps.
     pub fn precision_as_ns(&self) -> Option<u32> {
-        if let Some(prec) = self.submillis_precision {
-            match prec {
-                SubmillisPrecision::Microseconds(us) => {
-                    return Some(us as u32 * 1000);
-                }
-                SubmillisPrecision::Picoseconds(ps) => {
-                    return Some(ps / 1000);
-                }
-                _ => {
-                    return None;
-                }
-            }
+        match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => Some(self.submillis * 1000),
+            SubmillisPrecision::Picoseconds => Some(self.submillis / 1000),
+            _ => None,
         }
-        None
     }
 
     fn generic_raw_read_checks(
@@ -624,11 +633,11 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         i64: From<ProvidesDaysLen::FieldType>,
     {
         let mut provider = Self {
-            pfield: Self::generate_p_field(days_len, None),
+            pfield: Self::generate_p_field(days_len, SubmillisPrecision::Absent),
             ccsds_days,
             ms_of_day,
             unix_stamp: Default::default(),
-            submillis_precision: None,
+            submillis: 0,
         };
         let unix_days_seconds = ccsds_to_unix_days(i64::from(ccsds_days)) * SECONDS_PER_DAY as i64;
         provider.setup(unix_days_seconds, ms_of_day);
@@ -706,7 +715,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             ccsds_days,
             ms_of_day: converter.ms_of_day(),
             unix_stamp: Default::default(),
-            submillis_precision: converter.submillis_precision(),
+            submillis: converter.submillis(),
         };
         provider.setup(converter.unix_days_seconds(), converter.ms_of_day());
         Ok(provider)
@@ -714,32 +723,20 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
 
     #[cfg(feature = "std")]
     fn generic_conversion_from_now(&self) -> Result<ConversionFromNow, SystemTimeError> {
-        Ok(match self.submillis_precision {
-            None => ConversionFromNow::new()?,
-            Some(prec) => match prec {
-                SubmillisPrecision::Microseconds(_) => {
-                    ConversionFromNow::new_with_submillis_us_prec()?
-                }
-                SubmillisPrecision::Picoseconds(_) => {
-                    ConversionFromNow::new_with_submillis_ps_prec()?
-                }
-                _ => ConversionFromNow::new()?,
-            },
+        Ok(match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => ConversionFromNow::new_with_submillis_us_prec()?,
+            SubmillisPrecision::Picoseconds => ConversionFromNow::new_with_submillis_ps_prec()?,
+            _ => ConversionFromNow::new()?,
         })
     }
 
-    fn generate_p_field(
-        day_seg_len: LengthOfDaySegment,
-        submillis_prec: Option<SubmillisPrecision>,
-    ) -> u8 {
+    fn generate_p_field(day_seg_len: LengthOfDaySegment, submillis_prec: SubmillisPrecision) -> u8 {
         let mut pfield = P_FIELD_BASE | ((day_seg_len as u8) << 2);
-        if let Some(submillis_prec) = submillis_prec {
-            match submillis_prec {
-                SubmillisPrecision::Microseconds(_) => pfield |= 0b01,
-                SubmillisPrecision::Picoseconds(_) => pfield |= 0b10,
-                SubmillisPrecision::Reserved => pfield |= 0b11,
-                _ => (),
-            }
+        match submillis_prec {
+            SubmillisPrecision::Microseconds => pfield |= SubmillisPrecision::Microseconds as u8,
+            SubmillisPrecision::Picoseconds => pfield |= SubmillisPrecision::Picoseconds as u8,
+            SubmillisPrecision::Reserved => pfield |= SubmillisPrecision::Reserved as u8,
+            _ => (),
         }
         pfield
     }
@@ -843,14 +840,18 @@ impl TimeProvider<DaysLen24Bits> {
         let ms_of_day: u32 = u32::from_be_bytes(buf[4..8].try_into().unwrap());
         let mut provider = Self::new_with_u24_days(cccsds_days, ms_of_day)?;
         match submillis_precision {
-            SubmillisPrecision::Microseconds(_) => {
-                provider.set_submillis_precision(SubmillisPrecision::Microseconds(
-                    u16::from_be_bytes(buf[8..10].try_into().unwrap()),
-                ))
+            SubmillisPrecision::Microseconds => {
+                provider.set_submillis(
+                    SubmillisPrecision::Microseconds,
+                    u16::from_be_bytes(buf[8..10].try_into().unwrap()) as u32,
+                );
             }
-            SubmillisPrecision::Picoseconds(_) => provider.set_submillis_precision(
-                SubmillisPrecision::Picoseconds(u32::from_be_bytes(buf[8..12].try_into().unwrap())),
-            ),
+            SubmillisPrecision::Picoseconds => {
+                provider.set_submillis(
+                    SubmillisPrecision::Picoseconds,
+                    u32::from_be_bytes(buf[8..12].try_into().unwrap()),
+                );
+            }
             _ => (),
         }
         Ok(provider)
@@ -924,13 +925,20 @@ impl TimeProvider<DaysLen16Bits> {
         let ms_of_day: u32 = u32::from_be_bytes(buf[3..7].try_into().unwrap());
         let mut provider = Self::new_with_u16_days(ccsds_days, ms_of_day);
         provider.pfield = buf[0];
+
         match submillis_precision {
-            SubmillisPrecision::Microseconds(_) => provider.set_submillis_precision(
-                SubmillisPrecision::Microseconds(u16::from_be_bytes(buf[7..9].try_into().unwrap())),
-            ),
-            SubmillisPrecision::Picoseconds(_) => provider.set_submillis_precision(
-                SubmillisPrecision::Picoseconds(u32::from_be_bytes(buf[7..11].try_into().unwrap())),
-            ),
+            SubmillisPrecision::Microseconds => {
+                provider.set_submillis(
+                    SubmillisPrecision::Microseconds,
+                    u16::from_be_bytes(buf[7..9].try_into().unwrap()) as u32,
+                );
+            }
+            SubmillisPrecision::Picoseconds => {
+                provider.set_submillis(
+                    SubmillisPrecision::Picoseconds,
+                    u32::from_be_bytes(buf[7..11].try_into().unwrap()),
+                );
+            }
             _ => (),
         }
         Ok(provider)
@@ -941,7 +949,7 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     time_provider: &TimeProvider<T>,
     max_days_val: u32,
     duration: Duration,
-) -> (u32, u32, Option<SubmillisPrecision>) {
+) -> (u32, u32, u32) {
     let mut next_ccsds_days = time_provider.ccsds_days_as_u32();
     let mut next_ms_of_day = time_provider.ms_of_day;
     // Increment CCSDS days by a certain amount while also accounting for overflow.
@@ -963,47 +971,43 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
             increment_days(ccsds_days, 1);
         }
     };
-    let precision = if let Some(submillis_prec) = time_provider.submillis_precision {
-        match submillis_prec {
-            SubmillisPrecision::Microseconds(mut us) => {
-                let subsec_micros = duration.subsec_micros();
-                let subsec_millis = subsec_micros / 1000;
-                let submilli_micros = (subsec_micros % 1000) as u16;
-                us += submilli_micros;
-                if us >= 1000 {
-                    let carryover_us = us - 1000;
-                    increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                    us = carryover_us;
-                }
-                increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
-                Some(SubmillisPrecision::Microseconds(us))
+    let mut submillis = time_provider.submillis();
+    match time_provider.submillis_precision() {
+        SubmillisPrecision::Microseconds => {
+            let subsec_micros = duration.subsec_micros();
+            let subsec_millis = subsec_micros / 1000;
+            let submilli_micros = subsec_micros % 1000;
+            submillis += submilli_micros;
+            if submillis >= 1000 {
+                let carryover_us = submillis - 1000;
+                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                submillis = carryover_us;
             }
-            SubmillisPrecision::Picoseconds(mut ps) => {
-                let subsec_nanos = duration.subsec_nanos();
-                let subsec_millis = subsec_nanos / 10_u32.pow(6);
-                // 1 ms as ns is 1e6.
-                let submilli_nanos = subsec_nanos % 10_u32.pow(6);
-                // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
-                // is 1e9. The amount ps can now have is always less than 2e9.
-                ps += submilli_nanos * 1000;
-                if ps >= 10_u32.pow(9) {
-                    let carry_over_ps = ps - 10_u32.pow(9);
-                    increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                    ps = carry_over_ps;
-                }
-                increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
-                Some(SubmillisPrecision::Picoseconds(ps))
-            }
-            _ => None,
+            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
         }
-    } else {
-        increment_ms_of_day(
-            &mut next_ms_of_day,
-            duration.subsec_millis(),
-            &mut next_ccsds_days,
-        );
-        None
-    };
+        SubmillisPrecision::Picoseconds => {
+            let subsec_nanos = duration.subsec_nanos();
+            let subsec_millis = subsec_nanos / 10_u32.pow(6);
+            // 1 ms as ns is 1e6.
+            let submilli_nanos = subsec_nanos % 10_u32.pow(6);
+            // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
+            // is 1e9. The amount ps can now have is always less than 2e9.
+            submillis += submilli_nanos * 1000;
+            if submillis >= 10_u32.pow(9) {
+                let carry_over_ps = submillis - 10_u32.pow(9);
+                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                submillis = carry_over_ps;
+            }
+            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
+        }
+        _ => {
+            increment_ms_of_day(
+                &mut next_ms_of_day,
+                duration.subsec_millis(),
+                &mut next_ccsds_days,
+            );
+        }
+    }
     // The subsecond millisecond were already handled.
     let full_seconds = duration.as_secs();
     let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
@@ -1013,7 +1017,7 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
         &mut next_ccsds_days,
         (full_seconds as u32 - secs_of_day) / SECONDS_PER_DAY,
     );
-    (next_ccsds_days, next_ms_of_day, precision)
+    (next_ccsds_days, next_ms_of_day, submillis)
 }
 
 impl CdsTimestamp for TimeProvider<DaysLen16Bits> {
@@ -1038,9 +1042,7 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(&self, u16::MAX as u32, duration);
         let mut provider = Self::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
-        if let Some(prec) = precision {
-            provider.set_submillis_precision(prec);
-        }
+        provider.set_submillis(self.submillis_precision(), precision);
         provider
     }
 }
@@ -1052,9 +1054,7 @@ impl Add<Duration> for &TimeProvider<DaysLen16Bits> {
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
         let mut provider = Self::Output::new_with_u16_days(next_ccsds_days as u16, next_ms_of_day);
-        if let Some(prec) = precision {
-            provider.set_submillis_precision(prec);
-        }
+        provider.set_submillis(self.submillis_precision(), precision);
         provider
     }
 }
@@ -1069,9 +1069,7 @@ impl Add<Duration> for TimeProvider<DaysLen24Bits> {
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(&self, MAX_DAYS_24_BITS, duration);
         let mut provider = Self::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
-        if let Some(prec) = precision {
-            provider.set_submillis_precision(prec);
-        }
+        provider.set_submillis(self.submillis_precision(), precision);
         provider
     }
 }
@@ -1083,9 +1081,7 @@ impl Add<Duration> for &TimeProvider<DaysLen24Bits> {
             add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
         let mut provider =
             Self::Output::new_with_u24_days(next_ccsds_days, next_ms_of_day).unwrap();
-        if let Some(prec) = precision {
-            provider.set_submillis_precision(prec);
-        }
+        provider.set_submillis(self.submillis_precision(), precision);
         provider
     }
 }
@@ -1095,11 +1091,11 @@ impl Add<Duration> for &TimeProvider<DaysLen24Bits> {
 /// days overflow when this is a possibility and might be a problem.
 impl AddAssign<Duration> for TimeProvider<DaysLen16Bits> {
     fn add_assign(&mut self, duration: Duration) {
-        let (next_ccsds_days, next_ms_of_day, precision) =
+        let (next_ccsds_days, next_ms_of_day, submillis) =
             add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
         self.ccsds_days = next_ccsds_days as u16;
         self.ms_of_day = next_ms_of_day;
-        self.submillis_precision = precision;
+        self.submillis = submillis;
     }
 }
 
@@ -1108,11 +1104,11 @@ impl AddAssign<Duration> for TimeProvider<DaysLen16Bits> {
 /// days overflow when this is a possibility and might be a problem.
 impl AddAssign<Duration> for TimeProvider<DaysLen24Bits> {
     fn add_assign(&mut self, duration: Duration) {
-        let (next_ccsds_days, next_ms_of_day, precision) =
+        let (next_ccsds_days, next_ms_of_day, submillis) =
             add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
         self.ccsds_days = next_ccsds_days;
         self.ms_of_day = next_ms_of_day;
-        self.submillis_precision = precision;
+        self.submillis = submillis;
     }
 }
 
@@ -1163,16 +1159,14 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
 
     fn date_time(&self) -> Option<DateTime<Utc>> {
         let mut ns_since_last_sec = (self.ms_of_day % 1000) * 10_u32.pow(6);
-        if let Some(precision) = self.submillis_precision {
-            match precision {
-                SubmillisPrecision::Microseconds(us) => {
-                    ns_since_last_sec += us as u32 * 1000;
-                }
-                SubmillisPrecision::Picoseconds(ps) => {
-                    ns_since_last_sec += ps / 1000;
-                }
-                _ => (),
+        match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => {
+                ns_since_last_sec += self.submillis() * 1000;
             }
+            SubmillisPrecision::Picoseconds => {
+                ns_since_last_sec += self.submillis() / 1000;
+            }
+            _ => (),
         }
         self.calc_date_time(ns_since_last_sec)
     }
@@ -1196,16 +1190,14 @@ impl TimeWriter for TimeProvider<DaysLen16Bits> {
         buf[0] = self.pfield;
         buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
         buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
-        if let Some(submillis_prec) = self.submillis_precision {
-            match submillis_prec {
-                SubmillisPrecision::Microseconds(ms) => {
-                    buf[7..9].copy_from_slice(ms.to_be_bytes().as_slice());
-                }
-                SubmillisPrecision::Picoseconds(ps) => {
-                    buf[7..11].copy_from_slice(ps.to_be_bytes().as_slice());
-                }
-                _ => (),
+        match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => {
+                buf[7..9].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
             }
+            SubmillisPrecision::Picoseconds => {
+                buf[7..11].copy_from_slice(self.submillis().to_be_bytes().as_slice());
+            }
+            _ => (),
         }
         Ok(self.len_as_bytes())
     }
@@ -1218,16 +1210,14 @@ impl TimeWriter for TimeProvider<DaysLen24Bits> {
         let be_days = self.ccsds_days.to_be_bytes();
         buf[1..4].copy_from_slice(&be_days[1..4]);
         buf[4..8].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
-        if let Some(submillis_prec) = self.submillis_precision {
-            match submillis_prec {
-                SubmillisPrecision::Microseconds(ms) => {
-                    buf[8..10].copy_from_slice(ms.to_be_bytes().as_slice());
-                }
-                SubmillisPrecision::Picoseconds(ps) => {
-                    buf[8..12].copy_from_slice(ps.to_be_bytes().as_slice());
-                }
-                _ => (),
+        match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => {
+                buf[8..10].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
             }
+            SubmillisPrecision::Picoseconds => {
+                buf[8..12].copy_from_slice(self.submillis().to_be_bytes().as_slice());
+            }
+            _ => (),
         }
         Ok(self.len_as_bytes())
     }
@@ -1307,6 +1297,7 @@ mod tests {
     use super::*;
     use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
+    use alloc::string::ToString;
     use chrono::{Datelike, NaiveDate, Timelike};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
@@ -1322,7 +1313,10 @@ mod tests {
         );
         let subsecond_millis = unix_stamp.subsecond_millis;
         assert!(subsecond_millis.is_none());
-        assert_eq!(time_stamper.submillis_precision(), None);
+        assert_eq!(
+            time_stamper.submillis_precision(),
+            SubmillisPrecision::Absent
+        );
         assert!(time_stamper.subsecond_millis().is_none());
         assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
         assert_eq!(
@@ -1342,7 +1336,10 @@ mod tests {
     fn test_time_stamp_unix_epoch() {
         let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 0);
         assert_eq!(time_stamper.unix_stamp().unix_seconds, 0);
-        assert_eq!(time_stamper.submillis_precision(), None);
+        assert_eq!(
+            time_stamper.submillis_precision(),
+            SubmillisPrecision::Absent
+        );
         let date_time = time_stamper.date_time().unwrap();
         assert_eq!(date_time.year(), 1970);
         assert_eq!(date_time.month(), 1);
@@ -1415,6 +1412,11 @@ mod tests {
     fn test_write() {
         let mut buf = [0; 16];
         let time_stamper_0 = TimeProvider::new_with_u16_days(0, 0);
+        let unix_stamp = time_stamper_0.unix_stamp();
+        assert_eq!(
+            unix_stamp.unix_seconds,
+            (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32).into()
+        );
         let mut res = time_stamper_0.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
@@ -1447,10 +1449,15 @@ mod tests {
         for i in 0..6 {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
-            match res.unwrap_err() {
+            let error = res.unwrap_err();
+            match error {
                 ByteConversion(ToSliceTooSmall { found, expected }) => {
                     assert_eq!(found, i);
                     assert_eq!(expected, 7);
+                    assert_eq!(
+                        error.to_string(),
+                        format!("time stamp: target slice with size {i} is too small, expected size of at least 7")
+                    );
                 }
                 _ => panic!(
                     "{}",
@@ -1492,12 +1499,13 @@ mod tests {
         let res = TimeProvider::<DaysLen16Bits>::from_bytes(&buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
-        match err {
-            InvalidTimeCode { expected, found } => {
-                assert_eq!(expected, CcsdsTimeCodes::Cds);
-                assert_eq!(found, 0);
-            }
-            _ => {}
+        if let InvalidTimeCode { expected, found } = err {
+            assert_eq!(expected, CcsdsTimeCodes::Cds);
+            assert_eq!(found, 0);
+            assert_eq!(
+                err.to_string(),
+                "invalid raw time code value 0 for time code Cds"
+            );
         }
     }
 
@@ -1586,15 +1594,12 @@ mod tests {
     #[test]
     fn test_submillis_precision_micros() {
         let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
-        time_stamper.set_submillis_precision(SubmillisPrecision::Microseconds(500));
-        assert!(time_stamper.submillis_precision().is_some());
-        if let SubmillisPrecision::Microseconds(micros) =
-            time_stamper.submillis_precision().unwrap()
-        {
-            assert_eq!(micros, 500);
-        } else {
-            panic!("Submillis precision was not set properly");
-        }
+        time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
+        assert_eq!(
+            time_stamper.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(time_stamper.submillis(), 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1607,13 +1612,12 @@ mod tests {
     #[test]
     fn test_submillis_precision_picos() {
         let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
-        time_stamper.set_submillis_precision(SubmillisPrecision::Picoseconds(5e8 as u32));
-        assert!(time_stamper.submillis_precision().is_some());
-        if let SubmillisPrecision::Picoseconds(ps) = time_stamper.submillis_precision().unwrap() {
-            assert_eq!(ps, 5e8 as u32);
-        } else {
-            panic!("Submillis precision was not set properly");
-        }
+        time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
+        assert_eq!(
+            time_stamper.submillis_precision(),
+            SubmillisPrecision::Picoseconds
+        );
+        assert_eq!(time_stamper.submillis(), 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1626,7 +1630,7 @@ mod tests {
     #[test]
     fn read_stamp_with_ps_submillis_precision() {
         let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
-        time_stamper.set_submillis_precision(SubmillisPrecision::Picoseconds(5e8 as u32));
+        time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1636,19 +1640,17 @@ mod tests {
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 11);
-        assert!(stamp_deserialized.submillis_precision().is_some());
-        let submillis_rec = stamp_deserialized.submillis_precision().unwrap();
-        if let SubmillisPrecision::Picoseconds(ps) = submillis_rec {
-            assert_eq!(ps, 5e8 as u32);
-        } else {
-            panic!("Wrong precision field detected");
-        }
+        assert_eq!(
+            stamp_deserialized.submillis_precision(),
+            SubmillisPrecision::Picoseconds
+        );
+        assert_eq!(stamp_deserialized.submillis(), 5e8 as u32);
     }
 
     #[test]
     fn read_stamp_with_us_submillis_precision() {
         let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
-        time_stamper.set_submillis_precision(SubmillisPrecision::Microseconds(500));
+        time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1658,19 +1660,17 @@ mod tests {
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 9);
-        assert!(stamp_deserialized.submillis_precision().is_some());
-        let submillis_rec = stamp_deserialized.submillis_precision().unwrap();
-        if let SubmillisPrecision::Microseconds(us) = submillis_rec {
-            assert_eq!(us, 500);
-        } else {
-            panic!("Wrong precision field detected");
-        }
+        assert_eq!(
+            stamp_deserialized.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(stamp_deserialized.submillis(), 500);
     }
 
     #[test]
     fn read_u24_stamp_with_us_submillis_precision() {
         let mut time_stamper = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
-        time_stamper.set_submillis_precision(SubmillisPrecision::Microseconds(500));
+        time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1682,19 +1682,17 @@ mod tests {
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 10);
         assert_eq!(stamp_deserialized.ccsds_days(), u16::MAX as u32 + 1);
-        assert!(stamp_deserialized.submillis_precision().is_some());
-        let submillis_rec = stamp_deserialized.submillis_precision().unwrap();
-        if let SubmillisPrecision::Microseconds(us) = submillis_rec {
-            assert_eq!(us, 500);
-        } else {
-            panic!("Wrong precision field detected");
-        }
+        assert_eq!(
+            stamp_deserialized.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(stamp_deserialized.submillis(), 500);
     }
 
     #[test]
     fn read_u24_stamp_with_ps_submillis_precision() {
         let mut time_stamper = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
-        time_stamper.set_submillis_precision(SubmillisPrecision::Picoseconds(5e8 as u32));
+        time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
@@ -1706,13 +1704,11 @@ mod tests {
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 12);
         assert_eq!(stamp_deserialized.ccsds_days(), u16::MAX as u32 + 1);
-        assert!(stamp_deserialized.submillis_precision().is_some());
-        let submillis_rec = stamp_deserialized.submillis_precision().unwrap();
-        if let SubmillisPrecision::Picoseconds(ps) = submillis_rec {
-            assert_eq!(ps, 5e8 as u32);
-        } else {
-            panic!("Wrong precision field detected");
-        }
+        assert_eq!(
+            stamp_deserialized.submillis_precision(),
+            SubmillisPrecision::Picoseconds
+        );
+        assert_eq!(stamp_deserialized.submillis(), 5e8 as u32);
     }
 
     fn generic_dt_case_0_no_prec(subsec_millis: u32) -> DateTime<Utc> {
@@ -1785,13 +1781,11 @@ mod tests {
             time_provider.ms_of_day,
             30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
         );
-        assert!(time_provider.submillis_precision.is_some());
-        match time_provider.submillis_precision.unwrap() {
-            SubmillisPrecision::Microseconds(us) => {
-                assert_eq!(us, 500);
-            }
-            _ => panic!("unexpected precision field"),
-        }
+        assert_eq!(
+            time_provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(time_provider.submillis(), 500);
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
     }
 
@@ -1841,13 +1835,11 @@ mod tests {
             time_provider.ms_of_day,
             30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
         );
-        assert!(time_provider.submillis_precision.is_some());
-        match time_provider.submillis_precision.unwrap() {
-            SubmillisPrecision::Picoseconds(ps) => {
-                assert_eq!(ps, submilli_nanos * 1000);
-            }
-            _ => panic!("unexpected precision field"),
-        }
+        assert_eq!(
+            time_provider.submillis_precision(),
+            SubmillisPrecision::Picoseconds
+        );
+        assert_eq!(time_provider.submillis(), submilli_nanos * 1000);
         assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
     }
 
@@ -1942,7 +1934,7 @@ mod tests {
         let invalid_unix_secs: i64 = (u16::MAX as i64 + 1) * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
         match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            invalid_unix_secs as i64,
+            invalid_unix_secs,
             subsec_millis,
         )) {
             Ok(_) => {
@@ -1954,6 +1946,7 @@ mod tests {
                         days,
                         unix_to_ccsds_days(invalid_unix_secs / SECONDS_PER_DAY as i64)
                     );
+                    assert_eq!(e.to_string(), "cds error: invalid ccsds days 69919");
                 } else {
                     panic!("unexpected error {}", e)
                 }
@@ -2039,7 +2032,10 @@ mod tests {
         assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCodes::Cds);
         assert_eq!(dyn_provider.ccsds_days_as_u32(), u16::MAX as u32 + 1);
         assert_eq!(dyn_provider.ms_of_day(), 24);
-        assert_eq!(dyn_provider.submillis_precision(), None);
+        assert_eq!(
+            dyn_provider.submillis_precision(),
+            SubmillisPrecision::Absent
+        );
         assert_eq!(
             dyn_provider.len_of_day_seg(),
             LengthOfDaySegment::Long24Bits
@@ -2049,64 +2045,58 @@ mod tests {
     #[test]
     fn test_addition_with_us_precision_u16_days() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
-        provider.set_submillis_precision(SubmillisPrecision::Microseconds(0));
+        provider.set_submillis(SubmillisPrecision::Microseconds, 0);
         let duration = Duration::from_micros(500);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        if let SubmillisPrecision::Microseconds(us) = prec {
-            assert_eq!(us, 500);
-        } else {
-            panic!("invalid precision {:?}", prec)
-        }
+        assert_eq!(
+            provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(provider.submillis(), 500);
     }
 
     #[test]
     fn test_addition_with_us_precision_u16_days_with_subsec_millis() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
-        provider.set_submillis_precision(SubmillisPrecision::Microseconds(0));
+        provider.set_submillis(SubmillisPrecision::Microseconds, 0);
         let duration = Duration::from_micros(1200);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        if let SubmillisPrecision::Microseconds(us) = prec {
-            assert_eq!(us, 200);
-            assert_eq!(provider.ms_of_day, 1);
-        } else {
-            panic!("invalid precision {:?}", prec)
-        }
+        assert_eq!(
+            provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(provider.submillis(), 200);
+        assert_eq!(provider.ms_of_day(), 1);
     }
 
     #[test]
     fn test_addition_with_us_precision_u16_days_carry_over() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
-        provider.set_submillis_precision(SubmillisPrecision::Microseconds(800));
+        provider.set_submillis(SubmillisPrecision::Microseconds, 800);
         let duration = Duration::from_micros(400);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        if let SubmillisPrecision::Microseconds(us) = prec {
-            assert_eq!(us, 200);
-            assert_eq!(provider.ms_of_day, 1);
-        } else {
-            panic!("invalid precision {:?}", prec)
-        }
+
+        assert_eq!(
+            provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(provider.submillis(), 200);
+        assert_eq!(provider.ms_of_day(), 1);
     }
 
     #[test]
     fn test_addition_with_ps_precision_u16_days() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
-        provider.set_submillis_precision(SubmillisPrecision::Picoseconds(0));
+        provider.set_submillis(SubmillisPrecision::Picoseconds, 0);
         // 500 us as ns
         let duration = Duration::from_nanos(500 * 10u32.pow(3) as u64);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        if let SubmillisPrecision::Picoseconds(ps) = prec {
-            assert_eq!(ps, 500 * 10_u32.pow(6));
-        } else {
-            panic!("invalid precision {:?}", prec)
-        }
+
+        assert_eq!(
+            provider.submillis_precision(),
+            SubmillisPrecision::Picoseconds
+        );
+        assert_eq!(provider.submillis(), 500 * 10u32.pow(6));
     }
 
     #[test]
@@ -2119,9 +2109,9 @@ mod tests {
         assert_eq!(new_stamp.ms_of_day, 1000);
     }
 
-    fn check_ps_and_carryover(prec: SubmillisPrecision, ms_of_day: u32, val: u32) {
-        if let SubmillisPrecision::Picoseconds(ps) = prec {
-            assert_eq!(ps, val);
+    fn check_ps_and_carryover(prec: SubmillisPrecision, submillis: u32, ms_of_day: u32, val: u32) {
+        if prec == SubmillisPrecision::Picoseconds {
+            assert_eq!(submillis, val);
             assert_eq!(ms_of_day, 1);
         } else {
             panic!("invalid precision {:?}", prec)
@@ -2130,32 +2120,38 @@ mod tests {
     #[test]
     fn test_addition_with_ps_precision_u16_days_with_subsec_millis() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
-        provider.set_submillis_precision(SubmillisPrecision::Picoseconds(0));
+        provider.set_submillis(SubmillisPrecision::Picoseconds, 0);
         // 1200 us as ns
         let duration = Duration::from_nanos(1200 * 10u32.pow(3) as u64);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        check_ps_and_carryover(prec, provider.ms_of_day, 200 * 10_u32.pow(6));
+        check_ps_and_carryover(
+            provider.submillis_precision(),
+            provider.submillis(),
+            provider.ms_of_day,
+            200 * 10_u32.pow(6),
+        );
     }
 
     #[test]
     fn test_addition_with_ps_precision_u16_days_carryover() {
         let mut provider = TimeProvider::new_with_u16_days(0, 0);
         // 800 us as ps
-        provider.set_submillis_precision(SubmillisPrecision::Picoseconds(800 * 10_u32.pow(6)));
+        provider.set_submillis(SubmillisPrecision::Picoseconds, 800 * 10_u32.pow(6));
         // 400 us as ns
         let duration = Duration::from_nanos(400 * 10u32.pow(3) as u64);
         provider += duration;
-        assert!(provider.submillis_precision().is_some());
-        let prec = provider.submillis_precision().unwrap();
-        check_ps_and_carryover(prec, provider.ms_of_day, 200 * 10_u32.pow(6));
+        check_ps_and_carryover(
+            provider.submillis_precision(),
+            provider.submillis(),
+            provider.ms_of_day,
+            200 * 10_u32.pow(6),
+        );
     }
 
     #[test]
     fn test_dyn_creation_u16_days_with_precision() {
         let mut stamp = TimeProvider::new_with_u16_days(24, 24);
-        stamp.set_submillis_precision(SubmillisPrecision::Microseconds(666));
+        stamp.set_submillis(SubmillisPrecision::Microseconds, 666);
         let mut buf: [u8; 32] = [0; 32];
         stamp.write_to_bytes(&mut buf).unwrap();
         let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
@@ -2168,10 +2164,11 @@ mod tests {
             dyn_provider.len_of_day_seg(),
             LengthOfDaySegment::Short16Bits
         );
-        assert!(dyn_provider.submillis_precision().is_some());
-        if let SubmillisPrecision::Microseconds(us) = dyn_provider.submillis_precision().unwrap() {
-            assert_eq!(us, 666);
-        }
+        assert_eq!(
+            dyn_provider.submillis_precision(),
+            SubmillisPrecision::Microseconds
+        );
+        assert_eq!(dyn_provider.submillis(), 666);
     }
 
     #[test]
@@ -2218,7 +2215,7 @@ mod tests {
         let stamp0 = TimeProvider::new_with_u24_days(0, 0).unwrap();
         let stamp1 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
         let mut stamp2 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
-        stamp2.set_submillis_precision(SubmillisPrecision::Microseconds(500));
+        stamp2.set_submillis(SubmillisPrecision::Microseconds, 500);
         let stamp3 = TimeProvider::new_with_u24_days(1, 0).unwrap();
         assert!(stamp1 > stamp0);
         assert!(stamp2 > stamp0);
@@ -2237,6 +2234,20 @@ mod tests {
         stamp_small = stamp_larger.try_into().unwrap();
         assert_eq!(stamp_small.ccsds_days_as_u32(), u16::MAX as u32);
         assert_eq!(stamp_small.ms_of_day(), 500);
+    }
+
+    #[test]
+    fn test_update_from_now() {
+        let mut stamp = TimeProvider::new_with_u16_days(0, 0);
+        let _ = stamp.update_from_now();
+        let dt = stamp.unix_stamp().as_date_time().unwrap();
+        assert!(dt.year() > 2020);
+    }
+
+    #[test]
+    fn test_setting_submillis_precision() {
+        let mut provider = TimeProvider::new_with_u16_days(0, 15);
+        provider.set_submillis(SubmillisPrecision::Microseconds, 500);
     }
 
     #[test]

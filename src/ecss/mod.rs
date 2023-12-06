@@ -74,6 +74,7 @@ pub enum PusServiceId {
 /// All PUS versions. Only PUS C is supported by this library.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[non_exhaustive]
 pub enum PusVersion {
     EsaPus = 0,
     PusA = 1,
@@ -95,8 +96,9 @@ impl TryFrom<u8> for PusVersion {
 }
 
 /// ECSS Packet Type Codes (PTC)s.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
 pub enum PacketTypeCodes {
     Boolean = 1,
     Enumerated = 2,
@@ -115,9 +117,10 @@ pub enum PacketTypeCodes {
 pub type Ptc = PacketTypeCodes;
 
 /// ECSS Packet Field Codes (PFC)s for the unsigned [Ptc].
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum UnsignedPfc {
+#[repr(u8)]
+pub enum PfcUnsigned {
     OneByte = 4,
     TwelveBits = 8,
     TwoBytes = 12,
@@ -131,9 +134,10 @@ pub enum UnsignedPfc {
 }
 
 /// ECSS Packet Field Codes (PFC)s for the real (floating point) [Ptc].
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum RealPfc {
+#[repr(u8)]
+pub enum PfcReal {
     /// 4 octets simple precision format (IEEE)
     Float = 1,
     /// 8 octets simple precision format (IEEE)
@@ -148,9 +152,7 @@ pub enum RealPfc {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
-    IncorrectCrc(u16),
-    RawDataTooShort(usize),
-    NoRawData,
+    ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
     CrcCalculationMissing,
     ByteConversion(ByteConversionError),
@@ -162,23 +164,14 @@ impl Display for PusError {
             PusError::VersionNotSupported(v) => {
                 write!(f, "PUS version {v:?} not supported")
             }
-            PusError::IncorrectCrc(crc) => {
-                write!(f, "crc16 {crc:#04x} is incorrect")
-            }
-            PusError::RawDataTooShort(size) => {
-                write!(
-                    f,
-                    "deserialization error, provided raw data with size {size} too short"
-                )
-            }
-            PusError::NoRawData => {
-                write!(f, "no raw data provided")
+            PusError::ChecksumFailure(crc) => {
+                write!(f, "checksum verification for crc16 {crc:#06x} failed")
             }
             PusError::CrcCalculationMissing => {
                 write!(f, "crc16 was not calculated")
             }
             PusError::ByteConversion(e) => {
-                write!(f, "low level byte conversion error: {e}")
+                write!(f, "pus error: {e}")
             }
         }
     }
@@ -214,7 +207,11 @@ pub trait PusPacket: CcsdsPacket {
 
 pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, PusError> {
     if raw_data.len() < 2 {
-        return Err(PusError::RawDataTooShort(raw_data.len()));
+        return Err(ByteConversionError::FromSliceTooSmall {
+            found: raw_data.len(),
+            expected: 2,
+        }
+        .into());
     }
     Ok(u16::from_be_bytes(
         raw_data[raw_data.len() - 2..raw_data.len()]
@@ -250,11 +247,14 @@ pub(crate) fn crc_procedure(
 pub(crate) fn user_data_from_raw(
     current_idx: usize,
     total_len: usize,
-    raw_data_len: usize,
     slice: &[u8],
 ) -> Result<&[u8], PusError> {
     match current_idx {
-        _ if current_idx > total_len - 2 => Err(PusError::RawDataTooShort(raw_data_len)),
+        _ if current_idx > total_len - 2 => Err(ByteConversionError::FromSliceTooSmall {
+            found: total_len - 2,
+            expected: current_idx,
+        }
+        .into()),
         _ => Ok(&slice[current_idx..total_len - 2]),
     }
 }
@@ -265,7 +265,7 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
 ) -> Result<(), PusError> {
     verify_crc16_ccitt_false_from_raw(raw_data)
         .then(|| ())
-        .ok_or(PusError::IncorrectCrc(crc16))
+        .ok_or(PusError::ChecksumFailure(crc16))
 }
 
 pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
@@ -315,11 +315,11 @@ pub trait EcssEnumerationExt: EcssEnumeration + Debug + Copy + Clone + PartialEq
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericEcssEnumWrapper<TYPE> {
+pub struct GenericEcssEnumWrapper<TYPE: Copy> {
     field: GenericUnsignedByteField<TYPE>,
 }
 
-impl<TYPE> GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy> GenericEcssEnumWrapper<TYPE> {
     pub const fn ptc() -> PacketTypeCodes {
         PacketTypeCodes::Enumerated
     }
@@ -331,7 +331,7 @@ impl<TYPE> GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     fn size(&self) -> usize {
         (self.pfc() / 8) as usize
     }
@@ -341,7 +341,7 @@ impl<TYPE: ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     fn pfc(&self) -> u8 {
         size_of::<TYPE>() as u8 * 8_u8
     }
@@ -376,13 +376,22 @@ pub trait WritablePusPacket {
 
 #[cfg(test)]
 mod tests {
+    use alloc::string::ToString;
+
     use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, UnsignedEnum};
     use crate::ByteConversionError;
+
+    use super::*;
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
 
     #[test]
     fn test_enum_u8() {
         let mut buf = [0, 0, 0];
         let my_enum = EcssEnumU8::new(1);
+        assert_eq!(EcssEnumU8::ptc(), Ptc::Enumerated);
+        assert_eq!(my_enum.size(), 1);
+        assert_eq!(my_enum.pfc(), 8);
         my_enum
             .write_to_be_bytes(&mut buf[1..2])
             .expect("To byte conversion of u8 failed");
@@ -396,6 +405,8 @@ mod tests {
         my_enum
             .write_to_be_bytes(&mut buf[1..3])
             .expect("To byte conversion of u8 failed");
+        assert_eq!(my_enum.size(), 2);
+        assert_eq!(my_enum.pfc(), 16);
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
     }
@@ -447,5 +458,79 @@ mod tests {
                 panic!("Unexpected error {:?}", error);
             }
         }
+    }
+
+    #[test]
+    fn test_pus_error_display() {
+        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus);
+        let write_str = unsupport_version.to_string();
+        assert_eq!(write_str, "PUS version EsaPus not supported")
+    }
+
+    #[test]
+    fn test_service_id_from_u8() {
+        let verification_id_raw = 1;
+        let verification_id = PusServiceId::try_from(verification_id_raw).unwrap();
+        assert_eq!(verification_id, PusServiceId::Verification);
+    }
+
+    #[test]
+    fn test_ptc_from_u8() {
+        let ptc_raw = Ptc::AbsoluteTime as u8;
+        let ptc = Ptc::try_from(ptc_raw).unwrap();
+        assert_eq!(ptc, Ptc::AbsoluteTime);
+    }
+
+    #[test]
+    fn test_unsigned_pfc_from_u8() {
+        let pfc_raw = PfcUnsigned::OneByte as u8;
+        let pfc = PfcUnsigned::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, PfcUnsigned::OneByte);
+    }
+
+    #[test]
+    fn test_real_pfc_from_u8() {
+        let pfc_raw = PfcReal::Double as u8;
+        let pfc = PfcReal::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, PfcReal::Double);
+    }
+
+    #[test]
+    fn test_pus_error_eq_impl() {
+        assert_eq!(
+            PusError::VersionNotSupported(PusVersion::EsaPus),
+            PusError::VersionNotSupported(PusVersion::EsaPus)
+        );
+    }
+
+    #[test]
+    fn test_pus_error_clonable() {
+        let pus_error = PusError::ChecksumFailure(0x0101);
+        let cloned = pus_error;
+        assert_eq!(pus_error, cloned);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pus_service_id() {
+        generic_serde_test(PusServiceId::Verification);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_ptc() {
+        generic_serde_test(Ptc::AbsoluteTime);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pfc_unsigned() {
+        generic_serde_test(PfcUnsigned::EightBytes);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pfc_real() {
+        generic_serde_test(PfcReal::Double);
     }
 }

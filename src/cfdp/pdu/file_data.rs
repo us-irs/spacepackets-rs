@@ -248,6 +248,8 @@ mod tests {
     use crate::cfdp::pdu::tests::{TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID};
     use crate::cfdp::pdu::{CommonPduConfig, PduHeader};
     use crate::cfdp::{Direction, SegmentMetadataFlag, SegmentationControl, TransmissionMode};
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     #[test]
     fn test_basic() {
@@ -444,5 +446,40 @@ mod tests {
         assert!(fd_pdu_read_back.is_ok());
         let fd_pdu_read_back = fd_pdu_read_back.unwrap();
         assert_eq!(fd_pdu_read_back, fd_pdu);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_serialization() {
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let fd_pdu = FileDataPdu::new_no_seg_metadata(pdu_header, 10, &file_data);
+        let output = to_allocvec(&fd_pdu).unwrap();
+        let output_converted_back: FileDataPdu = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, fd_pdu);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_serialization_with_seg_metadata() {
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
+        let pdu_header = PduHeader::new_for_file_data(
+            common_conf,
+            0,
+            SegmentMetadataFlag::Present,
+            SegmentationControl::WithRecordBoundaryPreservation,
+        );
+        let file_data: [u8; 4] = [1, 2, 3, 4];
+        let seg_metadata: [u8; 4] = [4, 3, 2, 1];
+        let segment_meta =
+            SegmentMetadata::new(RecordContinuationState::StartAndEnd, Some(&seg_metadata))
+                .unwrap();
+        let fd_pdu = FileDataPdu::new_with_seg_metadata(pdu_header, segment_meta, 10, &file_data);
+        let output = to_allocvec(&fd_pdu).unwrap();
+        let output_converted_back: FileDataPdu = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, fd_pdu);
     }
 }

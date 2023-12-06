@@ -3,7 +3,7 @@ use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::Tlv;
+use crate::cfdp::tlv::{Tlv, WritableTlv};
 use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
 use crate::ByteConversionError;
 #[cfg(feature = "alloc")]
@@ -340,6 +340,8 @@ impl CfdpPdu for MetadataPduReader<'_> {
 
 #[cfg(test)]
 pub mod tests {
+    use alloc::string::ToString;
+
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{
         build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
@@ -348,7 +350,7 @@ pub mod tests {
     use crate::cfdp::pdu::tests::{
         common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
     };
-    use crate::cfdp::pdu::{CfdpPdu, WritablePduPacket};
+    use crate::cfdp::pdu::{CfdpPdu, PduError, WritablePduPacket};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::{Tlv, TlvType};
     use crate::cfdp::{
@@ -600,6 +602,45 @@ pub mod tests {
         assert_eq!(accumulated_len, pdu_read_back.options().len());
     }
 
+    #[test]
+    fn test_invalid_directive_code() {
+        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
+        let mut metadata_vec = metadata_pdu.to_vec().unwrap();
+        metadata_vec[7] = 0xff;
+        let metadata_error = MetadataPduReader::from_bytes(&metadata_vec);
+        assert!(metadata_error.is_err());
+        let error = metadata_error.unwrap_err();
+        if let PduError::InvalidDirectiveType { found, expected } = error {
+            assert_eq!(found, 0xff);
+            assert_eq!(expected, Some(FileDirectiveType::MetadataPdu));
+            assert_eq!(
+                error.to_string(),
+                "invalid directive type value 255, expected Some(MetadataPdu)"
+            );
+        } else {
+            panic!("Expected InvalidDirectiveType error, got {:?}", error);
+        }
+    }
+
+    #[test]
+    fn test_wrong_directive_code() {
+        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
+        let mut metadata_vec = metadata_pdu.to_vec().unwrap();
+        metadata_vec[7] = FileDirectiveType::EofPdu as u8;
+        let metadata_error = MetadataPduReader::from_bytes(&metadata_vec);
+        assert!(metadata_error.is_err());
+        let error = metadata_error.unwrap_err();
+        if let PduError::WrongDirectiveType { found, expected } = error {
+            assert_eq!(found, FileDirectiveType::EofPdu);
+            assert_eq!(expected, FileDirectiveType::MetadataPdu);
+            assert_eq!(
+                error.to_string(),
+                "found directive type EofPdu, expected MetadataPdu"
+            );
+        } else {
+            panic!("Expected InvalidDirectiveType error, got {:?}", error);
+        }
+    }
     #[test]
     fn test_corrects_pdu_header() {
         let pdu_header = PduHeader::new_for_file_data(

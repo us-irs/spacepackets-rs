@@ -82,13 +82,13 @@ impl Display for TimestampError {
                 )
             }
             TimestampError::Cds(e) => {
-                write!(f, "cds error {e}")
+                write!(f, "cds error: {e}")
             }
             TimestampError::Cuc(e) => {
-                write!(f, "cuc error {e}")
+                write!(f, "cuc error: {e}")
             }
             TimestampError::ByteConversion(e) => {
-                write!(f, "byte conversion error {e}")
+                write!(f, "time stamp: {e}")
             }
             TimestampError::DateBeforeCcsdsEpoch(e) => {
                 write!(f, "datetime with date before ccsds epoch: {e}")
@@ -412,7 +412,11 @@ impl Add<Duration> for &UnixTimestamp {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
-    use super::*;
+    use alloc::string::ToString;
+    use chrono::{Datelike, Timelike};
+    use std::format;
+
+    use super::{cuc::CucError, *};
 
     #[test]
     fn test_days_conversion() {
@@ -424,6 +428,14 @@ mod tests {
     fn test_get_current_time() {
         let sec_floats = seconds_since_epoch();
         assert!(sec_floats > 0.0);
+    }
+
+    #[test]
+    fn test_ms_of_day() {
+        let ms = ms_of_day(0.0);
+        assert_eq!(ms, 0);
+        let ms = ms_of_day(5.0);
+        assert_eq!(ms, 5000);
     }
 
     #[test]
@@ -535,6 +547,25 @@ mod tests {
     }
 
     #[test]
+    fn test_as_dt() {
+        let stamp = UnixTimestamp::new_only_seconds(0);
+        let dt = stamp.as_date_time().unwrap();
+        assert_eq!(dt.year(), 1970);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 1);
+        assert_eq!(dt.hour(), 0);
+        assert_eq!(dt.minute(), 0);
+        assert_eq!(dt.second(), 0);
+    }
+
+    #[test]
+    fn test_from_now() {
+        let stamp_now = UnixTimestamp::from_now().unwrap();
+        let dt_now = stamp_now.as_date_time().unwrap();
+        assert!(dt_now.year() >= 2020);
+    }
+
+    #[test]
     fn test_addition_spillover() {
         let mut stamp0 = UnixTimestamp::new(1, 900).unwrap();
         stamp0 += Duration::from_millis(100);
@@ -543,5 +574,12 @@ mod tests {
         stamp0 += Duration::from_millis(1100);
         assert_eq!(stamp0.unix_seconds, 3);
         assert_eq!(stamp0.subsecond_millis().unwrap(), 100);
+    }
+
+    #[test]
+    fn test_cuc_error_printout() {
+        let cuc_error = CucError::InvalidCounterWidth(12);
+        let stamp_error = TimestampError::from(cuc_error);
+        assert_eq!(stamp_error.to_string(), format!("cuc error: {cuc_error}"));
     }
 }

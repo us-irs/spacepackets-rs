@@ -13,7 +13,7 @@ def generate_cov_report(open_report: bool, format: str):
     os.environ["RUSTFLAGS"] = "-Cinstrument-coverage"
     os.environ["LLVM_PROFILE_FILE"] = "target/coverage/%p-%m.profraw"
     _LOGGER.info("Executing tests with coverage")
-    os.system("cargo test")
+    os.system("cargo test --all-features")
 
     out_path = "./target/debug/coverage"
     if format == "lcov":

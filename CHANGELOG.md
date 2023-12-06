@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Add `WritablePduPacket` trait which is a common trait of all CFDP PDU implementations.
 - Add `CfdpPdu` trait which exposes fields and attributes common to all CFDP PDUs.
+- Add `GenericTlv` and `WritableTlv` trait as abstractions for the various TLV types.
 
 ## Fixed
 
@@ -20,11 +21,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- Split up `FinishedPdu`into `FinishedPduCreator` and `FinishedPduReader` to expose specialized
+  APIs.
+- Split up `MetadataPdu`into `MetadataPduCreator` and `MetadataPduReader` to expose specialized
+  APIs.
+- Cleaned up CUC time implementation. Added `width` and `counter` getter methods.
 - Renamed `SerializablePusPacket` to `WritablePusPacket`.
+- Renamed `UnsignedPfc` to `PfcUnsigned` and `RealPfc` to `PfcReal`.
 - Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.
 - Introduce custom implementation of `PartialEq` for `CommonPduConfig` which only compares the
   values for the source entity ID, destination entity ID and transaction sequence number field to
   allow those fields to have different widths.
+- Removed the `PusError::RawDataTooShort` variant which is already covered by
+  `PusError::ByteConversionError` variant.
+- Ranamed `TlvLvError::ByteConversionError` to `TlvLvError::ByteConversion`.
+- Renamed `PusError::IncorrectCrc` to `PusError::ChecksumFailure`.
+- Some more struct variant changes for error enumerations.
+
+## Removed
+
+- `PusError::NoRawData` variant.
+- `cfdp::LenInBytes` which was not used.
 
 # [v0.7.0-beta.2] 2023-09-26
 

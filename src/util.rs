@@ -207,17 +207,21 @@ impl UnsignedEnum for UnsignedByteField {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericUnsignedByteField<TYPE> {
+pub struct GenericUnsignedByteField<TYPE: Copy> {
     value: TYPE,
 }
 
-impl<TYPE> GenericUnsignedByteField<TYPE> {
+impl<TYPE: Copy> GenericUnsignedByteField<TYPE> {
     pub const fn new(val: TYPE) -> Self {
         Self { value: val }
     }
+
+    pub const fn value(&self) -> TYPE {
+        self.value
+    }
 }
 
-impl<TYPE: ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
+impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
     fn size(&self) -> usize {
         self.value.written_len()
     }
@@ -344,8 +348,8 @@ pub mod tests {
             .expect("writing to raw buffer failed");
         assert_eq!(len, 1);
         assert_eq!(buf[0], 5);
-        for i in 1..8 {
-            assert_eq!(buf[i], 0);
+        for val in buf.iter().skip(1) {
+            assert_eq!(*val, 0);
         }
     }
 
@@ -360,8 +364,8 @@ pub mod tests {
         assert_eq!(len, 2);
         let raw_val = u16::from_be_bytes(buf[0..2].try_into().unwrap());
         assert_eq!(raw_val, 3823);
-        for i in 2..8 {
-            assert_eq!(buf[i], 0);
+        for val in buf.iter().skip(2) {
+            assert_eq!(*val, 0);
         }
     }
 
@@ -376,9 +380,9 @@ pub mod tests {
         assert_eq!(len, 4);
         let raw_val = u32::from_be_bytes(buf[0..4].try_into().unwrap());
         assert_eq!(raw_val, 80932);
-        for i in 4..8 {
+        (4..8).for_each(|i| {
             assert_eq!(buf[i], 0);
-        }
+        });
     }
 
     #[test]
@@ -544,8 +548,8 @@ pub mod tests {
             .expect("writing to raw buffer failed");
         let raw_val = u16::from_be_bytes(buf[0..2].try_into().unwrap());
         assert_eq!(raw_val, 3823);
-        for i in 2..8 {
-            assert_eq!(buf[i], 0);
+        for val in buf.iter().skip(2) {
+            assert_eq!(*val, 0);
         }
     }
 

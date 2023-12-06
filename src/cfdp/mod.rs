@@ -97,17 +97,6 @@ pub enum FaultHandlerCode {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum LenInBytes {
-    ZeroOrNone = 0,
-    OneByte = 1,
-    TwoBytes = 2,
-    ThreeBytes = 4,
-    FourBytes = 8,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[repr(u8)]
 pub enum ConditionCode {
     /// This is not an error condition for which a faulty handler override can be specified
     NoError = 0b0000,
@@ -180,9 +169,12 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TlvLvError {
     DataTooLarge(usize),
-    ByteConversionError(ByteConversionError),
+    ByteConversion(ByteConversionError),
     /// First value: Found value. Second value: Expected value if there is one.
-    InvalidTlvTypeField((u8, Option<u8>)),
+    InvalidTlvTypeField {
+        found: u8,
+        expected: Option<u8>,
+    },
     /// Logically invalid value length detected. The value length may not exceed 255 bytes.
     /// Depending on the concrete TLV type, the value length may also be logically invalid.
     InvalidValueLength(usize),
@@ -195,7 +187,7 @@ pub enum TlvLvError {
 
 impl From<ByteConversionError> for TlvLvError {
     fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversionError(value)
+        Self::ByteConversion(value)
     }
 }
 
@@ -210,17 +202,17 @@ impl Display for TlvLvError {
                     u8::MAX
                 )
             }
-            TlvLvError::ByteConversionError(e) => {
-                write!(f, "{}", e)
+            TlvLvError::ByteConversion(e) => {
+                write!(f, "tlv or lv byte conversion: {}", e)
             }
-            TlvLvError::InvalidTlvTypeField((found, expected)) => {
+            TlvLvError::InvalidTlvTypeField { found, expected } => {
                 write!(
                     f,
-                    "invalid TLV type field, found {found}, possibly expected {expected:?}"
+                    "invalid TLV type field, found {found}, expected {expected:?}"
                 )
             }
             TlvLvError::InvalidValueLength(len) => {
-                write!(f, "invalid value length {len} detected")
+                write!(f, "invalid value length {len}")
             }
             TlvLvError::SecondNameMissing => {
                 write!(f, "second name missing for filestore request or response")
@@ -236,8 +228,65 @@ impl Display for TlvLvError {
 impl Error for TlvLvError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            TlvLvError::ByteConversionError(e) => Some(e),
+            TlvLvError::ByteConversion(e) => Some(e),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
+
+    #[test]
+    fn test_crc_from_bool() {
+        assert_eq!(CrcFlag::from(false), CrcFlag::NoCrc);
+    }
+
+    #[test]
+    fn test_crc_flag_to_bool() {
+        let is_true: bool = CrcFlag::WithCrc.into();
+        assert!(is_true);
+        let is_false: bool = CrcFlag::NoCrc.into();
+        assert!(!is_false);
+    }
+
+    #[test]
+    fn test_default_checksum_type() {
+        let checksum = ChecksumType::default();
+        assert_eq!(checksum, ChecksumType::NullChecksum);
+    }
+
+    #[test]
+    fn test_fault_handler_code_from_u8() {
+        let fault_handler_code_raw = FaultHandlerCode::NoticeOfSuspension as u8;
+        let fault_handler_code = FaultHandlerCode::try_from(fault_handler_code_raw).unwrap();
+        assert_eq!(fault_handler_code, FaultHandlerCode::NoticeOfSuspension);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_impl_pdu_type() {
+        generic_serde_test(PduType::FileData);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_impl_direction() {
+        generic_serde_test(Direction::TowardsReceiver);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_impl_transmission_mode() {
+        generic_serde_test(TransmissionMode::Unacknowledged);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_fault_handler_code() {
+        generic_serde_test(FaultHandlerCode::NoticeOfCancellation);
     }
 }
