@@ -120,7 +120,7 @@ pub type Ptc = PacketTypeCodes;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum UnsignedPfc {
+pub enum PfcUnsigned {
     OneByte = 4,
     TwelveBits = 8,
     TwoBytes = 12,
@@ -137,7 +137,7 @@ pub enum UnsignedPfc {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum RealPfc {
+pub enum PfcReal {
     /// 4 octets simple precision format (IEEE)
     Float = 1,
     /// 8 octets simple precision format (IEEE)
@@ -483,16 +483,16 @@ mod tests {
 
     #[test]
     fn test_unsigned_pfc_from_u8() {
-        let pfc_raw = UnsignedPfc::OneByte as u8;
-        let pfc = UnsignedPfc::try_from(pfc_raw).unwrap();
-        assert_eq!(pfc, UnsignedPfc::OneByte);
+        let pfc_raw = PfcUnsigned::OneByte as u8;
+        let pfc = PfcUnsigned::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, PfcUnsigned::OneByte);
     }
 
     #[test]
     fn test_real_pfc_from_u8() {
-        let pfc_raw = RealPfc::Double as u8;
-        let pfc = RealPfc::try_from(pfc_raw).unwrap();
-        assert_eq!(pfc, RealPfc::Double);
+        let pfc_raw = PfcReal::Double as u8;
+        let pfc = PfcReal::try_from(pfc_raw).unwrap();
+        assert_eq!(pfc, PfcReal::Double);
     }
 
     #[test]

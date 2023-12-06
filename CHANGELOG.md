@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - Renamed `SerializablePusPacket` to `WritablePusPacket`.
+- Renamed `UnsignedPfc` to `PfcUnsigned` and `RealPfc` to `PfcReal`.
 - Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.
 - Introduce custom implementation of `PartialEq` for `CommonPduConfig` which only compares the
   values for the source entity ID, destination entity ID and transaction sequence number field to
