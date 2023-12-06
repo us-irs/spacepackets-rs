@@ -42,7 +42,7 @@ pub trait GenericTlv {
 pub trait WritableTlv {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
     fn len_written(&self) -> usize;
-    #[cfg(feautre = "alloc")]
+    #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; self.len_written()];
         self.write_to_bytes(&mut buf).unwrap();

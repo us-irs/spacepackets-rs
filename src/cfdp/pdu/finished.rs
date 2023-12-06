@@ -34,12 +34,12 @@ pub enum FileStatus {
 ///
 /// For more information, refer to CFDP chapter 5.2.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FinishedPduCreator<'fs_responses> {
     pdu_header: PduHeader,
     condition_code: ConditionCode,
     delivery_code: DeliveryCode,
     file_status: FileStatus,
+    #[cfg_attr(feature = "serde", serde(borrow))]
     fs_responses:
         &'fs_responses [FilestoreResponseTlv<'fs_responses, 'fs_responses, 'fs_responses>],
     fault_location: Option<EntityIdTlv>,
@@ -636,20 +636,5 @@ mod tests {
         let finished_pdu_vec = finished_pdu.to_vec().unwrap();
         let finished_pdu_deserialized = FinishedPduReader::from_bytes(&finished_pdu_vec).unwrap();
         assert_eq!(finished_pdu_deserialized, finished_pdu);
-    }
-
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_finished_serialization_serde() {
-        let finished_pdu = generic_finished_pdu(
-            CrcFlag::NoCrc,
-            LargeFileFlag::Normal,
-            DeliveryCode::Complete,
-            FileStatus::Retained,
-        );
-
-        let output = to_allocvec(&finished_pdu).unwrap();
-        let output_converted_back: FinishedPduCreator = from_bytes(&output).unwrap();
-        assert_eq!(output_converted_back, finished_pdu);
     }
 }
