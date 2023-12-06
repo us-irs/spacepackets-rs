@@ -369,9 +369,9 @@ impl PartialEq<FinishedPduCreator<'_>> for FinishedPduReader<'_> {
             && self.file_status == other.file_status
             && self.fault_location == other.fault_location
             && self
-            .fs_responses_iter()
-            .zip(other.filestore_responses().iter())
-            .all(|(a, b)| a == *b)
+                .fs_responses_iter()
+                .zip(other.filestore_responses().iter())
+                .all(|(a, b)| a == *b)
     }
 }
 
