@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- Split up `FinishedPdu`into `FinishedPduCreator` and `FinishedPduReader` to expose specialized
+  APIs.
+- Split up `MetadataPdu`into `MetadataPduCreator` and `MetadataPduReader` to expose specialized
+  APIs.
 - Renamed `SerializablePusPacket` to `WritablePusPacket`.
 - Renamed `UnsignedPfc` to `PfcUnsigned` and `RealPfc` to `PfcReal`.
 - Renamed `WritablePduPacket.written_len` and `SerializablePusPacket.len_packed` to `len_written`.

@@ -1,7 +1,9 @@
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
 };
-use crate::cfdp::tlv::{EntityIdTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv};
+use crate::cfdp::tlv::{
+    EntityIdTlv, FilestoreResponseTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv,
+};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType, TlvLvError};
 use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -33,16 +35,17 @@ pub enum FileStatus {
 /// For more information, refer to CFDP chapter 5.2.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct FinishedPdu<'fs_responses> {
+pub struct FinishedPduCreator<'fs_responses> {
     pdu_header: PduHeader,
     condition_code: ConditionCode,
     delivery_code: DeliveryCode,
     file_status: FileStatus,
-    fs_responses: Option<&'fs_responses [u8]>,
+    fs_responses:
+        &'fs_responses [FilestoreResponseTlv<'fs_responses, 'fs_responses, 'fs_responses>],
     fault_location: Option<EntityIdTlv>,
 }
 
-impl<'fs_responses> FinishedPdu<'fs_responses> {
+impl<'fs_responses> FinishedPduCreator<'fs_responses> {
     /// Default finished PDU: No error (no fault location field) and no filestore responses.
     pub fn new_default(
         pdu_header: PduHeader,
@@ -54,7 +57,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
             ConditionCode::NoError,
             delivery_code,
             file_status,
-            None,
+            &[],
             None,
         )
     }
@@ -71,7 +74,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
             condition_code,
             delivery_code,
             file_status,
-            None,
+            &[],
             Some(fault_location),
         )
     }
@@ -81,7 +84,11 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         condition_code: ConditionCode,
         delivery_code: DeliveryCode,
         file_status: FileStatus,
-        fs_responses: Option<&'fs_responses [u8]>,
+        fs_responses: &'fs_responses [FilestoreResponseTlv<
+            'fs_responses,
+            'fs_responses,
+            'fs_responses,
+        >],
         fault_location: Option<EntityIdTlv>,
     ) -> Self {
         pdu_header.pdu_type = PduType::FileDirective;
@@ -111,7 +118,8 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         self.file_status
     }
 
-    pub fn filestore_responses(&self) -> Option<&'fs_responses [u8]> {
+    // If there are no filestore responses, an empty slice will be returned.
+    pub fn filestore_responses(&self) -> &[FilestoreResponseTlv<'_, '_, '_>] {
         self.fs_responses
     }
 
@@ -121,8 +129,8 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
 
     fn calc_pdu_datafield_len(&self) -> usize {
         let mut datafield_len = 2;
-        if let Some(fs_responses) = self.fs_responses {
-            datafield_len += fs_responses.len();
+        for fs_response in self.fs_responses {
+            datafield_len += fs_response.len_full();
         }
         if let Some(fault_location) = self.fault_location {
             datafield_len += fault_location.len_full();
@@ -132,9 +140,103 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         }
         datafield_len
     }
+}
+
+impl CfdpPdu for FinishedPduCreator<'_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::FinishedPdu)
+    }
+}
+
+impl WritablePduPacket for FinishedPduCreator<'_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let expected_len = self.len_written();
+        if buf.len() < expected_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: expected_len,
+            }
+            .into());
+        }
+
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_idx] = FileDirectiveType::FinishedPdu as u8;
+        current_idx += 1;
+        buf[current_idx] = ((self.condition_code as u8) << 4)
+            | ((self.delivery_code as u8) << 2)
+            | self.file_status as u8;
+        current_idx += 1;
+        for fs_responses in self.fs_responses {
+            current_idx += fs_responses.write_to_bytes(&mut buf[current_idx..])?;
+        }
+        if let Some(fault_location) = self.fault_location {
+            current_idx += fault_location.write_to_bytes(&mut buf[current_idx..])?;
+        }
+        if self.crc_flag() == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(buf, current_idx);
+        }
+        Ok(current_idx)
+    }
+
+    fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+/// Helper structure to loop through all filestore responses of a read Finished PDU. It should be
+/// noted that iterators in Rust are not fallible, but the TLV creation can fail, for example if
+/// the raw TLV data is invalid for some reason. In that case, the iterator will yield [None]
+/// because there is no way to recover from this.
+///
+/// The user can accumulate the length of all TLVs yielded by the iterator and compare it against
+/// the full length of the options to check whether the iterator was able to parse all TLVs
+/// successfully.
+pub struct FilestoreResponseIterator<'buf> {
+    responses_buf: &'buf [u8],
+    current_idx: usize,
+}
+
+impl<'buf> Iterator for FilestoreResponseIterator<'buf> {
+    type Item = FilestoreResponseTlv<'buf, 'buf, 'buf>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_idx == self.responses_buf.len() {
+            return None;
+        }
+        let tlv = FilestoreResponseTlv::from_bytes(&self.responses_buf[self.current_idx..]);
+        // There are not really fallible iterators so we can't continue here..
+        if tlv.is_err() {
+            return None;
+        }
+        let tlv = tlv.unwrap();
+        self.current_idx += tlv.len_full();
+        Some(tlv)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FinishedPduReader<'buf> {
+    pdu_header: PduHeader,
+    condition_code: ConditionCode,
+    delivery_code: DeliveryCode,
+    file_status: FileStatus,
+    fs_responses_raw: &'buf [u8],
+    fault_location: Option<EntityIdTlv>,
+}
+
+impl<'buf> FinishedPduReader<'buf> {
+    /// Generates [Self] from a raw bytestream.
+    pub fn new(buf: &'buf [u8]) -> Result<Self, PduError> {
+        Self::from_bytes(buf)
+    }
 
     /// Generates [Self] from a raw bytestream.
-    pub fn from_bytes(buf: &'fs_responses [u8]) -> Result<Self, PduError> {
+    pub fn from_bytes(buf: &'buf [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
         let min_expected_len = current_idx + 2;
@@ -158,24 +260,51 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
         let delivery_code = DeliveryCode::try_from((buf[current_idx] >> 2) & 0b1).unwrap();
         let file_status = FileStatus::try_from(buf[current_idx] & 0b11).unwrap();
         current_idx += 1;
-        let (fs_responses, fault_location) =
+        let (fs_responses_raw, fault_location) =
             Self::parse_tlv_fields(current_idx, full_len_without_crc, buf)?;
         Ok(Self {
             pdu_header,
             condition_code,
             delivery_code,
             file_status,
-            fs_responses,
+            fs_responses_raw,
             fault_location,
         })
+    }
+
+    pub fn fs_responses_raw(&self) -> &[u8] {
+        self.fs_responses_raw
+    }
+
+    pub fn fs_responses_iter(&self) -> FilestoreResponseIterator<'_> {
+        FilestoreResponseIterator {
+            responses_buf: self.fs_responses_raw,
+            current_idx: 0,
+        }
+    }
+
+    pub fn condition_code(&self) -> ConditionCode {
+        self.condition_code
+    }
+
+    pub fn delivery_code(&self) -> DeliveryCode {
+        self.delivery_code
+    }
+
+    pub fn file_status(&self) -> FileStatus {
+        self.file_status
+    }
+
+    pub fn fault_location(&self) -> Option<EntityIdTlv> {
+        self.fault_location
     }
 
     fn parse_tlv_fields(
         mut current_idx: usize,
         full_len_without_crc: usize,
-        buf: &'fs_responses [u8],
-    ) -> Result<(Option<&'fs_responses [u8]>, Option<EntityIdTlv>), PduError> {
-        let mut fs_responses = None;
+        buf: &[u8],
+    ) -> Result<(&[u8], Option<EntityIdTlv>), PduError> {
+        let mut fs_responses: &[u8] = &[];
         let mut fault_location = None;
         let start_of_fs_responses = current_idx;
         // There are leftover filestore response(s) and/or a fault location field.
@@ -186,12 +315,12 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
                     if tlv_type == TlvType::FilestoreResponse {
                         current_idx += next_tlv.len_full();
                         if current_idx == full_len_without_crc {
-                            fs_responses = Some(&buf[start_of_fs_responses..current_idx]);
+                            fs_responses = &buf[start_of_fs_responses..current_idx];
                         }
                     } else if tlv_type == TlvType::EntityId {
                         // At least one FS response is included.
                         if current_idx > start_of_fs_responses {
-                            fs_responses = Some(&buf[start_of_fs_responses..current_idx]);
+                            fs_responses = &buf[start_of_fs_responses..current_idx];
                         }
                         fault_location = Some(EntityIdTlv::from_bytes(&buf[current_idx..])?);
                         current_idx += fault_location.as_ref().unwrap().len_full();
@@ -222,7 +351,7 @@ impl<'fs_responses> FinishedPdu<'fs_responses> {
     }
 }
 
-impl CfdpPdu for FinishedPdu<'_> {
+impl CfdpPdu for FinishedPduReader<'_> {
     fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
@@ -232,49 +361,35 @@ impl CfdpPdu for FinishedPdu<'_> {
     }
 }
 
-impl WritablePduPacket for FinishedPdu<'_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        let expected_len = self.len_written();
-        if buf.len() < expected_len {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: buf.len(),
-                expected: expected_len,
-            }
-            .into());
-        }
-
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::FinishedPdu as u8;
-        current_idx += 1;
-        buf[current_idx] = ((self.condition_code as u8) << 4)
-            | ((self.delivery_code as u8) << 2)
-            | self.file_status as u8;
-        current_idx += 1;
-        if let Some(fs_responses) = self.fs_responses {
-            buf[current_idx..current_idx + fs_responses.len()].copy_from_slice(fs_responses);
-            current_idx += fs_responses.len();
-        }
-        if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_bytes(&mut buf[current_idx..])?;
-        }
-        if self.crc_flag() == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
-        }
-        Ok(current_idx)
+impl PartialEq<FinishedPduCreator<'_>> for FinishedPduReader<'_> {
+    fn eq(&self, other: &FinishedPduCreator<'_>) -> bool {
+        self.pdu_header == other.pdu_header
+            && self.condition_code == other.condition_code
+            && self.delivery_code == other.delivery_code
+            && self.file_status == other.file_status
+            && self.fault_location == other.fault_location
+            && self
+            .fs_responses_iter()
+            .zip(other.filestore_responses().iter())
+            .all(|(a, b)| a == *b)
     }
+}
 
-    fn len_written(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+impl PartialEq<FinishedPduReader<'_>> for FinishedPduCreator<'_> {
+    fn eq(&self, other: &FinishedPduReader<'_>) -> bool {
+        other.eq(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::tests::{
         common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
+    use crate::cfdp::tlv::FilestoreResponseTlv;
     use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag, TransmissionMode};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
@@ -284,9 +399,9 @@ mod tests {
         fss: LargeFileFlag,
         delivery_code: DeliveryCode,
         file_status: FileStatus,
-    ) -> FinishedPdu<'static> {
+    ) -> FinishedPduCreator<'static> {
         let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
-        FinishedPdu::new_default(pdu_header, delivery_code, file_status)
+        FinishedPduCreator::new_default(pdu_header, delivery_code, file_status)
     }
 
     #[test]
@@ -304,7 +419,7 @@ mod tests {
         );
         assert_eq!(finished_pdu.delivery_code(), DeliveryCode::Complete);
         assert_eq!(finished_pdu.file_status(), FileStatus::Retained);
-        assert_eq!(finished_pdu.filestore_responses(), None);
+        assert_eq!(finished_pdu.filestore_responses(), &[]);
         assert_eq!(finished_pdu.fault_location(), None);
         assert_eq!(finished_pdu.pdu_header().pdu_datafield_len, 2);
 
@@ -398,10 +513,11 @@ mod tests {
         );
         let mut buf: [u8; 64] = [0; 64];
         finished_pdu.write_to_bytes(&mut buf).unwrap();
-        let read_back = FinishedPdu::from_bytes(&buf);
+        let read_back = FinishedPduReader::from_bytes(&buf);
         assert!(read_back.is_ok());
         let read_back = read_back.unwrap();
-        assert_eq!(finished_pdu, read_back);
+        assert_eq!(finished_pdu.pdu_header(), read_back.pdu_header());
+        assert_eq!(finished_pdu.condition_code(), read_back.condition_code());
     }
 
     #[test]
@@ -436,11 +552,11 @@ mod tests {
         let mut buf: [u8; 64] = [0; 64];
         let written = finished_pdu.write_to_bytes(&mut buf).unwrap();
         assert_eq!(written, finished_pdu.len_written());
-        let finished_pdu_from_raw = FinishedPdu::from_bytes(&buf).unwrap();
-        assert_eq!(finished_pdu_from_raw, finished_pdu);
+        let finished_pdu_from_raw = FinishedPduReader::new(&buf).unwrap();
+        assert_eq!(finished_pdu, finished_pdu_from_raw);
         buf[written - 1] -= 1;
         let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
-        let error = FinishedPdu::from_bytes(&buf).unwrap_err();
+        let error = FinishedPduReader::new(&buf).unwrap_err();
         if let PduError::ChecksumError(e) = error {
             assert_eq!(e, crc);
         } else {
@@ -452,7 +568,7 @@ mod tests {
     fn test_with_fault_location() {
         let pdu_header =
             PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
-        let finished_pdu = FinishedPdu::new_with_error(
+        let finished_pdu = FinishedPduCreator::new_with_error(
             pdu_header,
             ConditionCode::NakLimitReached,
             DeliveryCode::Incomplete,
@@ -475,7 +591,7 @@ mod tests {
         let pdu_header =
             PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
         let entity_id_tlv = EntityIdTlv::new(TEST_DEST_ID.into());
-        let finished_pdu = FinishedPdu::new_with_error(
+        let finished_pdu = FinishedPduCreator::new_with_error(
             pdu_header,
             ConditionCode::NakLimitReached,
             DeliveryCode::Incomplete,
@@ -483,16 +599,44 @@ mod tests {
             entity_id_tlv,
         );
         let finished_pdu_vec = finished_pdu.to_vec().unwrap();
-        let finished_pdu_deserialized = FinishedPdu::from_bytes(&finished_pdu_vec).unwrap();
-        assert!(finished_pdu_deserialized.fault_location().is_some());
-        assert_eq!(
-            finished_pdu_deserialized.fault_location().unwrap(),
-            entity_id_tlv
-        )
+        let finished_pdu_deserialized = FinishedPduReader::from_bytes(&finished_pdu_vec).unwrap();
+        assert_eq!(finished_pdu, finished_pdu_deserialized);
     }
 
     #[test]
-    fn test_deserialization_with_fs_responses() {}
+    fn test_deserialization_with_fs_responses() {
+        let first_name = "first.txt";
+        let first_name_lv = Lv::new_from_str(first_name).unwrap();
+        let fs_response_0 = FilestoreResponseTlv::new_no_filestore_message(
+            crate::cfdp::tlv::FilestoreActionCode::CreateFile,
+            0,
+            first_name_lv,
+            None,
+        )
+        .unwrap();
+        let fs_response_1 = FilestoreResponseTlv::new_no_filestore_message(
+            crate::cfdp::tlv::FilestoreActionCode::DeleteFile,
+            0,
+            first_name_lv,
+            None,
+        )
+        .unwrap();
+        let fs_responses = &[fs_response_0, fs_response_1];
+
+        let pdu_header =
+            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let finished_pdu = FinishedPduCreator::new_generic(
+            pdu_header,
+            ConditionCode::NakLimitReached,
+            DeliveryCode::Incomplete,
+            FileStatus::DiscardDeliberately,
+            fs_responses,
+            None,
+        );
+        let finished_pdu_vec = finished_pdu.to_vec().unwrap();
+        let finished_pdu_deserialized = FinishedPduReader::from_bytes(&finished_pdu_vec).unwrap();
+        assert_eq!(finished_pdu_deserialized, finished_pdu);
+    }
 
     #[test]
     #[cfg(feature = "serde")]
@@ -505,7 +649,7 @@ mod tests {
         );
 
         let output = to_allocvec(&finished_pdu).unwrap();
-        let output_converted_back: FinishedPdu = from_bytes(&output).unwrap();
+        let output_converted_back: FinishedPduCreator = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, finished_pdu);
     }
 }
