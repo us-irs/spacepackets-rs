@@ -168,6 +168,8 @@ mod tests {
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
 
     fn verify_state(&eof_pdu: &EofPdu, file_flag: LargeFileFlag) {
         assert_eq!(eof_pdu.file_checksum(), 0x01020304);
@@ -282,5 +284,14 @@ mod tests {
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         verify_state(&eof_pdu, LargeFileFlag::Large);
         assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 8 + 4);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_eof_serde() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
+        generic_serde_test(eof_pdu);
     }
 }

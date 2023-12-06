@@ -749,7 +749,7 @@ pub mod zc {
 }
 
 #[cfg(all(test, feature = "std"))]
-mod tests {
+pub(crate) mod tests {
     use std::collections::HashSet;
 
     #[cfg(feature = "serde")]
@@ -759,9 +759,13 @@ mod tests {
     };
     use crate::{SequenceFlags, SpHeader};
     use alloc::vec;
+    #[cfg(feature = "serde")]
+    use core::fmt::Debug;
     use num_traits::pow;
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
+    #[cfg(feature = "serde")]
+    use serde::{de::DeserializeOwned, Serialize};
 
     const CONST_SP: SpHeader = SpHeader::new(
         PacketId::const_tc(true, 0x36),
@@ -771,10 +775,19 @@ mod tests {
 
     const PACKET_ID_TM: PacketId = PacketId::const_tm(true, 0x22);
 
+    #[cfg(feature = "serde")]
+    pub(crate) fn generic_serde_test<T: Serialize + DeserializeOwned + PartialEq + Debug>(
+        value: T,
+    ) {
+        let output: alloc::vec::Vec<u8> = to_allocvec(&value).unwrap();
+        let output_converted_back: T = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, value);
+    }
+
     #[test]
     fn verify_const_packet_id() {
         assert_eq!(PACKET_ID_TM.apid(), 0x22);
-        assert_eq!(PACKET_ID_TM.sec_header_flag, true);
+        assert!(PACKET_ID_TM.sec_header_flag);
         assert_eq!(PACKET_ID_TM.ptype, PacketType::Tm);
         let const_tc_id = PacketId::const_tc(true, 0x23);
         assert_eq!(const_tc_id.ptype, PacketType::Tc);

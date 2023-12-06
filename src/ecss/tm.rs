@@ -860,7 +860,10 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
 impl PartialEq for PusTmReader<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.raw_data == other.raw_data
+        self.sec_header == other.sec_header
+            && self.source_data == other.source_data
+            && self.sp_header == other.sp_header
+            && self.crc16 == other.crc16
     }
 }
 
@@ -997,7 +1000,11 @@ mod tests {
     use super::*;
     use crate::ecss::PusVersion::PusC;
     use crate::time::cds::TimeProvider;
+    #[cfg(feature = "serde")]
+    use crate::time::CcsdsTimeProvider;
     use crate::SpHeader;
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTmCreator {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
@@ -1371,5 +1378,36 @@ mod tests {
         } else {
             panic!("unexpected error {tm_error}")
         }
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serialization_creator_serde() {
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let time_provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut stamp_buf: [u8; 8] = [0; 8];
+        let pus_tm =
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+                .unwrap();
+
+        let output = to_allocvec(&pus_tm).unwrap();
+        let output_converted_back: PusTmCreator = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, pus_tm);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serialization_reader_serde() {
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let time_provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut stamp_buf: [u8; 8] = [0; 8];
+        let pus_tm =
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+                .unwrap();
+        let pus_tm_vec = pus_tm.to_vec().unwrap();
+        let (tm_reader, _) = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
+        let output = to_allocvec(&tm_reader).unwrap();
+        let output_converted_back: PusTmReader = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, tm_reader);
     }
 }

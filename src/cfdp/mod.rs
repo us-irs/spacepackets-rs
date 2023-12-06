@@ -238,8 +238,7 @@ impl Error for TlvLvError {
 mod tests {
     use super::*;
     #[cfg(feature = "serde")]
-    use postcard::{from_bytes, to_allocvec};
-
+    use crate::tests::generic_serde_test;
 
     #[test]
     fn test_crc_from_bool() {
@@ -268,26 +267,26 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature="serde")]
+    #[cfg(feature = "serde")]
     fn test_serde_impl_pdu_type() {
-        let pdu_type = PduType::FileData;
-        let output = to_allocvec(&pdu_type).unwrap();
-        assert_eq!(from_bytes::<PduType>(&output).unwrap(), pdu_type);
+        generic_serde_test(PduType::FileData);
     }
 
     #[test]
-    #[cfg(feature="serde")]
+    #[cfg(feature = "serde")]
     fn test_serde_impl_direction() {
-        let direction = Direction::TowardsReceiver;
-        let output = to_allocvec(&direction).unwrap();
-        assert_eq!(from_bytes::<Direction>(&output).unwrap(), direction);
+        generic_serde_test(Direction::TowardsReceiver);
     }
 
     #[test]
-    #[cfg(feature="serde")]
+    #[cfg(feature = "serde")]
     fn test_serde_impl_transmission_mode() {
-        let mode = TransmissionMode::Unacknowledged;
-        let output = to_allocvec(&mode).unwrap();
-        assert_eq!(from_bytes::<TransmissionMode>(&output).unwrap(), mode);
+        generic_serde_test(TransmissionMode::Unacknowledged);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_fault_handler_code() {
+        generic_serde_test(FaultHandlerCode::NoticeOfCancellation);
     }
 }

@@ -276,6 +276,8 @@ mod tests {
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag, TransmissionMode};
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     fn generic_finished_pdu(
         crc_flag: CrcFlag,
@@ -491,4 +493,19 @@ mod tests {
 
     #[test]
     fn test_deserialization_with_fs_responses() {}
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_finished_serialization_serde() {
+        let finished_pdu = generic_finished_pdu(
+            CrcFlag::NoCrc,
+            LargeFileFlag::Normal,
+            DeliveryCode::Complete,
+            FileStatus::Retained,
+        );
+
+        let output = to_allocvec(&finished_pdu).unwrap();
+        let output_converted_back: FinishedPdu = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, finished_pdu);
+    }
 }

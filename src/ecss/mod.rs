@@ -382,6 +382,8 @@ mod tests {
     use crate::ByteConversionError;
 
     use super::*;
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
 
     #[test]
     fn test_enum_u8() {
@@ -491,5 +493,11 @@ mod tests {
         let pfc_raw = RealPfc::Double as u8;
         let pfc = RealPfc::try_from(pfc_raw).unwrap();
         assert_eq!(pfc, RealPfc::Double);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pus_service_id() {
+        generic_serde_test(PusServiceId::Verification);
     }
 }
