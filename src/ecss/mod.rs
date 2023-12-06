@@ -500,4 +500,22 @@ mod tests {
     fn test_serde_pus_service_id() {
         generic_serde_test(PusServiceId::Verification);
     }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_ptc() {
+        generic_serde_test(Ptc::AbsoluteTime);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pfc_unsigned() {
+        generic_serde_test(PfcUnsigned::EightBytes);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_pfc_real() {
+        generic_serde_test(PfcReal::Double);
+    }
 }

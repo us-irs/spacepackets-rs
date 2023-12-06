@@ -76,6 +76,8 @@ pub enum TimeWindowType {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "serde")]
+    use crate::tests::generic_serde_test;
 
     #[test]
     fn test_bool_conv_0() {
@@ -101,5 +103,23 @@ mod tests {
     fn test_conv_from_u8() {
         let subservice: Subservice = 22u8.try_into().unwrap();
         assert_eq!(subservice, Subservice::TcCreateScheduleGroup);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_subservice_id() {
+        generic_serde_test(Subservice::TcEnableScheduling);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_sched_status() {
+        generic_serde_test(SchedStatus::Enabled);
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_time_window_type() {
+        generic_serde_test(TimeWindowType::SelectAll);
     }
 }

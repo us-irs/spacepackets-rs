@@ -882,6 +882,8 @@ mod tests {
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::string::ToString;
     use alloc::vec::Vec;
+    #[cfg(feature = "serde")]
+    use postcard::{from_bytes, to_allocvec};
 
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
@@ -1257,5 +1259,14 @@ mod tests {
         } else {
             panic!("unexpected error {error}")
         }
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serialization_tc_serde() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let output = to_allocvec(&pus_tc).unwrap();
+        let output_converted_back: PusTcCreator = from_bytes(&output).unwrap();
+        assert_eq!(output_converted_back, pus_tc);
     }
 }
