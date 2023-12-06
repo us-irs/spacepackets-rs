@@ -513,8 +513,13 @@ mod tests {
         let read_back = FinishedPduReader::from_bytes(&buf);
         assert!(read_back.is_ok());
         let read_back = read_back.unwrap();
+        assert_eq!(finished_pdu, read_back);
+        // Use all getter functions here explicitely once.
         assert_eq!(finished_pdu.pdu_header(), read_back.pdu_header());
         assert_eq!(finished_pdu.condition_code(), read_back.condition_code());
+        assert_eq!(finished_pdu.fault_location(), read_back.fault_location());
+        assert_eq!(finished_pdu.file_status(), read_back.file_status());
+        assert_eq!(finished_pdu.delivery_code(), read_back.delivery_code());
     }
 
     #[test]
@@ -602,6 +607,42 @@ mod tests {
 
     #[test]
     fn test_deserialization_with_fs_responses() {
+        let entity_id_tlv = EntityIdTlv::new(TEST_DEST_ID.into());
+        let first_name = "first.txt";
+        let first_name_lv = Lv::new_from_str(first_name).unwrap();
+        let fs_response_0 = FilestoreResponseTlv::new_no_filestore_message(
+            crate::cfdp::tlv::FilestoreActionCode::CreateFile,
+            0,
+            first_name_lv,
+            None,
+        )
+        .unwrap();
+        let fs_response_1 = FilestoreResponseTlv::new_no_filestore_message(
+            crate::cfdp::tlv::FilestoreActionCode::DeleteFile,
+            0,
+            first_name_lv,
+            None,
+        )
+        .unwrap();
+        let fs_responses = &[fs_response_0, fs_response_1];
+
+        let pdu_header =
+            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let finished_pdu = FinishedPduCreator::new_generic(
+            pdu_header,
+            ConditionCode::NakLimitReached,
+            DeliveryCode::Incomplete,
+            FileStatus::DiscardDeliberately,
+            fs_responses,
+            Some(entity_id_tlv),
+        );
+        let finished_pdu_vec = finished_pdu.to_vec().unwrap();
+        let finished_pdu_deserialized = FinishedPduReader::from_bytes(&finished_pdu_vec).unwrap();
+        assert_eq!(finished_pdu_deserialized, finished_pdu);
+    }
+
+    #[test]
+    fn test_deserialization_with_fs_responses_and_fault_location() {
         let first_name = "first.txt";
         let first_name_lv = Lv::new_from_str(first_name).unwrap();
         let fs_response_0 = FilestoreResponseTlv::new_no_filestore_message(

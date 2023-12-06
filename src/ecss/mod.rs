@@ -496,6 +496,21 @@ mod tests {
     }
 
     #[test]
+    fn test_pus_error_eq_impl() {
+        assert_eq!(
+            PusError::VersionNotSupported(PusVersion::EsaPus),
+            PusError::VersionNotSupported(PusVersion::EsaPus)
+        );
+    }
+
+    #[test]
+    fn test_pus_error_clonable() {
+        let pus_error = PusError::ChecksumFailure(0x0101);
+        let cloned = pus_error;
+        assert_eq!(pus_error, cloned);
+    }
+
+    #[test]
     #[cfg(feature = "serde")]
     fn test_serde_pus_service_id() {
         generic_serde_test(PusServiceId::Verification);
