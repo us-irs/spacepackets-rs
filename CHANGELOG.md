@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0-beta.3] 2023-12-06
+
 ## Added
 
 - Add `WritablePduPacket` trait which is a common trait of all CFDP PDU implementations.
