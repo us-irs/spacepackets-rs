@@ -11,7 +11,7 @@
 //! // Create a ping telecommand with no user application data
 //! let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
 //! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-//! let pus_tc = PusTcCreator::new(&mut sph, tc_header, None, true);
+//! let pus_tc = PusTcCreator::new_no_app_data(&mut sph, tc_header, true);
 //! println!("{:?}", pus_tc);
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
@@ -571,14 +571,14 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
-        app_data: Option<&'raw_data [u8]>,
+        app_data: &'raw_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tc);
         sp_header.set_sec_header_flag();
         let mut pus_tc = Self {
             sp_header: *sp_header,
-            app_data: app_data.unwrap_or(&[]),
+            app_data,
             sec_header,
         };
         if set_ccsds_len {
@@ -599,9 +599,17 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         Self::new(
             sph,
             PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
-            app_data,
+            app_data.unwrap_or(&[]),
             set_ccsds_len,
         )
+    }
+
+    pub fn new_no_app_data(
+        sp_header: &mut SpHeader,
+        sec_header: PusTcSecondaryHeader,
+        set_ccsds_len: bool,
+    ) -> Self {
+        Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
 
     pub fn sp_header(&self) -> &SpHeader {
@@ -888,7 +896,7 @@ mod tests {
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-        PusTcCreator::new(&mut sph, tc_header, None, true)
+        PusTcCreator::new_no_app_data(&mut sph, tc_header, true)
     }
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
