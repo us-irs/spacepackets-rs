@@ -64,7 +64,7 @@ pipeline {
       steps {
         withEnv(['RUSTFLAGS=-Cinstrument-coverage', 'LLVM_PROFILE_FILE=target/coverage/%p-%m.profraw']) {
           echo "Executing tests with coverage"
-          sh 'cargo clear'
+          sh 'cargo clean'
           sh 'cargo test --all-features'
           sh 'grcov . -s . --binary-path ./target/debug -t html --branch --ignore-not-existing -o ./target/debug/coverage/'
           sh 'ls -lr ./target/debug/coverage/'
