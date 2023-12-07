@@ -586,13 +586,18 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         subservice: u8,
         time_provider: &impl TimeWriter,
         stamp_buf: &'raw_data mut [u8],
-        source_data: &'raw_data [u8],
+        source_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Result<Self, TimestampError> {
         let stamp_size = time_provider.write_to_bytes(stamp_buf)?;
         let sec_header =
             PusTmSecondaryHeader::new_simple(service, subservice, &stamp_buf[0..stamp_size]);
-        Ok(Self::new(sp_header, sec_header, source_data, set_ccsds_len))
+        Ok(Self::new(
+            sp_header,
+            sec_header,
+            source_data.unwrap_or(&[]),
+            set_ccsds_len,
+        ))
     }
 
     pub fn new_no_source_data(
@@ -600,19 +605,9 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         sec_header: PusTmSecondaryHeader<'raw_data>,
         set_ccsds_len: bool,
     ) -> Self {
-        sp_header.set_packet_type(PacketType::Tm);
-        sp_header.set_sec_header_flag();
-        let mut pus_tm = Self {
-            sp_header: *sp_header,
-            source_data: &[],
-            sec_header,
-            calc_crc_on_serialization: true,
-        };
-        if set_ccsds_len {
-            pus_tm.update_ccsds_data_len();
-        }
-        pus_tm
+        Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
+
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
@@ -1034,7 +1029,7 @@ mod tests {
         let time_provider = TimeProvider::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
                 .unwrap();
         verify_ping_reply(&pus_tm, false, 22, &[64, 0, 0, 0, 0, 0, 0]);
     }
@@ -1387,7 +1382,7 @@ mod tests {
         let time_provider = TimeProvider::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
                 .unwrap();
 
         let output = to_allocvec(&pus_tm).unwrap();
@@ -1402,7 +1397,7 @@ mod tests {
         let time_provider = TimeProvider::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
                 .unwrap();
         let pus_tm_vec = pus_tm.to_vec().unwrap();
         let (tm_reader, _) = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
