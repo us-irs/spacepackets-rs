@@ -1,7 +1,7 @@
 [![Crates.io](https://img.shields.io/crates/v/spacepackets)](https://crates.io/crates/spacepackets)
 [![docs.rs](https://img.shields.io/docsrs/spacepackets)](https://docs.rs/spacepackets)
 [![ci](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml)
-[![coverage](https://shields.io/endpoint?url=https://documentation.irs.uni-stuttgart.de/projects/spacepackets-rs/coverage/latest/coverage.json)](https://documentation.irs.uni-stuttgart.de/projects/spacepackets-rs/coverage/latest/index.html)
+[![coverage](https://shields.io/endpoint?url=https://absatsw.irs.uni-stuttgart.de/projects/spacepackets/coverage-rs/latest/coverage.json)](https://absatsw.irs.uni-stuttgart.de/projects/spacepackets/coverage-rs/latest/index.html)
 
 ECSS and CCSDS Spacepackets
 ======
