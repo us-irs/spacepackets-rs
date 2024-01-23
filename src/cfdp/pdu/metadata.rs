@@ -175,7 +175,7 @@ impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
         buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
         current_idx += 1;
-        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 7)
+        buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 6)
             | (self.metadata_params.checksum_type as u8);
         current_idx += 1;
         current_idx += write_fss_field(
@@ -364,6 +364,8 @@ pub mod tests {
 
     fn generic_metadata_pdu<'opts>(
         crc_flag: CrcFlag,
+        checksum_type: ChecksumType,
+        closure_requested: bool,
         fss: LargeFileFlag,
         opts: &'opts [Tlv],
     ) -> (
@@ -372,7 +374,7 @@ pub mod tests {
         MetadataPduCreator<'static, 'static, 'opts>,
     ) {
         let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
-        let metadata_params = MetadataGenericParams::new(false, ChecksumType::Crc32, 0x1010);
+        let metadata_params = MetadataGenericParams::new(closure_requested, checksum_type, 0x1010);
         let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
         let dest_filename =
             Lv::new_from_str(DEST_FILENAME).expect("Generating destination LV failed");
@@ -391,8 +393,13 @@ pub mod tests {
 
     #[test]
     fn test_basic() {
-        let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Normal,
+            &[],
+        );
         assert_eq!(
             metadata_pdu.len_written(),
             metadata_pdu.pdu_header().header_len()
@@ -408,6 +415,11 @@ pub mod tests {
         assert_eq!(metadata_pdu.crc_flag(), CrcFlag::NoCrc);
         assert_eq!(metadata_pdu.file_flag(), LargeFileFlag::Normal);
         assert_eq!(metadata_pdu.pdu_type(), PduType::FileDirective);
+        assert!(!metadata_pdu.metadata_params().closure_requested);
+        assert_eq!(
+            metadata_pdu.metadata_params().checksum_type,
+            ChecksumType::Crc32
+        );
         assert_eq!(
             metadata_pdu.file_directive_type(),
             Some(FileDirectiveType::MetadataPdu)
@@ -422,44 +434,103 @@ pub mod tests {
         assert_eq!(metadata_pdu.transaction_seq_num(), TEST_SEQ_NUM.into());
     }
 
-    #[test]
-    fn test_serialization() {
-        let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
-        let mut buf: [u8; 64] = [0; 64];
-        let res = metadata_pdu.write_to_bytes(&mut buf);
-        assert!(res.is_ok());
-        let written = res.unwrap();
+    fn check_metadata_raw_fields(
+        metadata_pdu: &MetadataPduCreator,
+        buf: &[u8],
+        written_bytes: usize,
+        checksum_type: ChecksumType,
+        closure_requested: bool,
+        expected_src_filename: &Lv,
+        expected_dest_filename: &Lv,
+    ) {
+        verify_raw_header(metadata_pdu.pdu_header(), buf);
         assert_eq!(
-            written,
+            written_bytes,
             metadata_pdu.pdu_header.header_len()
                 + 1
                 + 1
                 + 4
-                + src_filename.len_full()
-                + dest_filename.len_full()
+                + expected_src_filename.len_full()
+                + expected_dest_filename.len_full()
         );
-        verify_raw_header(metadata_pdu.pdu_header(), &buf);
         assert_eq!(buf[7], FileDirectiveType::MetadataPdu as u8);
-        assert_eq!(buf[8] >> 6, false as u8);
-        assert_eq!(buf[8] & 0b1111, ChecksumType::Crc32 as u8);
+        assert_eq!(buf[8] >> 6, closure_requested as u8);
+        assert_eq!(buf[8] & 0b1111, checksum_type as u8);
         assert_eq!(u32::from_be_bytes(buf[9..13].try_into().unwrap()), 0x1010);
         let mut current_idx = 13;
         let src_name_from_raw =
             Lv::from_bytes(&buf[current_idx..]).expect("Creating source name LV failed");
-        assert_eq!(src_name_from_raw, src_filename);
+        assert_eq!(src_name_from_raw, *expected_src_filename);
         current_idx += src_name_from_raw.len_full();
         let dest_name_from_raw =
             Lv::from_bytes(&buf[current_idx..]).expect("Creating dest name LV failed");
-        assert_eq!(dest_name_from_raw, dest_filename);
+        assert_eq!(dest_name_from_raw, *expected_dest_filename);
         current_idx += dest_name_from_raw.len_full();
         // No options, so no additional data here.
-        assert_eq!(current_idx, written);
+        assert_eq!(current_idx, written_bytes);
+    }
+
+    #[test]
+    fn test_serialization_0() {
+        let checksum_type = ChecksumType::Crc32;
+        let closure_requested = false;
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            checksum_type,
+            closure_requested,
+            LargeFileFlag::Normal,
+            &[],
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let res = metadata_pdu.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        check_metadata_raw_fields(
+            &metadata_pdu,
+            &buf,
+            written,
+            checksum_type,
+            closure_requested,
+            &src_filename,
+            &dest_filename,
+        );
+    }
+
+    #[test]
+    fn test_serialization_1() {
+        let checksum_type = ChecksumType::Modular;
+        let closure_requested = true;
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            checksum_type,
+            closure_requested,
+            LargeFileFlag::Normal,
+            &[],
+        );
+        let mut buf: [u8; 64] = [0; 64];
+        let res = metadata_pdu.write_to_bytes(&mut buf);
+        assert!(res.is_ok());
+        let written = res.unwrap();
+        check_metadata_raw_fields(
+            &metadata_pdu,
+            &buf,
+            written,
+            checksum_type,
+            closure_requested,
+            &src_filename,
+            &dest_filename,
+        );
     }
 
     #[test]
     fn test_write_to_vec() {
-        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Normal,
+            &[],
+        );
         let mut buf: [u8; 64] = [0; 64];
         let pdu_vec = metadata_pdu.to_vec().unwrap();
         let written = metadata_pdu.write_to_bytes(&mut buf).unwrap();
@@ -478,7 +549,13 @@ pub mod tests {
 
     #[test]
     fn test_deserialization() {
-        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &[]);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            true,
+            LargeFileFlag::Normal,
+            &[],
+        );
         let mut buf: [u8; 64] = [0; 64];
         metadata_pdu.write_to_bytes(&mut buf).unwrap();
         let pdu_read_back = MetadataPduReader::from_bytes(&buf);
@@ -489,8 +566,13 @@ pub mod tests {
 
     #[test]
     fn test_with_crc_flag() {
-        let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::WithCrc, LargeFileFlag::Normal, &[]);
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::WithCrc,
+            ChecksumType::Crc32,
+            true,
+            LargeFileFlag::Normal,
+            &[],
+        );
         assert_eq!(metadata_pdu.crc_flag(), CrcFlag::WithCrc);
         let mut buf: [u8; 64] = [0; 64];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
@@ -513,8 +595,13 @@ pub mod tests {
 
     #[test]
     fn test_with_large_file_flag() {
-        let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Large,
+            &[],
+        );
         let mut buf: [u8; 64] = [0; 64];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(write_res.is_ok());
@@ -573,8 +660,13 @@ pub mod tests {
         let tlv2 = Tlv::new(TlvType::MsgToUser, &msg_to_user).unwrap();
         let tlv_vec = vec![tlv1, tlv2];
         let opts_len = tlv1.len_full() + tlv2.len_full();
-        let (src_filename, dest_filename, metadata_pdu) =
-            generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Normal, &tlv_vec);
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Normal,
+            &tlv_vec,
+        );
         let mut buf: [u8; 128] = [0; 128];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
         assert!(write_res.is_ok());
@@ -604,7 +696,13 @@ pub mod tests {
 
     #[test]
     fn test_invalid_directive_code() {
-        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            true,
+            LargeFileFlag::Large,
+            &[],
+        );
         let mut metadata_vec = metadata_pdu.to_vec().unwrap();
         metadata_vec[7] = 0xff;
         let metadata_error = MetadataPduReader::from_bytes(&metadata_vec);
@@ -624,7 +722,13 @@ pub mod tests {
 
     #[test]
     fn test_wrong_directive_code() {
-        let (_, _, metadata_pdu) = generic_metadata_pdu(CrcFlag::NoCrc, LargeFileFlag::Large, &[]);
+        let (_, _, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Large,
+            &[],
+        );
         let mut metadata_vec = metadata_pdu.to_vec().unwrap();
         metadata_vec[7] = FileDirectiveType::EofPdu as u8;
         let metadata_error = MetadataPduReader::from_bytes(&metadata_vec);
