@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.7.0-beta.4] 2024-01-23
+
+## Fixed
+
+- `MetadataPduCreator`: The serialization function shifted the closure requested information
+  to the wrong position (first reserved bit) inside the raw content field.
+
 # [v0.7.0-beta.3] 2023-12-06
 
 ## Added
