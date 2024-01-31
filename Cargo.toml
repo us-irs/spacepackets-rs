@@ -52,5 +52,6 @@ serde = ["dep:serde", "chrono/serde"]
 alloc = ["postcard/alloc", "chrono/alloc"]
 
 [package.metadata.docs.rs]
-all-features = true
-rustdoc-args = ["--cfg", "doc_cfg"]
+features = ["derive", "rc", "unstable"]
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg", "doc_cfg", "--generate-link-to-definition"]
