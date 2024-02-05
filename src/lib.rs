@@ -311,7 +311,7 @@ pub struct PacketSequenceCtrl {
 impl PacketSequenceCtrl {
     /// const variant of [PacketSequenceCtrl::new], but panics if the sequence count exceeds
     /// [MAX_SEQ_COUNT].
-    const fn const_new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
+    pub const fn const_new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
         if seq_count > MAX_SEQ_COUNT {
             panic!("Sequence count too large");
         }
