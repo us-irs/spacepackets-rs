@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.8.0] 2024-02-05
+
+## Added
+
+- Added `len_written` and `to_vec` methods to the `TimeWriter` trait.
+
 # [v0.7.0] 2024-02-01
 
 # [v0.7.0-beta.4] 2024-01-23

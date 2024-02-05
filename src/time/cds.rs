@@ -1201,6 +1201,10 @@ impl TimeWriter for TimeProvider<DaysLen16Bits> {
         }
         Ok(self.len_as_bytes())
     }
+
+    fn len_written(&self) -> usize {
+        self.len_as_bytes()
+    }
 }
 
 impl TimeWriter for TimeProvider<DaysLen24Bits> {
@@ -1220,6 +1224,10 @@ impl TimeWriter for TimeProvider<DaysLen24Bits> {
             _ => (),
         }
         Ok(self.len_as_bytes())
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_as_bytes()
     }
 }
 
@@ -2269,5 +2277,23 @@ mod tests {
         } else {
             assert_eq!(first, second);
         }
+    }
+
+    #[test]
+    fn test_stamp_to_vec_u16() {
+        let stamp = TimeProvider::new_with_u16_days(1, 1);
+        let stamp_vec = stamp.to_vec().unwrap();
+        let mut buf: [u8; 7] = [0; 7];
+        stamp.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(stamp_vec, buf);
+    }
+
+    #[test]
+    fn test_stamp_to_vec_u24() {
+        let stamp = TimeProvider::new_with_u24_days(1, 1).unwrap();
+        let stamp_vec = stamp.to_vec().unwrap();
+        let mut buf: [u8; 10] = [0; 10];
+        stamp.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(stamp_vec, buf[..stamp.len_written()]);
     }
 }

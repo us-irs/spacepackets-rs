@@ -587,6 +587,10 @@ impl TimeWriter for TimeProviderCcsdsEpoch {
         }
         Ok(current_idx)
     }
+
+    fn len_written(&self) -> usize {
+        self.len_as_bytes()
+    }
 }
 
 impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
@@ -1225,5 +1229,14 @@ mod tests {
         } else {
             panic!("unexpected error: {}", cuc_error);
         }
+    }
+
+    #[test]
+    fn test_stamp_to_vec() {
+        let stamp = TimeProviderCcsdsEpoch::new_u16_counter(100);
+        let stamp_vec = stamp.to_vec().unwrap();
+        let mut buf: [u8; 16] = [0; 16];
+        stamp.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(stamp_vec, buf[..stamp.len_written()]);
     }
 }
