@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.8.1] 2024-02-05
+
+## Fixed
+
+- Added `pub` visibility for `PacketSequenceCtrl::const_new`.
+
 # [v0.8.0] 2024-02-05
 
 ## Added
