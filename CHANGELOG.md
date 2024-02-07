@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.9.0] 2024-02-07
+
+## Added
+
+- `CcsdsPacket`, `PusPacket` and `GenericPusTmSecondaryHeader` implementation for
+  `PusTmZeroCopyWriter`.
+- Additional length checks for `PusTmZeroCopyWriter`.
+
+## Changed
+
+- `PusTmZeroCopyWriter`: Added additional timestamp length argument for `new` constructor.
+
+## Fixed
+
+- Typo: `PUC_TM_MIN_HEADER_LEN` -> `PUS_TM_MIN_HEADER_LEN`
+
 # [v0.8.1] 2024-02-05
 
 ## Fixed

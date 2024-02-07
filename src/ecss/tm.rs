@@ -21,12 +21,14 @@ use delegate::delegate;
 use crate::time::{TimeWriter, TimestampError};
 pub use legacy_tm::*;
 
+use self::zc::PusTmSecHeaderWithoutTimestamp;
+
 pub trait IsPusTelemetry {}
 
 /// Length without timestamp
-pub const PUC_TM_MIN_SEC_HEADER_LEN: usize = 7;
+pub const PUS_TM_MIN_SEC_HEADER_LEN: usize = 7;
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize =
-    CCSDS_HEADER_LEN + PUC_TM_MIN_SEC_HEADER_LEN + size_of::<CrcType>();
+    CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN + size_of::<CrcType>();
 
 pub trait GenericPusTmSecondaryHeader {
     fn pus_version(&self) -> PusVersion;
@@ -198,7 +200,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 pub mod legacy_tm {
     use crate::ecss::tm::{
         zc, GenericPusTmSecondaryHeader, IsPusTelemetry, PusTmSecondaryHeader,
-        PUC_TM_MIN_SEC_HEADER_LEN, PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
+        PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA, PUS_TM_MIN_SEC_HEADER_LEN,
     };
     use crate::ecss::PusVersion;
     use crate::ecss::{
@@ -406,10 +408,10 @@ pub mod legacy_tm {
                 .into());
             }
             let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
-                &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
+                &slice[current_idx..current_idx + PUS_TM_MIN_SEC_HEADER_LEN],
             )
             .ok_or(ByteConversionError::ZeroCopyFromError)?;
-            current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
+            current_idx += PUS_TM_MIN_SEC_HEADER_LEN;
             let zc_sec_header_wrapper = zc::PusTmSecHeader {
                 zc_header: sec_header_zc,
                 timestamp: &slice[current_idx..current_idx + timestamp_len],
@@ -814,10 +816,10 @@ impl<'raw_data> PusTmReader<'raw_data> {
             .into());
         }
         let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
-            &slice[current_idx..current_idx + PUC_TM_MIN_SEC_HEADER_LEN],
+            &slice[current_idx..current_idx + PUS_TM_MIN_SEC_HEADER_LEN],
         )
         .ok_or(ByteConversionError::ZeroCopyFromError)?;
-        current_idx += PUC_TM_MIN_SEC_HEADER_LEN;
+        current_idx += PUS_TM_MIN_SEC_HEADER_LEN;
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
             timestamp: &slice[current_idx..current_idx + timestamp_len],
@@ -912,36 +914,40 @@ impl PartialEq<PusTmReader<'_>> for PusTmCreator<'_> {
 }
 
 /// This is a helper class to update certain fields in a raw PUS telemetry packet directly in place.
-/// This can be more efficient than creating a full [PusTm], modifying the fields and then writing
-/// it back to another buffer.
+/// This can be more efficient than creating a full [PusTmReader], modifying the fields and then
+/// writing it back to another buffer.
 ///
 /// Please note that the [Self::finish] method has to be called for the PUS TM CRC16 to be valid
 /// after changing fields of the TM packet. Furthermore, the constructor of this class will not
-/// do any checks except a length check to ensure that all relevant fields can be updated without
-/// a panic. If a full validity check of the PUS TM packet is required, it is recommended
-/// to construct a full [PusTm] object from the raw bytestream first.
+/// do any checks except basic length checks to ensure that all relevant fields can be updated and
+/// all methods can be called without a panic. If a full validity check of the PUS TM packet is
+/// required, it is recommended to construct a full [PusTmReader] object from the raw bytestream
+/// first.
 pub struct PusTmZeroCopyWriter<'raw> {
     raw_tm: &'raw mut [u8],
+    timestamp_len: usize,
 }
 
 impl<'raw> PusTmZeroCopyWriter<'raw> {
     /// This function will not do any other checks on the raw data other than a length check
-    /// for all internal fields which can be updated. It is the responsibility of the user to ensure
-    /// the raw slice contains a valid telemetry packet. The slice should have the exact length
-    /// of the telemetry packet for this class to work properly.
-    pub fn new(raw_tm: &'raw mut [u8]) -> Option<Self> {
-        if raw_tm.len() < 13 {
+    /// for all internal fields which can be updated.
+    ///
+    /// It is the responsibility of the user to ensure the raw slice contains a valid telemetry
+    /// packet.
+    pub fn new(raw_tm: &'raw mut [u8], timestamp_len: usize) -> Option<Self> {
+        let raw_tm_len = raw_tm.len();
+        if raw_tm_len < CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN + timestamp_len {
             return None;
         }
-        Some(Self { raw_tm })
-    }
-
-    pub fn service(&self) -> u8 {
-        self.raw_tm[7]
-    }
-
-    pub fn subservice(&self) -> u8 {
-        self.raw_tm[8]
+        let sp_header = crate::zc::SpHeader::from_bytes(&raw_tm[0..CCSDS_HEADER_LEN]).unwrap();
+        if raw_tm_len < sp_header.total_len() {
+            return None;
+        }
+        let writer = Self {
+            raw_tm: &mut raw_tm[..sp_header.total_len()],
+            timestamp_len,
+        };
+        Some(writer)
     }
 
     /// Set the sequence count. Returns false and does not update the value if the passed value
@@ -967,6 +973,24 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         self.raw_tm[11..13].copy_from_slice(&dest_id.to_be_bytes())
     }
 
+    /// Helper API to generate the space packet header portion of the PUS TM from the raw memory.
+    #[inline]
+    pub fn sp_header(&self) -> crate::zc::SpHeader {
+        // Valid minimum length of packet was checked before.
+        crate::zc::SpHeader::from_bytes(&self.raw_tm[0..CCSDS_HEADER_LEN]).unwrap()
+    }
+
+    /// Helper API to generate the portion of the secondary header without a timestamp from the
+    /// raw memory.
+    #[inline]
+    pub fn sec_header_without_timestamp(&self) -> PusTmSecHeaderWithoutTimestamp {
+        // Valid minimum length of packet was checked before.
+        PusTmSecHeaderWithoutTimestamp::from_bytes(
+            &self.raw_tm[CCSDS_HEADER_LEN..CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN],
+        )
+        .unwrap()
+    }
+
     /// Set the sequence count. Returns false and does not update the value if the passed value
     /// exceeds [MAX_SEQ_COUNT].
     pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
@@ -988,6 +1012,85 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
     }
 }
 
+impl CcsdsPacket for PusTmZeroCopyWriter<'_> {
+    #[inline]
+    fn ccsds_version(&self) -> u8 {
+        self.sp_header().ccsds_version()
+    }
+
+    #[inline]
+    fn packet_id(&self) -> crate::PacketId {
+        self.sp_header().packet_id()
+    }
+
+    #[inline]
+    fn psc(&self) -> crate::PacketSequenceCtrl {
+        self.sp_header().psc()
+    }
+
+    #[inline]
+    fn data_len(&self) -> u16 {
+        self.sp_header().data_len()
+    }
+}
+
+impl PusPacket for PusTmZeroCopyWriter<'_> {
+    #[inline]
+    fn pus_version(&self) -> PusVersion {
+        self.sec_header_without_timestamp().pus_version()
+    }
+
+    #[inline]
+    fn service(&self) -> u8 {
+        self.raw_tm[7]
+    }
+
+    #[inline]
+    fn subservice(&self) -> u8 {
+        self.raw_tm[8]
+    }
+
+    #[inline]
+    fn user_data(&self) -> &[u8] {
+        &self.raw_tm[CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN + self.timestamp_len
+            ..self.sp_header().total_len() - 2]
+    }
+
+    #[inline]
+    fn crc16(&self) -> Option<u16> {
+        Some(u16::from_be_bytes(
+            self.raw_tm[self.sp_header().total_len() - 2..self.sp_header().total_len()]
+                .try_into()
+                .unwrap(),
+        ))
+    }
+}
+
+impl GenericPusTmSecondaryHeader for PusTmZeroCopyWriter<'_> {
+    delegate! {
+        to self.sec_header_without_timestamp() {
+            #[inline]
+            fn pus_version(&self) -> PusVersion;
+            #[inline]
+            fn sc_time_ref_status(&self) -> u8;
+            #[inline]
+            fn msg_counter(&self) -> u16;
+            #[inline]
+            fn dest_id(&self) -> u16;
+        }
+    }
+
+    #[inline]
+    fn service(&self) -> u8 {
+        PusPacket::service(self)
+    }
+
+    #[inline]
+    fn subservice(&self) -> u8 {
+        PusPacket::subservice(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::string::ToString;
@@ -1001,10 +1104,17 @@ mod tests {
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
 
+    const DUMMY_DATA: &[u8] = &[0, 1, 2];
+
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTmCreator {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
         PusTmCreator::new_no_source_data(&mut sph, tm_header, true)
+    }
+    fn ping_reply_with_data(timestamp: &[u8]) -> PusTmCreator {
+        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        PusTmCreator::new(&mut sph, tm_header, DUMMY_DATA, true)
     }
 
     fn base_hk_reply<'a>(timestamp: &'a [u8], src_data: &'a [u8]) -> PusTmCreator<'a> {
@@ -1294,7 +1404,7 @@ mod tests {
         let tm_size = ping_tm
             .write_to_bytes(&mut buf)
             .expect("writing PUS ping TM failed");
-        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size])
+        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size], 7)
             .expect("Creating zero copy writer failed");
         writer.set_destination_id(55);
         writer.set_msg_count(100);
@@ -1302,8 +1412,6 @@ mod tests {
         writer.set_apid(MAX_APID);
         assert!(!writer.set_apid(MAX_APID + 1));
         assert!(!writer.set_apid(MAX_SEQ_COUNT + 1));
-        assert_eq!(writer.service(), 17);
-        assert_eq!(writer.subservice(), 2);
         writer.finish();
         // This performs all necessary checks, including the CRC check.
         let (tm_read_back, tm_size_read_back) =
@@ -1313,6 +1421,53 @@ mod tests {
         assert_eq!(tm_read_back.dest_id(), 55);
         assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT);
         assert_eq!(tm_read_back.apid(), MAX_APID);
+    }
+
+    #[test]
+    fn test_zero_copy_writer_ccsds_api() {
+        let ping_tm = base_ping_reply_full_ctor(dummy_timestamp());
+        let mut buf: [u8; 64] = [0; 64];
+        let tm_size = ping_tm
+            .write_to_bytes(&mut buf)
+            .expect("writing PUS ping TM failed");
+        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size], 7)
+            .expect("Creating zero copy writer failed");
+        writer.set_destination_id(55);
+        writer.set_msg_count(100);
+        writer.set_seq_count(MAX_SEQ_COUNT);
+        writer.set_apid(MAX_APID);
+        assert_eq!(PusPacket::service(&writer), 17);
+        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(writer.apid(), MAX_APID);
+        assert_eq!(writer.seq_count(), MAX_SEQ_COUNT);
+    }
+
+    #[test]
+    fn test_zero_copy_pus_api() {
+        let ping_tm = ping_reply_with_data(dummy_timestamp());
+        let mut buf: [u8; 64] = [0; 64];
+        let tm_size = ping_tm
+            .write_to_bytes(&mut buf)
+            .expect("writing PUS ping TM failed");
+        let crc16_raw = u16::from_be_bytes(buf[tm_size - 2..tm_size].try_into().unwrap());
+        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size], 7)
+            .expect("Creating zero copy writer failed");
+        writer.set_destination_id(55);
+        writer.set_msg_count(100);
+        writer.set_seq_count(MAX_SEQ_COUNT);
+        writer.set_apid(MAX_APID);
+        assert_eq!(PusPacket::service(&writer), 17);
+        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(writer.dest_id(), 55);
+        assert_eq!(writer.msg_counter(), 100);
+        assert_eq!(writer.sec_header_without_timestamp().dest_id(), 55);
+        assert_eq!(writer.sec_header_without_timestamp().msg_counter(), 100);
+        assert_eq!(writer.user_data(), DUMMY_DATA);
+        // Need to check crc16 before finish, because finish will update the CRC.
+        let crc16 = writer.crc16();
+        assert!(crc16.is_some());
+        assert_eq!(crc16.unwrap(), crc16_raw);
+        writer.finish();
     }
 
     #[test]
