@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.10.0] 2024-02-17
+
+## Added
+
+- Added `value` and `to_vec` methods for the `UnsignedEnum` trait. The value is returned as
+  as `u64`. Renamed former `value` method on `GenericUnsignedByteField` to `value_typed`.
+- Added `value_const` const function for `UnsignedByteField` type.
+- Added `value_typed` const functions for `GenericUnsignedByteField` and `GenericEcssEnumWrapper`.
+
 # [v0.9.0] 2024-02-07
 
 ## Added

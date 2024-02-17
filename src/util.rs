@@ -73,6 +73,15 @@ pub trait UnsignedEnum {
     fn size(&self) -> usize;
     /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+
+    fn value(&self) -> u64;
+
+    #[cfg(feature = "alloc")]
+    fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        let mut buf = alloc::vec![0; self.size()];
+        self.write_to_be_bytes(&mut buf).unwrap();
+        buf
+    }
 }
 
 pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq {}
@@ -132,7 +141,7 @@ impl UnsignedByteField {
         Self { width, value }
     }
 
-    pub fn value(&self) -> u64 {
+    pub const fn value_const(&self) -> u64 {
         self.value
     }
 
@@ -172,6 +181,10 @@ impl UnsignedEnum for UnsignedByteField {
         self.width
     }
 
+    fn value(&self) -> u64 {
+        self.value_const()
+    }
+
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.size() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -207,21 +220,21 @@ impl UnsignedEnum for UnsignedByteField {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericUnsignedByteField<TYPE: Copy> {
+pub struct GenericUnsignedByteField<TYPE: Copy + Into<u64>> {
     value: TYPE,
 }
 
-impl<TYPE: Copy> GenericUnsignedByteField<TYPE> {
+impl<TYPE: Copy + Into<u64>> GenericUnsignedByteField<TYPE> {
     pub const fn new(val: TYPE) -> Self {
         Self { value: val }
     }
 
-    pub const fn value(&self) -> TYPE {
+    pub const fn value_typed(&self) -> TYPE {
         self.value
     }
 }
 
-impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
+impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericUnsignedByteField<TYPE> {
     fn size(&self) -> usize {
         self.value.written_len()
     }
@@ -233,8 +246,12 @@ impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericUnsignedByteField<TYPE> {
                 expected: self.size(),
             });
         }
-        buf[0..self.size()].copy_from_slice(self.value.to_be_bytes().as_ref());
+        buf[..self.size()].copy_from_slice(self.value.to_be_bytes().as_ref());
         Ok(self.value.written_len())
+    }
+
+    fn value(&self) -> u64 {
+        self.value_typed().into()
     }
 }
 
@@ -351,6 +368,8 @@ pub mod tests {
         for val in buf.iter().skip(1) {
             assert_eq!(*val, 0);
         }
+        assert_eq!(u8.value_typed(), 5);
+        assert_eq!(u8.value(), 5);
     }
 
     #[test]
@@ -367,6 +386,8 @@ pub mod tests {
         for val in buf.iter().skip(2) {
             assert_eq!(*val, 0);
         }
+        assert_eq!(u16.value_typed(), 3823);
+        assert_eq!(u16.value(), 3823);
     }
 
     #[test]
@@ -383,6 +404,8 @@ pub mod tests {
         (4..8).for_each(|i| {
             assert_eq!(buf[i], 0);
         });
+        assert_eq!(u32.value_typed(), 80932);
+        assert_eq!(u32.value(), 80932);
     }
 
     #[test]
@@ -396,6 +419,8 @@ pub mod tests {
         assert_eq!(len, 8);
         let raw_val = u64::from_be_bytes(buf[0..8].try_into().unwrap());
         assert_eq!(raw_val, 5999999);
+        assert_eq!(u64.value_typed(), 5999999);
+        assert_eq!(u64.value(), 5999999);
     }
 
     #[test]
@@ -534,9 +559,9 @@ pub mod tests {
         u8.write_to_be_bytes(&mut buf)
             .expect("writing to raw buffer failed");
         assert_eq!(buf[0], 5);
-        for i in 1..8 {
+        (1..8).for_each(|i| {
             assert_eq!(buf[i], 0);
-        }
+        });
     }
 
     #[test]
@@ -562,9 +587,9 @@ pub mod tests {
             .expect("writing to raw buffer failed");
         let raw_val = u32::from_be_bytes(buf[0..4].try_into().unwrap());
         assert_eq!(raw_val, 80932);
-        for i in 4..8 {
+        (4..8).for_each(|i| {
             assert_eq!(buf[i], 0);
-        }
+        });
     }
 
     #[test]
