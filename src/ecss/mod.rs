@@ -406,6 +406,8 @@ mod tests {
         assert_eq!(buf[1], 1);
         assert_eq!(my_enum.value(), 1);
         assert_eq!(my_enum.value_typed(), 1);
+        let vec = my_enum.to_vec();
+        assert_eq!(vec, buf[1..2]);
     }
 
     #[test]
@@ -421,6 +423,8 @@ mod tests {
         assert_eq!(buf[2], 0x2f);
         assert_eq!(my_enum.value(), 0x1f2f);
         assert_eq!(my_enum.value_typed(), 0x1f2f);
+        let vec = my_enum.to_vec();
+        assert_eq!(vec, buf[1..3]);
     }
 
     #[test]
@@ -454,6 +458,8 @@ mod tests {
         assert_eq!(buf[4], 0x4f);
         assert_eq!(my_enum.value(), 0x1f2f3f4f);
         assert_eq!(my_enum.value_typed(), 0x1f2f3f4f);
+        let vec = my_enum.to_vec();
+        assert_eq!(vec, buf[1..5]);
     }
 
     #[test]
@@ -489,6 +495,8 @@ mod tests {
         assert_eq!(my_enum.value(), 0x1f2f3f4f5f);
         assert_eq!(my_enum.value_typed(), 0x1f2f3f4f5f);
         assert_eq!(u64::from_be_bytes(buf), 0x1f2f3f4f5f);
+        let vec = my_enum.to_vec();
+        assert_eq!(vec, buf);
     }
 
     #[test]
