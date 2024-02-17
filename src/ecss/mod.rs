@@ -315,13 +315,17 @@ pub trait EcssEnumerationExt: EcssEnumeration + Debug + Copy + Clone + PartialEq
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericEcssEnumWrapper<TYPE: Copy> {
+pub struct GenericEcssEnumWrapper<TYPE: Copy + Into<u64>> {
     field: GenericUnsignedByteField<TYPE>,
 }
 
-impl<TYPE: Copy> GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + Into<u64>> GenericEcssEnumWrapper<TYPE> {
     pub const fn ptc() -> PacketTypeCodes {
         PacketTypeCodes::Enumerated
+    }
+
+    pub const fn value_typed(&self) -> TYPE {
+        self.field.value_typed()
     }
 
     pub fn new(val: TYPE) -> Self {
@@ -331,7 +335,7 @@ impl<TYPE: Copy> GenericEcssEnumWrapper<TYPE> {
     }
 }
 
-impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     fn size(&self) -> usize {
         (self.pfc() / 8) as usize
     }
@@ -339,15 +343,19 @@ impl<TYPE: Copy + ToBeBytes> UnsignedEnum for GenericEcssEnumWrapper<TYPE> {
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.field.write_to_be_bytes(buf)
     }
+
+    fn value(&self) -> u64 {
+        self.field.value()
+    }
 }
 
-impl<TYPE: Copy + ToBeBytes> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
+impl<TYPE: Copy + ToBeBytes + Into<u64>> EcssEnumeration for GenericEcssEnumWrapper<TYPE> {
     fn pfc(&self) -> u8 {
         size_of::<TYPE>() as u8 * 8_u8
     }
 }
 
-impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes> EcssEnumerationExt
+impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes + Into<u64>> EcssEnumerationExt
     for GenericEcssEnumWrapper<TYPE>
 {
 }
@@ -396,6 +404,8 @@ mod tests {
             .write_to_be_bytes(&mut buf[1..2])
             .expect("To byte conversion of u8 failed");
         assert_eq!(buf[1], 1);
+        assert_eq!(my_enum.value(), 1);
+        assert_eq!(my_enum.value_typed(), 1);
     }
 
     #[test]
@@ -409,6 +419,8 @@ mod tests {
         assert_eq!(my_enum.pfc(), 16);
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
+        assert_eq!(my_enum.value(), 0x1f2f);
+        assert_eq!(my_enum.value_typed(), 0x1f2f);
     }
 
     #[test]
@@ -440,6 +452,8 @@ mod tests {
         assert_eq!(buf[2], 0x2f);
         assert_eq!(buf[3], 0x3f);
         assert_eq!(buf[4], 0x4f);
+        assert_eq!(my_enum.value(), 0x1f2f3f4f);
+        assert_eq!(my_enum.value_typed(), 0x1f2f3f4f);
     }
 
     #[test]
@@ -458,6 +472,23 @@ mod tests {
                 panic!("Unexpected error {:?}", error);
             }
         }
+    }
+
+    #[test]
+    fn test_enum_u64() {
+        let mut buf = [0; 8];
+        let my_enum = EcssEnumU64::new(0x1f2f3f4f5f);
+        my_enum
+            .write_to_be_bytes(&mut buf)
+            .expect("To byte conversion of u64 failed");
+        assert_eq!(buf[3], 0x1f);
+        assert_eq!(buf[4], 0x2f);
+        assert_eq!(buf[5], 0x3f);
+        assert_eq!(buf[6], 0x4f);
+        assert_eq!(buf[7], 0x5f);
+        assert_eq!(my_enum.value(), 0x1f2f3f4f5f);
+        assert_eq!(my_enum.value_typed(), 0x1f2f3f4f5f);
+        assert_eq!(u64::from_be_bytes(buf), 0x1f2f3f4f5f);
     }
 
     #[test]

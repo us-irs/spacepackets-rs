@@ -581,7 +581,7 @@ mod tests {
         assert_eq!(finished_pdu_vec.len(), 12);
         assert_eq!(finished_pdu_vec[9], TlvType::EntityId.into());
         assert_eq!(finished_pdu_vec[10], 1);
-        assert_eq!(finished_pdu_vec[11], TEST_DEST_ID.value());
+        assert_eq!(finished_pdu_vec[11], TEST_DEST_ID.value_typed());
         assert_eq!(
             finished_pdu.fault_location().unwrap().entity_id(),
             &TEST_DEST_ID.into()
