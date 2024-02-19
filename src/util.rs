@@ -77,6 +77,7 @@ pub trait UnsignedEnum {
     fn value(&self) -> u64;
 
     #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut buf = alloc::vec![0; self.size()];
         self.write_to_be_bytes(&mut buf).unwrap();
