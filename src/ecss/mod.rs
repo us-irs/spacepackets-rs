@@ -360,10 +360,28 @@ impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes + Into<u64>> EcssEn
 {
 }
 
-pub type EcssEnumU8 = GenericEcssEnumWrapper<u8>;
-pub type EcssEnumU16 = GenericEcssEnumWrapper<u16>;
-pub type EcssEnumU32 = GenericEcssEnumWrapper<u32>;
-pub type EcssEnumU64 = GenericEcssEnumWrapper<u64>;
+macro_rules! impl_from_for_generic_ecss_enum_wrapper {
+    ($($ty:ty => $Enum:ident),*) => {
+        $(
+            pub type $Enum = GenericEcssEnumWrapper<$ty>;
+
+            impl From<$ty> for $Enum {
+                fn from(value: $ty) -> Self {
+                    Self::new(value)
+                }
+            }
+        )*
+    };
+}
+
+// Generates EcssEnum<$TY> type definitions as well as a From<$TY> for EcssEnum<$TY>
+// implementation.
+impl_from_for_generic_ecss_enum_wrapper! {
+    u8 => EcssEnumU8,
+    u16 => EcssEnumU16,
+    u32 => EcssEnumU32,
+    u64 => EcssEnumU64
+}
 
 /// Generic trait for PUS packet abstractions which can written to a raw slice as their raw
 /// byte representation. This is especially useful for generic abstractions which depend only
