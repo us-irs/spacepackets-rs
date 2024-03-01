@@ -360,7 +360,7 @@ impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes + Into<u64>> EcssEn
 {
 }
 
-macro_rules! impl_from_for_generic_ecss_enum_wrapper {
+macro_rules! generic_ecss_enum_typedefs_and_from_impls {
     ($($ty:ty => $Enum:ident),*) => {
         $(
             pub type $Enum = GenericEcssEnumWrapper<$ty>;
@@ -376,7 +376,7 @@ macro_rules! impl_from_for_generic_ecss_enum_wrapper {
 
 // Generates EcssEnum<$TY> type definitions as well as a From<$TY> for EcssEnum<$TY>
 // implementation.
-impl_from_for_generic_ecss_enum_wrapper! {
+generic_ecss_enum_typedefs_and_from_impls! {
     u8 => EcssEnumU8,
     u16 => EcssEnumU16,
     u32 => EcssEnumU32,
