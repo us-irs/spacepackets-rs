@@ -297,10 +297,10 @@ impl TimeProviderCcsdsEpoch {
                 unix_stamp.as_date_time().unwrap(),
             ));
         }
-        let mut fractions = None;
-        if let Some(subsec_millis) = unix_stamp.subsecond_millis {
-            fractions = fractional_part_from_subsec_ns(res, subsec_millis as u64 * 10_u64.pow(6));
-        }
+        let fractions = fractional_part_from_subsec_ns(
+            res,
+            unix_stamp.subsecond_millis() as u64 * 10_u64.pow(6),
+        );
         Self::new_generic(WidthCounterPair(4, ccsds_epoch as u32), fractions).map_err(|e| e.into())
     }
 
@@ -610,15 +610,15 @@ impl CcsdsTimeProvider for TimeProviderCcsdsEpoch {
         self.unix_seconds()
     }
 
-    fn subsecond_millis(&self) -> Option<u16> {
+    fn subsecond_millis(&self) -> u16 {
         if let Some(fractions) = self.fractions {
             if fractions.0 == FractionalResolution::Seconds {
-                return None;
+                return 0;
             }
             // Rounding down here is the correct approach.
-            return Some((convert_fractional_part_to_ns(fractions) / 10_u32.pow(6) as u64) as u16);
+            return (convert_fractional_part_to_ns(fractions) / 10_u32.pow(6) as u64) as u16;
         }
-        None
+        0
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>> {
@@ -763,7 +763,7 @@ mod tests {
         let zero_cuc = zero_cuc.unwrap();
         let res = zero_cuc.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        assert!(zero_cuc.subsecond_millis().is_none());
+        assert_eq!(zero_cuc.subsecond_millis(), 0);
         assert_eq!(zero_cuc.len_as_bytes(), 5);
         assert_eq!(pfield_len(buf[0]), 1);
         let written = res.unwrap();
@@ -1130,7 +1130,7 @@ mod tests {
         // What I would roughly expect
         assert_eq!(cuc_stamp2.counter.1, 203);
         assert!(cuc_stamp2.fractions.unwrap().1 < 100);
-        assert!(cuc_stamp2.subsecond_millis().unwrap() <= 1);
+        assert!(cuc_stamp2.subsecond_millis() <= 1);
     }
 
     #[test]

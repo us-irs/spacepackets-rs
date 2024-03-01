@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.0] 2024-02-27
+
+## Added
+
+- Added `Sub` implementation for `UnixTimestamp` to calculate the duration between two timestamps.
+
+## Changed
+
+- `CcsdsTimeProvider` `subsecond_millis` function now returns `u16` instead of `Option<u16>`.
+- `UnixTimestamp` `subsecond_millis` function now returns `u16` instead of `Option<u16>`.
+
 # [v0.10.0] 2024-02-17
 
 ## Added

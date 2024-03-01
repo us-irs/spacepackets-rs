@@ -672,10 +672,8 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         unix_stamp: &UnixTimestamp,
         days_len: LengthOfDaySegment,
     ) -> Result<Self, TimestampError> {
-        let conv_from_dt = ConversionFromUnix::new(
-            unix_stamp.unix_seconds,
-            unix_stamp.subsecond_millis.unwrap_or(0) as u32,
-        )?;
+        let conv_from_dt =
+            ConversionFromUnix::new(unix_stamp.unix_seconds, unix_stamp.subsecond_millis as u32)?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
@@ -1148,7 +1146,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
         self.unix_stamp.unix_seconds
     }
     #[inline]
-    fn subsecond_millis(&self) -> Option<u16> {
+    fn subsecond_millis(&self) -> u16 {
         self.unix_stamp.subsecond_millis
     }
 
@@ -1320,12 +1318,12 @@ mod tests {
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
         );
         let subsecond_millis = unix_stamp.subsecond_millis;
-        assert!(subsecond_millis.is_none());
+        assert_eq!(subsecond_millis, 0);
         assert_eq!(
             time_stamper.submillis_precision(),
             SubmillisPrecision::Absent
         );
-        assert!(time_stamper.subsecond_millis().is_none());
+        assert_eq!(time_stamper.subsecond_millis(), 0);
         assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
         assert_eq!(
             time_stamper.p_field(),
@@ -1356,11 +1354,9 @@ mod tests {
         assert_eq!(date_time.minute(), 0);
         assert_eq!(date_time.second(), 0);
         let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 40);
-        assert!(time_stamper.subsecond_millis().is_some());
-        assert_eq!(time_stamper.subsecond_millis().unwrap(), 40);
+        assert_eq!(time_stamper.subsecond_millis(), 40);
         let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 1040);
-        assert!(time_stamper.subsecond_millis().is_some());
-        assert_eq!(time_stamper.subsecond_millis().unwrap(), 40);
+        assert_eq!(time_stamper.subsecond_millis(), 40);
     }
 
     #[test]

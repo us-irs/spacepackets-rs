@@ -3,7 +3,7 @@ use crate::ByteConversionError;
 use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use core::cmp::Ordering;
 use core::fmt::{Display, Formatter};
-use core::ops::{Add, AddAssign};
+use core::ops::{Add, AddAssign, Sub};
 use core::time::Duration;
 use core::u8;
 
@@ -224,12 +224,9 @@ pub trait CcsdsTimeProvider {
     fn ccdsd_time_code(&self) -> CcsdsTimeCodes;
 
     fn unix_seconds(&self) -> i64;
-    fn subsecond_millis(&self) -> Option<u16>;
+    fn subsecond_millis(&self) -> u16;
     fn unix_stamp(&self) -> UnixTimestamp {
-        if self.subsecond_millis().is_none() {
-            return UnixTimestamp::new_only_seconds(self.unix_seconds());
-        }
-        UnixTimestamp::const_new(self.unix_seconds(), self.subsecond_millis().unwrap())
+        UnixTimestamp::const_new(self.unix_seconds(), self.subsecond_millis())
     }
 
     fn date_time(&self) -> Option<DateTime<Utc>>;
@@ -237,18 +234,16 @@ pub trait CcsdsTimeProvider {
 
 /// UNIX timestamp: Elapsed seconds since 1970-01-01T00:00:00+00:00.
 ///
-/// Also can optionally include subsecond millisecond for greater accuracy. Please note that a
-/// subsecond millisecond value of 0 gets converted to [None].
+/// Also can optionally include subsecond millisecond for greater accuracy.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct UnixTimestamp {
     pub unix_seconds: i64,
-    subsecond_millis: Option<u16>,
+    subsecond_millis: u16,
 }
 
 impl UnixTimestamp {
-    /// Returns none if the subsecond millisecond value is larger than 999. 0 is converted to
-    /// a [None] value.
+    /// Returns [None] if the subsecond millisecond value is larger than 999.
     pub fn new(unix_seconds: i64, subsec_millis: u16) -> Option<Self> {
         if subsec_millis > 999 {
             return None;
@@ -257,15 +252,10 @@ impl UnixTimestamp {
     }
 
     /// Like [Self::new] but const. Panics if the subsecond value is larger than 999.
-    pub const fn const_new(unix_seconds: i64, subsec_millis: u16) -> Self {
-        if subsec_millis > 999 {
+    pub const fn const_new(unix_seconds: i64, subsecond_millis: u16) -> Self {
+        if subsecond_millis > 999 {
             panic!("subsec milliseconds exceeds 999");
         }
-        let subsecond_millis = if subsec_millis == 0 {
-            None
-        } else {
-            Some(subsec_millis)
-        };
         Self {
             unix_seconds,
             subsecond_millis,
@@ -275,11 +265,11 @@ impl UnixTimestamp {
     pub fn new_only_seconds(unix_seconds: i64) -> Self {
         Self {
             unix_seconds,
-            subsecond_millis: None,
+            subsecond_millis: 0,
         }
     }
 
-    pub fn subsecond_millis(&self) -> Option<u16> {
+    pub fn subsecond_millis(&self) -> u16 {
         self.subsecond_millis
     }
 
@@ -293,18 +283,27 @@ impl UnixTimestamp {
 
     #[inline]
     pub fn unix_seconds_f64(&self) -> f64 {
-        let mut secs = self.unix_seconds as f64;
-        if let Some(subsec_millis) = self.subsecond_millis {
-            secs += subsec_millis as f64 / 1000.0;
-        }
-        secs
+        self.unix_seconds as f64 + (self.subsecond_millis as f64 / 1000.0)
     }
 
     pub fn as_date_time(&self) -> LocalResult<DateTime<Utc>> {
         Utc.timestamp_opt(
             self.unix_seconds,
-            self.subsecond_millis.unwrap_or(0) as u32 * 10_u32.pow(6),
+            self.subsecond_millis as u32 * 10_u32.pow(6),
         )
+    }
+
+    // Calculate the difference in milliseconds between two UnixTimestamps
+    pub fn difference_in_millis(&self, other: &UnixTimestamp) -> i64 {
+        let seconds_difference = self.unix_seconds - other.unix_seconds;
+        // Convert seconds difference to milliseconds
+        let milliseconds_difference = seconds_difference * 1000;
+
+        // Calculate the difference in subsecond milliseconds directly
+        let subsecond_difference = self.subsecond_millis as i64 - other.subsecond_millis as i64;
+
+        // Combine the differences
+        milliseconds_difference + subsecond_difference
     }
 }
 
@@ -331,11 +330,7 @@ impl Ord for UnixTimestamp {
             _ => (),
         }
 
-        match self
-            .subsecond_millis()
-            .unwrap_or(0)
-            .cmp(&other.subsecond_millis().unwrap_or(0))
-        {
+        match self.subsecond_millis().cmp(&other.subsecond_millis()) {
             Ordering::Less => {
                 return if self.unix_seconds < 0 {
                     Ordering::Greater
@@ -356,12 +351,38 @@ impl Ord for UnixTimestamp {
     }
 }
 
+/// Difference between two UNIX timestamps. The [Duration] type can not contain negative durations,
+/// so the sign information is supplied separately.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct StampDiff {
+    pub positive_duration: bool,
+    pub duration_absolute: Duration,
+}
+
+impl Sub for UnixTimestamp {
+    type Output = StampDiff;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let difference = self.difference_in_millis(&rhs);
+        if difference < 0 {
+            StampDiff {
+                positive_duration: false,
+                duration_absolute: Duration::from_millis(-difference as u64),
+            }
+        } else {
+            StampDiff {
+                positive_duration: true,
+                duration_absolute: Duration::from_millis(difference as u64),
+            }
+        }
+    }
+}
+
 fn get_new_stamp_after_addition(
     current_stamp: &UnixTimestamp,
     duration: Duration,
 ) -> UnixTimestamp {
-    let mut new_subsec_millis =
-        current_stamp.subsecond_millis().unwrap_or(0) + duration.subsec_millis() as u16;
+    let mut new_subsec_millis = current_stamp.subsecond_millis() + duration.subsec_millis() as u16;
     let mut new_unix_seconds = current_stamp.unix_seconds;
     let mut increment_seconds = |value: u32| {
         if new_unix_seconds < 0 {
@@ -464,18 +485,17 @@ mod tests {
     fn basic_unix_stamp_test() {
         let stamp = UnixTimestamp::new_only_seconds(-200);
         assert_eq!(stamp.unix_seconds, -200);
-        assert!(stamp.subsecond_millis().is_none());
+        assert_eq!(stamp.subsecond_millis(), 0);
         let stamp = UnixTimestamp::new_only_seconds(250);
         assert_eq!(stamp.unix_seconds, 250);
-        assert!(stamp.subsecond_millis().is_none());
+        assert_eq!(stamp.subsecond_millis(), 0);
     }
 
     #[test]
     fn basic_float_unix_stamp_test() {
         let stamp = UnixTimestamp::new(500, 600).unwrap();
-        assert!(stamp.subsecond_millis.is_some());
         assert_eq!(stamp.unix_seconds, 500);
-        let subsec_millis = stamp.subsecond_millis().unwrap();
+        let subsec_millis = stamp.subsecond_millis();
         assert_eq!(subsec_millis, 600);
         assert!((500.6 - stamp.unix_seconds_f64()).abs() < 0.0001);
     }
@@ -524,6 +544,7 @@ mod tests {
         assert!(stamp2 <= stamp1);
     }
 
+    #[allow(clippy::nonminimal_bool)]
     #[test]
     fn test_eq() {
         let stamp0 = UnixTimestamp::new(5, 0).unwrap();
@@ -540,11 +561,10 @@ mod tests {
         let mut stamp0 = UnixTimestamp::new_only_seconds(1);
         stamp0 += Duration::from_secs(5);
         assert_eq!(stamp0.unix_seconds, 6);
-        assert!(stamp0.subsecond_millis().is_none());
+        assert_eq!(stamp0.subsecond_millis(), 0);
         let stamp1 = stamp0 + Duration::from_millis(500);
         assert_eq!(stamp1.unix_seconds, 6);
-        assert!(stamp1.subsecond_millis().is_some());
-        assert_eq!(stamp1.subsecond_millis().unwrap(), 500);
+        assert_eq!(stamp1.subsecond_millis(), 500);
     }
 
     #[test]
@@ -552,7 +572,7 @@ mod tests {
         let stamp0 = &UnixTimestamp::new(20, 500).unwrap();
         let stamp1 = stamp0 + Duration::from_millis(2500);
         assert_eq!(stamp1.unix_seconds, 23);
-        assert!(stamp1.subsecond_millis().is_none());
+        assert_eq!(stamp1.subsecond_millis(), 0);
     }
 
     #[test]
@@ -575,14 +595,49 @@ mod tests {
     }
 
     #[test]
+    fn test_stamp_diff_positive_0() {
+        let stamp_later = UnixTimestamp::new(2, 0).unwrap();
+        let StampDiff {
+            positive_duration,
+            duration_absolute,
+        } = stamp_later - UnixTimestamp::new(1, 0).unwrap();
+        assert!(positive_duration);
+        assert_eq!(duration_absolute, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_stamp_diff_positive_1() {
+        let stamp_later = UnixTimestamp::new(3, 800).unwrap();
+        let stamp_earlier = UnixTimestamp::new(1, 900).unwrap();
+        let StampDiff {
+            positive_duration,
+            duration_absolute,
+        } = stamp_later - stamp_earlier;
+        assert!(positive_duration);
+        assert_eq!(duration_absolute, Duration::from_millis(1900));
+    }
+
+    #[test]
+    fn test_stamp_diff_negative() {
+        let stamp_later = UnixTimestamp::new(3, 800).unwrap();
+        let stamp_earlier = UnixTimestamp::new(1, 900).unwrap();
+        let StampDiff {
+            positive_duration,
+            duration_absolute,
+        } = stamp_earlier - stamp_later;
+        assert!(!positive_duration);
+        assert_eq!(duration_absolute, Duration::from_millis(1900));
+    }
+
+    #[test]
     fn test_addition_spillover() {
         let mut stamp0 = UnixTimestamp::new(1, 900).unwrap();
         stamp0 += Duration::from_millis(100);
         assert_eq!(stamp0.unix_seconds, 2);
-        assert!(stamp0.subsecond_millis().is_none());
+        assert_eq!(stamp0.subsecond_millis(), 0);
         stamp0 += Duration::from_millis(1100);
         assert_eq!(stamp0.unix_seconds, 3);
-        assert_eq!(stamp0.subsecond_millis().unwrap(), 100);
+        assert_eq!(stamp0.subsecond_millis(), 100);
     }
 
     #[test]
