@@ -196,6 +196,7 @@ pub trait TimeWriter {
     fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError>;
 
     #[cfg(feature = "alloc")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
         let mut vec = alloc::vec![0; self.len_written()];
         self.write_to_bytes(&mut vec)?;
