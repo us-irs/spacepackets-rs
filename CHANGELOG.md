@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
-# [v0.11.0] 2024-02-27
+# [v0.11.0]
 
 ## Added
 
-- Added `Sub` implementation for `UnixTimestamp` to calculate the duration between two timestamps.
+- `From<$TY>` for the `EcssEnum$TY` ECSS enum type definitions.
+- `Sub` implementation for `UnixTimestamp` to calculate the duration between two timestamps.
 
 ## Changed
 
