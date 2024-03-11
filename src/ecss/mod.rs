@@ -360,16 +360,16 @@ impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes + Into<u64>> EcssEn
 {
 }
 
+impl<T: Copy + Into<u64>> From<T> for GenericEcssEnumWrapper<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
 macro_rules! generic_ecss_enum_typedefs_and_from_impls {
     ($($ty:ty => $Enum:ident),*) => {
         $(
             pub type $Enum = GenericEcssEnumWrapper<$ty>;
-
-            impl From<$ty> for $Enum {
-                fn from(value: $ty) -> Self {
-                    Self::new(value)
-                }
-            }
 
             impl From<$Enum> for $ty {
                 fn from(value: $Enum) -> Self {
