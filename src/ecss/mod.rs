@@ -360,14 +360,20 @@ impl<TYPE: Debug + Copy + Clone + PartialEq + Eq + ToBeBytes + Into<u64>> EcssEn
 {
 }
 
+impl<T: Copy + Into<u64>> From<T> for GenericEcssEnumWrapper<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
 macro_rules! generic_ecss_enum_typedefs_and_from_impls {
     ($($ty:ty => $Enum:ident),*) => {
         $(
             pub type $Enum = GenericEcssEnumWrapper<$ty>;
 
-            impl From<$ty> for $Enum {
-                fn from(value: $ty) -> Self {
-                    Self::new(value)
+            impl From<$Enum> for $ty {
+                fn from(value: $Enum) -> Self {
+                    value.value_typed()
                 }
             }
         )*
@@ -424,6 +430,8 @@ mod tests {
         assert_eq!(buf[1], 1);
         assert_eq!(my_enum.value(), 1);
         assert_eq!(my_enum.value_typed(), 1);
+        let enum_as_u8: u8 = my_enum.into();
+        assert_eq!(enum_as_u8, 1);
         let vec = my_enum.to_vec();
         assert_eq!(vec, buf[1..2]);
     }
@@ -441,6 +449,8 @@ mod tests {
         assert_eq!(buf[2], 0x2f);
         assert_eq!(my_enum.value(), 0x1f2f);
         assert_eq!(my_enum.value_typed(), 0x1f2f);
+        let enum_as_raw: u16 = my_enum.into();
+        assert_eq!(enum_as_raw, 0x1f2f);
         let vec = my_enum.to_vec();
         assert_eq!(vec, buf[1..3]);
     }
@@ -476,6 +486,8 @@ mod tests {
         assert_eq!(buf[4], 0x4f);
         assert_eq!(my_enum.value(), 0x1f2f3f4f);
         assert_eq!(my_enum.value_typed(), 0x1f2f3f4f);
+        let enum_as_raw: u32 = my_enum.into();
+        assert_eq!(enum_as_raw, 0x1f2f3f4f);
         let vec = my_enum.to_vec();
         assert_eq!(vec, buf[1..5]);
     }
@@ -512,6 +524,8 @@ mod tests {
         assert_eq!(buf[7], 0x5f);
         assert_eq!(my_enum.value(), 0x1f2f3f4f5f);
         assert_eq!(my_enum.value_typed(), 0x1f2f3f4f5f);
+        let enum_as_raw: u64 = my_enum.into();
+        assert_eq!(enum_as_raw, 0x1f2f3f4f5f);
         assert_eq!(u64::from_be_bytes(buf), 0x1f2f3f4f5f);
         let vec = my_enum.to_vec();
         assert_eq!(vec, buf);

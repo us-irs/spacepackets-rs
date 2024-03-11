@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `From<$EcssEnum$TY> from $TY` for the ECSS enum type definitions.
+
 # [v0.11.0-rc.0] 2024-03-04
 
 ## Added
