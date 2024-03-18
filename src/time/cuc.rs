@@ -143,9 +143,11 @@ impl Display for CucError {
 #[cfg(feature = "std")]
 impl Error for CucError {}
 
+/// Tuple object where the first value is the width of the counter and the second value
+/// is the counter value.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct WidthCounterPair(u8, u32);
+pub struct WidthCounterPair(pub u8, pub u32);
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -437,13 +439,25 @@ impl CucTime {
         Self::new_generic(WidthCounterPair(4, counter as u32), fractions).map_err(|e| e.into())
     }
 
-    pub fn new_u16_counter(counter: u16) -> Self {
-        // These values are definitely valid, so it is okay to unwrap here.
-        Self::new_generic(
-            WidthCounterPair(2, counter as u32),
-            FractionalPart::new_with_seconds_resolution(),
-        )
-        .unwrap()
+    /// Most generic constructor which allows full configurability for the counter and for the
+    /// fractions.
+    pub fn new_generic(
+        width_and_counter: WidthCounterPair,
+        fractions: FractionalPart,
+    ) -> Result<Self, CucError> {
+        Self::verify_counter_width(width_and_counter.0)?;
+        if width_and_counter.1 > (2u64.pow(width_and_counter.0 as u32 * 8) - 1) as u32 {
+            return Err(CucError::InvalidCounter {
+                width: width_and_counter.0,
+                counter: width_and_counter.1.into(),
+            });
+        }
+        Self::verify_fractions_value(fractions)?;
+        Ok(Self {
+            pfield: Self::build_p_field(width_and_counter.0, fractions.resolution),
+            counter: width_and_counter,
+            fractions,
+        })
     }
 
     pub fn ccsds_time_code(&self) -> CcsdsTimeCode {
@@ -454,7 +468,7 @@ impl CucTime {
         self.counter
     }
 
-    pub fn width(&self) -> u8 {
+    pub fn counter_width(&self) -> u8 {
         self.counter.0
     }
 
@@ -487,25 +501,6 @@ impl CucTime {
         if res != self.fractions().resolution() {
             self.fractions = FractionalPart::new(res, 0);
         }
-    }
-
-    pub fn new_generic(
-        counter: WidthCounterPair,
-        fractions: FractionalPart,
-    ) -> Result<Self, CucError> {
-        Self::verify_counter_width(counter.0)?;
-        if counter.1 > (2u64.pow(counter.0 as u32 * 8) - 1) as u32 {
-            return Err(CucError::InvalidCounter {
-                width: counter.0,
-                counter: counter.1.into(),
-            });
-        }
-        Self::verify_fractions_value(fractions)?;
-        Ok(Self {
-            pfield: Self::build_p_field(counter.0, fractions.resolution),
-            counter,
-            fractions,
-        })
     }
 
     fn build_p_field(counter_width: u8, resolution: FractionalResolution) -> u8 {
@@ -856,7 +851,7 @@ mod tests {
         // Do not include leap second corrections, which do not apply to dates before 1972.
         let zero_cuc = CucTime::new(0);
         assert_eq!(zero_cuc.len_as_bytes(), 5);
-        assert_eq!(zero_cuc.width(), zero_cuc.width_counter_pair().0);
+        assert_eq!(zero_cuc.counter_width(), zero_cuc.width_counter_pair().0);
         assert_eq!(zero_cuc.counter(), zero_cuc.width_counter_pair().1);
         let ccsds_cuc = zero_cuc.to_leap_sec_helper(0);
         assert_eq!(ccsds_cuc.ccdsd_time_code(), CcsdsTimeCode::CucCcsdsEpoch);
@@ -1371,13 +1366,6 @@ mod tests {
     }
 
     #[test]
-    fn test_new_u16_width() {
-        let cuc = CucTime::new_u16_counter(0);
-        assert_eq!(cuc.width(), 2);
-        assert_eq!(cuc.counter(), 0);
-    }
-
-    #[test]
     fn from_unix_stamp() {
         let unix_stamp = UnixTime::new(0, 0);
         let cuc =
@@ -1405,7 +1393,7 @@ mod tests {
 
     #[test]
     fn test_stamp_to_vec() {
-        let stamp = CucTime::new_u16_counter(100);
+        let stamp = CucTime::new(100);
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 16] = [0; 16];
         stamp.write_to_bytes(&mut buf).unwrap();
