@@ -1,24 +1,45 @@
 //! Module to generate or read CCSDS Day Segmented (CDS) timestamps as specified in
 //! [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf) section 3.3 .
 //!
-//! The core data structure to do this is the [TimeProvider] struct and the
+//! The core data structure to do this is the [CdsTime] struct and the
 //! [get_dyn_time_provider_from_bytes] function to retrieve correct instances of the
 //! struct from a bytestream.
-use super::*;
 use crate::private::Sealed;
-#[cfg(feature = "alloc")]
-use alloc::boxed::Box;
-use chrono::Datelike;
-#[cfg(feature = "alloc")]
-use core::any::Any;
+use crate::ByteConversionError;
 use core::cmp::Ordering;
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
+
 use delegate::delegate;
 
+#[cfg(feature = "std")]
+use super::StdTimestampError;
+#[cfg(feature = "std")]
+use std::error::Error;
+#[cfg(feature = "std")]
+use std::time::{SystemTime, SystemTimeError};
+
+#[cfg(feature = "chrono")]
+use chrono::Datelike;
+
+#[cfg(feature = "alloc")]
+use super::ccsds_time_code_from_p_field;
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+#[cfg(feature = "alloc")]
+use core::any::Any;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use super::{
+    ccsds_to_unix_days, unix_to_ccsds_days, CcsdsTimeCode, CcsdsTimeProvider, TimeReader,
+    TimeWriter, TimestampError, UnixTime, MS_PER_DAY, SECONDS_PER_DAY,
+};
+
 /// Base value for the preamble field for a time field parser to determine the time field type.
-pub const P_FIELD_BASE: u8 = (CcsdsTimeCodes::Cds as u8) << 4;
+pub const P_FIELD_BASE: u8 = (CcsdsTimeCode::Cds as u8) << 4;
 pub const MIN_CDS_FIELD_LEN: usize = 7;
 pub const MAX_DAYS_24_BITS: u32 = 2_u32.pow(24) - 1;
 
@@ -37,7 +58,7 @@ pub trait ProvidesDaysLength: Sealed + Clone {
         + Into<i64>;
 }
 
-/// Type level token to be used as a generic parameter to [TimeProvider].
+/// Type level token to be used as a generic parameter to [CdsTime].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct DaysLen16Bits {}
 
@@ -46,7 +67,7 @@ impl ProvidesDaysLength for DaysLen16Bits {
     type FieldType = u16;
 }
 
-/// Type level token to be used as a generic parameter to [TimeProvider].
+/// Type level token to be used as a generic parameter to [CdsTime].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct DaysLen24Bits {}
 impl Sealed for DaysLen24Bits {}
@@ -135,40 +156,39 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 ///
 /// ```
 /// use core::time::Duration;
-/// use spacepackets::time::cds::{TimeProvider, length_of_day_segment_from_pfield, LengthOfDaySegment};
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
+/// use spacepackets::time::cds::{CdsTime, length_of_day_segment_from_pfield, LengthOfDaySegment};
+/// use spacepackets::time::{TimeWriter, CcsdsTimeCode, CcsdsTimeProvider};
 ///
-/// let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
+/// let timestamp_now = CdsTime::from_now_with_u16_days().unwrap();
 /// let mut raw_stamp = [0; 7];
 /// {
 ///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
-///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCodes::Cds as u8);
+///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCode::Cds as u8);
 ///     assert_eq!(written, 7);
 /// }
 /// {
 ///     assert_eq!(length_of_day_segment_from_pfield(raw_stamp[0]), LengthOfDaySegment::Short16Bits);
-///     let read_result = TimeProvider::from_bytes_with_u16_days(&raw_stamp);
+///     let read_result = CdsTime::from_bytes_with_u16_days(&raw_stamp);
 ///     assert!(read_result.is_ok());
 ///     let stamp_deserialized = read_result.unwrap();
 ///     assert_eq!(stamp_deserialized.len_as_bytes(), 7);
 /// }
 /// // It is possible to add a  Duration offset to a timestamp provider. Add 5 minutes offset here
 /// let offset = Duration::from_secs(60 * 5);
-/// let former_unix_seconds = timestamp_now.unix_seconds();
+/// let former_unix_seconds = timestamp_now.unix_secs();
 /// let timestamp_in_5_minutes = timestamp_now + offset;
-/// assert_eq!(timestamp_in_5_minutes.unix_seconds(), former_unix_seconds + 5 * 60);
+/// assert_eq!(timestamp_in_5_minutes.unix_secs(), former_unix_seconds + 5 * 60);
 /// ```
 #[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimeProvider<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
+pub struct CdsTime<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     pfield: u8,
     ccsds_days: DaysLen::FieldType,
     ms_of_day: u32,
-    // submillis_precision: SubmillisPrecision,
     submillis: u32,
     /// This is not strictly necessary but still cached because it significantly simplifies the
     /// calculation of [`DateTime<Utc>`].
-    unix_stamp: UnixTimestamp,
+    unix_time: UnixTime,
 }
 
 /// Common properties for all CDS time providers.
@@ -194,36 +214,47 @@ trait CdsConverter: CdsCommon {
 struct ConversionFromUnix {
     ccsds_days: u32,
     ms_of_day: u32,
+    submilis_prec: SubmillisPrecision,
+    submillis: u32,
     /// This is a side-product of the calculation of the CCSDS days. It is useful for
     /// re-calculating the datetime at a later point and therefore supplied as well.
     unix_days_seconds: i64,
 }
 
 impl ConversionFromUnix {
-    fn new(unix_seconds: i64, subsec_millis: u32) -> Result<Self, TimestampError> {
+    fn new(
+        unix_seconds: i64,
+        subsec_nanos: u32,
+        precision: SubmillisPrecision,
+    ) -> Result<Self, TimestampError> {
         let (unix_days, secs_of_day) = calc_unix_days_and_secs_of_day(unix_seconds);
         let ccsds_days = unix_to_ccsds_days(unix_days);
-        if ccsds_days == 0 && (secs_of_day > 0 || subsec_millis > 0) || ccsds_days < 0 {
-            let millis = if unix_seconds < 0 {
-                unix_seconds * 1000 - subsec_millis as i64
-            } else {
-                unix_seconds * 1000 + subsec_millis as i64
-            };
+        if ccsds_days == 0 && (secs_of_day > 0 || subsec_nanos > 0) || ccsds_days < 0 {
             return Err(TimestampError::DateBeforeCcsdsEpoch(
-                Utc.timestamp_millis_opt(millis).unwrap(),
+                UnixTime::new_checked(unix_seconds, subsec_nanos)
+                    .expect("unix timestamp creation failed"),
             ));
         }
+        let ms_of_day = secs_of_day * 1000 + subsec_nanos / 10_u32.pow(6);
+
+        let submillis = match precision {
+            SubmillisPrecision::Microseconds => (subsec_nanos / 1_000) % 1000,
+            SubmillisPrecision::Picoseconds => (subsec_nanos % 10_u32.pow(6)) * 1000,
+            _ => 0,
+        };
         Ok(Self {
             ccsds_days: unix_to_ccsds_days(unix_days) as u32,
-            ms_of_day: secs_of_day * 1000 + subsec_millis,
+            ms_of_day,
             unix_days_seconds: unix_days * SECONDS_PER_DAY as i64,
+            submilis_prec: precision,
+            submillis,
         })
     }
 }
 
 impl CdsCommon for ConversionFromUnix {
     fn submillis_precision(&self) -> SubmillisPrecision {
-        SubmillisPrecision::Absent
+        self.submilis_prec
     }
 
     fn ms_of_day(&self) -> u32 {
@@ -235,7 +266,7 @@ impl CdsCommon for ConversionFromUnix {
     }
 
     fn submillis(&self) -> u32 {
-        0
+        self.submillis
     }
 }
 
@@ -245,13 +276,13 @@ impl CdsConverter for ConversionFromUnix {
     }
 }
 /// Helper struct which generates fields for the CDS time provider from a datetime.
-struct ConversionFromDatetime {
+struct ConversionFromChronoDatetime {
     unix_conversion: ConversionFromUnix,
     submillis_prec: SubmillisPrecision,
     submillis: u32,
 }
 
-impl CdsCommon for ConversionFromDatetime {
+impl CdsCommon for ConversionFromChronoDatetime {
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
@@ -268,7 +299,7 @@ impl CdsCommon for ConversionFromDatetime {
     }
 }
 
-impl CdsConverter for ConversionFromDatetime {
+impl CdsConverter for ConversionFromChronoDatetime {
     delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
 }
 
@@ -285,27 +316,36 @@ fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
     (unix_days, secs_of_day as u32)
 }
 
-impl ConversionFromDatetime {
-    fn new(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+#[cfg(feature = "chrono")]
+impl ConversionFromChronoDatetime {
+    fn new(dt: &chrono::DateTime<chrono::Utc>) -> Result<Self, TimestampError> {
         Self::new_generic(dt, SubmillisPrecision::Absent)
     }
 
-    fn new_with_submillis_us_prec(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    fn new_with_submillis_us_prec(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::new_generic(dt, SubmillisPrecision::Microseconds)
     }
 
-    fn new_with_submillis_ps_prec(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    fn new_with_submillis_ps_prec(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::new_generic(dt, SubmillisPrecision::Picoseconds)
     }
 
-    fn new_generic(dt: &DateTime<Utc>, prec: SubmillisPrecision) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    fn new_generic(
+        dt: &chrono::DateTime<chrono::Utc>,
+        prec: SubmillisPrecision,
+    ) -> Result<Self, TimestampError> {
         // The CDS timestamp does not support timestamps before the CCSDS epoch.
         if dt.year() < 1958 {
-            return Err(TimestampError::DateBeforeCcsdsEpoch(*dt));
+            return Err(TimestampError::DateBeforeCcsdsEpoch(UnixTime::from(*dt)));
         }
         // The contained values in the conversion should be all positive now
         let unix_conversion =
-            ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_millis())?;
+            ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_nanos(), prec)?;
         let mut submillis = 0;
         match prec {
             SubmillisPrecision::Microseconds => {
@@ -350,7 +390,8 @@ impl ConversionFromNow {
         let epoch = now.as_secs();
         // This should always return a value with valid (non-negative) CCSDS days,
         // so it is okay to unwrap
-        let unix_conversion = ConversionFromUnix::new(epoch as i64, now.subsec_millis()).unwrap();
+        let unix_conversion =
+            ConversionFromUnix::new(epoch as i64, now.subsec_nanos(), prec).unwrap();
         let mut submillis = 0;
 
         match prec {
@@ -397,27 +438,27 @@ impl CdsConverter for ConversionFromNow {
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-impl DynCdsTimeProvider for TimeProvider<DaysLen16Bits> {}
+impl DynCdsTimeProvider for CdsTime<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-impl DynCdsTimeProvider for TimeProvider<DaysLen24Bits> {}
+impl DynCdsTimeProvider for CdsTime<DaysLen24Bits> {}
 
-/// This function returns the correct [TimeProvider] instance from a raw byte array
+/// This function returns the correct [CdsTime] instance from a raw byte array
 /// by checking the length of days field. It also checks the CCSDS time code for correctness.
 ///
 /// # Example
 ///
 /// ```
 /// use spacepackets::time::cds::{
-///     TimeProvider, LengthOfDaySegment, get_dyn_time_provider_from_bytes, SubmillisPrecision,
+///     CdsTime, LengthOfDaySegment, get_dyn_time_provider_from_bytes, SubmillisPrecision,
 /// };
-/// use spacepackets::time::{TimeWriter, CcsdsTimeCodes, CcsdsTimeProvider};
+/// use spacepackets::time::{TimeWriter, CcsdsTimeCode, CcsdsTimeProvider};
 ///
-/// let timestamp_now = TimeProvider::new_with_u16_days(24, 24);
+/// let timestamp_now = CdsTime::new_with_u16_days(24, 24);
 /// let mut raw_stamp = [0; 7];
 /// {
 ///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
-///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCodes::Cds as u8);
+///     assert_eq!((raw_stamp[0] >> 4) & 0b111, CcsdsTimeCode::Cds as u8);
 ///     assert_eq!(written, 7);
 /// }
 /// {
@@ -436,25 +477,25 @@ pub fn get_dyn_time_provider_from_bytes(
     let time_code = ccsds_time_code_from_p_field(buf[0]);
     if let Err(e) = time_code {
         return Err(TimestampError::InvalidTimeCode {
-            expected: CcsdsTimeCodes::Cds,
+            expected: CcsdsTimeCode::Cds,
             found: e,
         });
     }
     let time_code = time_code.unwrap();
-    if time_code != CcsdsTimeCodes::Cds {
+    if time_code != CcsdsTimeCode::Cds {
         return Err(TimestampError::InvalidTimeCode {
-            expected: CcsdsTimeCodes::Cds,
+            expected: CcsdsTimeCode::Cds,
             found: time_code as u8,
         });
     }
     if length_of_day_segment_from_pfield(buf[0]) == LengthOfDaySegment::Short16Bits {
-        Ok(Box::new(TimeProvider::from_bytes_with_u16_days(buf)?))
+        Ok(Box::new(CdsTime::from_bytes_with_u16_days(buf)?))
     } else {
-        Ok(Box::new(TimeProvider::from_bytes_with_u24_days(buf)?))
+        Ok(Box::new(CdsTime::from_bytes_with_u24_days(buf)?))
     }
 }
 
-impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDaysLen> {
+impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for CdsTime<ProvidesDaysLen> {
     fn submillis_precision(&self) -> SubmillisPrecision {
         precision_from_pfield(self.pfield)
     }
@@ -472,7 +513,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for TimeProvider<ProvidesDay
     }
 }
 
-impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
+impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     /// Please note that a precision value of 0 will be converted to [None] (no precision).
     pub fn set_submillis(&mut self, prec: SubmillisPrecision, value: u32) -> bool {
         self.pfield &= !(0b11);
@@ -531,19 +572,19 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             ));
         }
         let pfield = buf[0];
-        match CcsdsTimeCodes::try_from(pfield >> 4 & 0b111) {
+        match CcsdsTimeCode::try_from(pfield >> 4 & 0b111) {
             Ok(cds_type) => match cds_type {
-                CcsdsTimeCodes::Cds => (),
+                CcsdsTimeCode::Cds => (),
                 _ => {
                     return Err(TimestampError::InvalidTimeCode {
-                        expected: CcsdsTimeCodes::Cds,
+                        expected: CcsdsTimeCode::Cds,
                         found: cds_type as u8,
                     })
                 }
             },
             _ => {
                 return Err(TimestampError::InvalidTimeCode {
-                    expected: CcsdsTimeCodes::Cds,
+                    expected: CcsdsTimeCode::Cds,
                     found: pfield >> 4 & 0b111,
                 });
             }
@@ -596,20 +637,11 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         } else {
             unix_days_seconds += seconds_of_day;
         }
-        self.unix_stamp = UnixTimestamp::const_new(unix_days_seconds, (ms_of_day % 1000) as u16);
-    }
-
-    fn calc_date_time(&self, ns_since_last_second: u32) -> Option<DateTime<Utc>> {
-        assert!(
-            ns_since_last_second < 10_u32.pow(9),
-            "Invalid MS since last second"
-        );
-        if let LocalResult::Single(val) =
-            Utc.timestamp_opt(self.unix_stamp.unix_seconds, ns_since_last_second)
-        {
-            return Some(val);
+        let mut subsec_nanos = (ms_of_day % 1000) * 10_u32.pow(6);
+        if let Some(precision) = self.precision_as_ns() {
+            subsec_nanos += precision;
         }
-        None
+        self.unix_time = UnixTime::new(unix_days_seconds, subsec_nanos);
     }
 
     fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), TimestampError> {
@@ -636,7 +668,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             pfield: Self::generate_p_field(days_len, SubmillisPrecision::Absent),
             ccsds_days,
             ms_of_day,
-            unix_stamp: Default::default(),
+            unix_time: Default::default(),
             submillis: 0,
         };
         let unix_days_seconds = ccsds_to_unix_days(i64::from(ccsds_days)) * SECONDS_PER_DAY as i64;
@@ -644,36 +676,40 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
         Ok(provider)
     }
 
+    #[cfg(feature = "chrono")]
     fn from_dt_generic(
-        dt: &DateTime<Utc>,
+        dt: &chrono::DateTime<chrono::Utc>,
         days_len: LengthOfDaySegment,
     ) -> Result<Self, TimestampError> {
-        let conv_from_dt = ConversionFromDatetime::new(dt)?;
+        let conv_from_dt = ConversionFromChronoDatetime::new(dt)?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
+    #[cfg(feature = "chrono")]
     fn from_dt_generic_us_prec(
-        dt: &DateTime<Utc>,
+        dt: &chrono::DateTime<chrono::Utc>,
         days_len: LengthOfDaySegment,
     ) -> Result<Self, TimestampError> {
-        let conv_from_dt = ConversionFromDatetime::new_with_submillis_us_prec(dt)?;
+        let conv_from_dt = ConversionFromChronoDatetime::new_with_submillis_us_prec(dt)?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
+    #[cfg(feature = "chrono")]
     fn from_dt_generic_ps_prec(
-        dt: &DateTime<Utc>,
+        dt: &chrono::DateTime<chrono::Utc>,
         days_len: LengthOfDaySegment,
     ) -> Result<Self, TimestampError> {
-        let conv_from_dt = ConversionFromDatetime::new_with_submillis_ps_prec(dt)?;
+        let conv_from_dt = ConversionFromChronoDatetime::new_with_submillis_ps_prec(dt)?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
     fn from_unix_generic(
-        unix_stamp: &UnixTimestamp,
+        unix_stamp: &UnixTime,
         days_len: LengthOfDaySegment,
+        submillis_prec: SubmillisPrecision,
     ) -> Result<Self, TimestampError> {
         let conv_from_dt =
-            ConversionFromUnix::new(unix_stamp.unix_seconds, unix_stamp.subsecond_millis as u32)?;
+            ConversionFromUnix::new(unix_stamp.secs, unix_stamp.subsec_nanos, submillis_prec)?;
         Self::generic_from_conversion(days_len, conv_from_dt)
     }
 
@@ -712,7 +748,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
             pfield: Self::generate_p_field(days_len, converter.submillis_precision()),
             ccsds_days,
             ms_of_day: converter.ms_of_day(),
-            unix_stamp: Default::default(),
+            unix_time: Default::default(),
             submillis: converter.submillis(),
         };
         provider.setup(converter.unix_days_seconds(), converter.ms_of_day());
@@ -765,7 +801,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> TimeProvider<ProvidesDaysLen> {
     }
 }
 
-impl TimeProvider<DaysLen24Bits> {
+impl CdsTime<DaysLen24Bits> {
     /// Generate a new timestamp provider with the days field width set to 24 bits
     pub fn new_with_u24_days(ccsds_days: u32, ms_of_day: u32) -> Result<Self, CdsError> {
         if ccsds_days > MAX_DAYS_24_BITS {
@@ -781,14 +817,17 @@ impl TimeProvider<DaysLen24Bits> {
         Self::from_now_generic(LengthOfDaySegment::Long24Bits)
     }
 
-    /// Create a provider from a [`DateTime<Utc>`] struct.
+    /// Create a provider from a [`chrono::DateTime<chrono::Utc>`] struct.
     ///
     /// ## Errors
     ///
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
     /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
-    pub fn from_dt_with_u24_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u24_days(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Long24Bits)
     }
 
@@ -799,19 +838,26 @@ impl TimeProvider<DaysLen24Bits> {
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
     /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
-    pub fn from_unix_secs_with_u24_days(
-        unix_stamp: &UnixTimestamp,
+    pub fn from_unix_stamp_with_u24_days(
+        unix_stamp: &UnixTime,
+        submillis_prec: SubmillisPrecision,
     ) -> Result<Self, TimestampError> {
-        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Long24Bits)
+        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Long24Bits, submillis_prec)
     }
 
     /// Like [Self::from_dt_with_u24_days] but with microsecond sub-millisecond precision.
-    pub fn from_dt_with_u24_days_us_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u24_days_us_precision(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic_us_prec(dt, LengthOfDaySegment::Long24Bits)
     }
 
     /// Like [Self::from_dt_with_u24_days] but with picoseconds sub-millisecond precision.
-    pub fn from_dt_with_u24_days_ps_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u24_days_ps_precision(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Long24Bits)
     }
 
@@ -856,19 +902,22 @@ impl TimeProvider<DaysLen24Bits> {
     }
 }
 
-impl TimeProvider<DaysLen16Bits> {
+impl CdsTime<DaysLen16Bits> {
     /// Generate a new timestamp provider with the days field width set to 16 bits
     pub fn new_with_u16_days(ccsds_days: u16, ms_of_day: u32) -> Self {
         // This should never fail, type system ensures CCSDS can not be negative or too large
         Self::generic_new(LengthOfDaySegment::Short16Bits, ccsds_days, ms_of_day).unwrap()
     }
 
-    /// Create a provider from a [`DateTime<Utc>`] struct.
+    /// Create a provider from a [`chrono::DateTime<Utc>`] struct.
     ///
     /// This function will return a [TimestampError::DateBeforeCcsdsEpoch] or a
     /// [TimestampError::Cds] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
     /// the CCSDS days value exceeds the allowed bit width (16 bits).
-    pub fn from_dt_with_u16_days(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u16_days(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Short16Bits)
     }
 
@@ -886,19 +935,26 @@ impl TimeProvider<DaysLen16Bits> {
     /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
     /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     /// or the CCSDS days value exceeds the allowed bit width (24 bits).
-    pub fn from_unix_secs_with_u16_days(
-        unix_stamp: &UnixTimestamp,
+    pub fn from_unix_stamp_with_u16_days(
+        unix_stamp: &UnixTime,
+        submillis_prec: SubmillisPrecision,
     ) -> Result<Self, TimestampError> {
-        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Short16Bits)
+        Self::from_unix_generic(unix_stamp, LengthOfDaySegment::Short16Bits, submillis_prec)
     }
 
     /// Like [Self::from_dt_with_u16_days] but with microsecond sub-millisecond precision.
-    pub fn from_dt_with_u16_days_us_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u16_days_us_precision(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic_us_prec(dt, LengthOfDaySegment::Short16Bits)
     }
 
     /// Like [Self::from_dt_with_u16_days] but with picoseconds sub-millisecond precision.
-    pub fn from_dt_with_u16_days_ps_precision(dt: &DateTime<Utc>) -> Result<Self, TimestampError> {
+    #[cfg(feature = "chrono")]
+    pub fn from_dt_with_u16_days_ps_precision(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, TimestampError> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Short16Bits)
     }
 
@@ -944,7 +1000,7 @@ impl TimeProvider<DaysLen16Bits> {
 }
 
 fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
-    time_provider: &TimeProvider<T>,
+    time_provider: &CdsTime<T>,
     max_days_val: u32,
     duration: Duration,
 ) -> (u32, u32, u32) {
@@ -1018,13 +1074,13 @@ fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
     (next_ccsds_days, next_ms_of_day, submillis)
 }
 
-impl CdsTimestamp for TimeProvider<DaysLen16Bits> {
+impl CdsTimestamp for CdsTime<DaysLen16Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Short16Bits
     }
 }
 
-impl CdsTimestamp for TimeProvider<DaysLen24Bits> {
+impl CdsTimestamp for CdsTime<DaysLen24Bits> {
     fn len_of_day_seg(&self) -> LengthOfDaySegment {
         LengthOfDaySegment::Long24Bits
     }
@@ -1033,7 +1089,7 @@ impl CdsTimestamp for TimeProvider<DaysLen24Bits> {
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
-impl Add<Duration> for TimeProvider<DaysLen16Bits> {
+impl Add<Duration> for CdsTime<DaysLen16Bits> {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self::Output {
@@ -1045,8 +1101,8 @@ impl Add<Duration> for TimeProvider<DaysLen16Bits> {
     }
 }
 
-impl Add<Duration> for &TimeProvider<DaysLen16Bits> {
-    type Output = TimeProvider<DaysLen16Bits>;
+impl Add<Duration> for &CdsTime<DaysLen16Bits> {
+    type Output = CdsTime<DaysLen16Bits>;
 
     fn add(self, duration: Duration) -> Self::Output {
         let (next_ccsds_days, next_ms_of_day, precision) =
@@ -1060,7 +1116,7 @@ impl Add<Duration> for &TimeProvider<DaysLen16Bits> {
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
-impl Add<Duration> for TimeProvider<DaysLen24Bits> {
+impl Add<Duration> for CdsTime<DaysLen24Bits> {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self::Output {
@@ -1072,8 +1128,8 @@ impl Add<Duration> for TimeProvider<DaysLen24Bits> {
     }
 }
 
-impl Add<Duration> for &TimeProvider<DaysLen24Bits> {
-    type Output = TimeProvider<DaysLen24Bits>;
+impl Add<Duration> for &CdsTime<DaysLen24Bits> {
+    type Output = CdsTime<DaysLen24Bits>;
     fn add(self, duration: Duration) -> Self::Output {
         let (next_ccsds_days, next_ms_of_day, precision) =
             add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
@@ -1087,7 +1143,7 @@ impl Add<Duration> for &TimeProvider<DaysLen24Bits> {
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
-impl AddAssign<Duration> for TimeProvider<DaysLen16Bits> {
+impl AddAssign<Duration> for CdsTime<DaysLen16Bits> {
     fn add_assign(&mut self, duration: Duration) {
         let (next_ccsds_days, next_ms_of_day, submillis) =
             add_for_max_ccsds_days_val(self, u16::MAX as u32, duration);
@@ -1100,7 +1156,7 @@ impl AddAssign<Duration> for TimeProvider<DaysLen16Bits> {
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
-impl AddAssign<Duration> for TimeProvider<DaysLen24Bits> {
+impl AddAssign<Duration> for CdsTime<DaysLen24Bits> {
     fn add_assign(&mut self, duration: Duration) {
         let (next_ccsds_days, next_ms_of_day, submillis) =
             add_for_max_ccsds_days_val(self, MAX_DAYS_24_BITS, duration);
@@ -1110,25 +1166,27 @@ impl AddAssign<Duration> for TimeProvider<DaysLen24Bits> {
     }
 }
 
-impl TryFrom<DateTime<Utc>> for TimeProvider<DaysLen16Bits> {
+#[cfg(feature = "chrono")]
+impl TryFrom<chrono::DateTime<chrono::Utc>> for CdsTime<DaysLen16Bits> {
     type Error = TimestampError;
 
-    fn try_from(dt: DateTime<Utc>) -> Result<Self, Self::Error> {
-        let conversion = ConversionFromDatetime::new(&dt)?;
+    fn try_from(dt: chrono::DateTime<chrono::Utc>) -> Result<Self, Self::Error> {
+        let conversion = ConversionFromChronoDatetime::new(&dt)?;
         Self::generic_from_conversion(LengthOfDaySegment::Short16Bits, conversion)
     }
 }
 
-impl TryFrom<DateTime<Utc>> for TimeProvider<DaysLen24Bits> {
+#[cfg(feature = "chrono")]
+impl TryFrom<chrono::DateTime<chrono::Utc>> for CdsTime<DaysLen24Bits> {
     type Error = TimestampError;
 
-    fn try_from(dt: DateTime<Utc>) -> Result<Self, Self::Error> {
-        let conversion = ConversionFromDatetime::new(&dt)?;
+    fn try_from(dt: chrono::DateTime<chrono::Utc>) -> Result<Self, Self::Error> {
+        let conversion = ConversionFromChronoDatetime::new(&dt)?;
         Self::generic_from_conversion(LengthOfDaySegment::Long24Bits, conversion)
     }
 }
 
-impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<ProvidesDaysLen> {
+impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for CdsTime<ProvidesDaysLen> {
     fn len_as_bytes(&self) -> usize {
         Self::calc_stamp_len(self.pfield)
     }
@@ -1137,52 +1195,38 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for TimeProvider<Pro
         (1, [self.pfield, 0])
     }
 
-    fn ccdsd_time_code(&self) -> CcsdsTimeCodes {
-        CcsdsTimeCodes::Cds
+    fn ccdsd_time_code(&self) -> CcsdsTimeCode {
+        CcsdsTimeCode::Cds
     }
 
     #[inline]
-    fn unix_seconds(&self) -> i64 {
-        self.unix_stamp.unix_seconds
+    fn unix_secs(&self) -> i64 {
+        self.unix_time.secs
     }
     #[inline]
-    fn subsecond_millis(&self) -> u16 {
-        self.unix_stamp.subsecond_millis
+    fn subsec_nanos(&self) -> u32 {
+        self.unix_time.subsec_nanos
     }
 
     #[inline]
-    fn unix_stamp(&self) -> UnixTimestamp {
-        self.unix_stamp
-    }
-
-    fn date_time(&self) -> Option<DateTime<Utc>> {
-        let mut ns_since_last_sec = (self.ms_of_day % 1000) * 10_u32.pow(6);
-        match self.submillis_precision() {
-            SubmillisPrecision::Microseconds => {
-                ns_since_last_sec += self.submillis() * 1000;
-            }
-            SubmillisPrecision::Picoseconds => {
-                ns_since_last_sec += self.submillis() / 1000;
-            }
-            _ => (),
-        }
-        self.calc_date_time(ns_since_last_sec)
+    fn unix_time(&self) -> UnixTime {
+        self.unix_time
     }
 }
 
-impl TimeReader for TimeProvider<DaysLen16Bits> {
+impl TimeReader for CdsTime<DaysLen16Bits> {
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
         Self::from_bytes_with_u16_days(buf)
     }
 }
 
-impl TimeReader for TimeProvider<DaysLen24Bits> {
+impl TimeReader for CdsTime<DaysLen24Bits> {
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError> {
         Self::from_bytes_with_u24_days(buf)
     }
 }
 
-impl TimeWriter for TimeProvider<DaysLen16Bits> {
+impl TimeWriter for CdsTime<DaysLen16Bits> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
@@ -1205,7 +1249,7 @@ impl TimeWriter for TimeProvider<DaysLen16Bits> {
     }
 }
 
-impl TimeWriter for TimeProvider<DaysLen24Bits> {
+impl TimeWriter for CdsTime<DaysLen24Bits> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
@@ -1229,7 +1273,7 @@ impl TimeWriter for TimeProvider<DaysLen24Bits> {
     }
 }
 
-impl<DaysLenProvider: ProvidesDaysLength> PartialEq for TimeProvider<DaysLenProvider> {
+impl<DaysLenProvider: ProvidesDaysLength> PartialEq for CdsTime<DaysLenProvider> {
     fn eq(&self, other: &Self) -> bool {
         if self.ccsds_days == other.ccsds_days
             && self.ms_of_day == other.ms_of_day
@@ -1241,7 +1285,7 @@ impl<DaysLenProvider: ProvidesDaysLength> PartialEq for TimeProvider<DaysLenProv
     }
 }
 
-impl<DaysLenProvider: ProvidesDaysLength> PartialOrd for TimeProvider<DaysLenProvider> {
+impl<DaysLenProvider: ProvidesDaysLength> PartialOrd for CdsTime<DaysLenProvider> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if self == other {
             return Some(Ordering::Equal);
@@ -1269,14 +1313,14 @@ impl<DaysLenProvider: ProvidesDaysLength> PartialOrd for TimeProvider<DaysLenPro
     }
 }
 
-impl<DaysLenProvider: ProvidesDaysLength + Eq> Ord for TimeProvider<DaysLenProvider> {
+impl<DaysLenProvider: ProvidesDaysLength + Eq> Ord for CdsTime<DaysLenProvider> {
     fn cmp(&self, other: &Self) -> Ordering {
         PartialOrd::partial_cmp(self, other).unwrap()
     }
 }
 
-impl From<TimeProvider<DaysLen16Bits>> for TimeProvider<DaysLen24Bits> {
-    fn from(value: TimeProvider<DaysLen16Bits>) -> Self {
+impl From<CdsTime<DaysLen16Bits>> for CdsTime<DaysLen24Bits> {
+    fn from(value: CdsTime<DaysLen16Bits>) -> Self {
         // This function only fails if the days value exceeds 24 bits, which is not possible here,
         // so it is okay to unwrap.
         Self::new_with_u24_days(value.ccsds_days_as_u32(), value.ms_of_day()).unwrap()
@@ -1284,9 +1328,9 @@ impl From<TimeProvider<DaysLen16Bits>> for TimeProvider<DaysLen24Bits> {
 }
 
 /// This conversion can fail if the days value exceeds 16 bits.
-impl TryFrom<TimeProvider<DaysLen24Bits>> for TimeProvider<DaysLen16Bits> {
+impl TryFrom<CdsTime<DaysLen24Bits>> for CdsTime<DaysLen16Bits> {
     type Error = CdsError;
-    fn try_from(value: TimeProvider<DaysLen24Bits>) -> Result<Self, CdsError> {
+    fn try_from(value: CdsTime<DaysLen24Bits>) -> Result<Self, CdsError> {
         let ccsds_days = value.ccsds_days_as_u32();
         if ccsds_days > u16::MAX as u32 {
             return Err(CdsError::InvalidCcsdsDays(ccsds_days as i64));
@@ -1302,6 +1346,7 @@ impl TryFrom<TimeProvider<DaysLen24Bits>> for TimeProvider<DaysLen16Bits> {
 mod tests {
     use super::*;
     use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
+    use crate::time::{UnixTime, DAYS_CCSDS_TO_UNIX, MS_PER_DAY};
     use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
     use alloc::string::ToString;
     use chrono::{Datelike, NaiveDate, Timelike};
@@ -1311,25 +1356,25 @@ mod tests {
 
     #[test]
     fn test_time_stamp_zero_args() {
-        let time_stamper = TimeProvider::new_with_u16_days(0, 0);
-        let unix_stamp = time_stamper.unix_stamp();
+        let time_stamper = CdsTime::new_with_u16_days(0, 0);
+        let unix_stamp = time_stamper.unix_time();
         assert_eq!(
-            unix_stamp.unix_seconds,
+            unix_stamp.secs,
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as i64
         );
-        let subsecond_millis = unix_stamp.subsecond_millis;
+        let subsecond_millis = unix_stamp.subsec_nanos;
         assert_eq!(subsecond_millis, 0);
         assert_eq!(
             time_stamper.submillis_precision(),
             SubmillisPrecision::Absent
         );
-        assert_eq!(time_stamper.subsecond_millis(), 0);
-        assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(time_stamper.subsec_nanos(), 0);
+        assert_eq!(time_stamper.ccdsd_time_code(), CcsdsTimeCode::Cds);
         assert_eq!(
             time_stamper.p_field(),
-            (1, [(CcsdsTimeCodes::Cds as u8) << 4, 0])
+            (1, [(CcsdsTimeCode::Cds as u8) << 4, 0])
         );
-        let date_time = time_stamper.date_time().unwrap();
+        let date_time = time_stamper.chrono_date_time().unwrap();
         assert_eq!(date_time.year(), 1958);
         assert_eq!(date_time.month(), 1);
         assert_eq!(date_time.day(), 1);
@@ -1340,28 +1385,30 @@ mod tests {
 
     #[test]
     fn test_time_stamp_unix_epoch() {
-        let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 0);
-        assert_eq!(time_stamper.unix_stamp().unix_seconds, 0);
+        let time_stamper = CdsTime::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 0);
+        assert_eq!(time_stamper.unix_time().secs, 0);
         assert_eq!(
             time_stamper.submillis_precision(),
             SubmillisPrecision::Absent
         );
-        let date_time = time_stamper.date_time().unwrap();
+        let date_time = time_stamper.chrono_date_time().unwrap();
         assert_eq!(date_time.year(), 1970);
         assert_eq!(date_time.month(), 1);
         assert_eq!(date_time.day(), 1);
         assert_eq!(date_time.hour(), 0);
         assert_eq!(date_time.minute(), 0);
         assert_eq!(date_time.second(), 0);
-        let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 40);
-        assert_eq!(time_stamper.subsecond_millis(), 40);
-        let time_stamper = TimeProvider::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 1040);
-        assert_eq!(time_stamper.subsecond_millis(), 40);
+        let time_stamper = CdsTime::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 40);
+        assert_eq!(time_stamper.subsec_nanos(), 40 * 10_u32.pow(6));
+        assert_eq!(time_stamper.subsec_millis(), 40);
+        let time_stamper = CdsTime::new_with_u16_days((-DAYS_CCSDS_TO_UNIX) as u16, 1040);
+        assert_eq!(time_stamper.subsec_nanos(), 40 * 10_u32.pow(6));
+        assert_eq!(time_stamper.subsec_millis(), 40);
     }
 
     #[test]
     fn test_large_days_field_write() {
-        let time_stamper = TimeProvider::new_with_u24_days(0x108020_u32, 0x10203040);
+        let time_stamper = CdsTime::new_with_u24_days(0x108020_u32, 0x10203040);
         assert!(time_stamper.is_ok());
         let time_stamper = time_stamper.unwrap();
         assert_eq!(time_stamper.len_as_bytes(), 8);
@@ -1380,13 +1427,13 @@ mod tests {
 
     #[test]
     fn test_large_days_field_read() {
-        let time_stamper = TimeProvider::new_with_u24_days(0x108020_u32, 0);
+        let time_stamper = CdsTime::new_with_u24_days(0x108020_u32, 0);
         assert!(time_stamper.is_ok());
         let time_stamper = time_stamper.unwrap();
         let mut buf = [0; 16];
         let written = time_stamper.write_to_bytes(&mut buf);
         assert!(written.is_ok());
-        let provider = TimeProvider::<DaysLen24Bits>::from_bytes(&buf);
+        let provider = CdsTime::<DaysLen24Bits>::from_bytes(&buf);
         assert!(provider.is_ok());
         let provider = provider.unwrap();
         assert_eq!(provider.ccsds_days(), 0x108020);
@@ -1395,13 +1442,13 @@ mod tests {
 
     #[test]
     fn test_large_days_field_read_invalid_ctor() {
-        let time_stamper = TimeProvider::new_with_u24_days(0x108020, 0);
+        let time_stamper = CdsTime::new_with_u24_days(0x108020, 0);
         assert!(time_stamper.is_ok());
         let time_stamper = time_stamper.unwrap();
         let mut buf = [0; 16];
         let written = time_stamper.write_to_bytes(&mut buf);
         assert!(written.is_ok());
-        let faulty_ctor = TimeProvider::<DaysLen16Bits>::from_bytes(&buf);
+        let faulty_ctor = CdsTime::<DaysLen16Bits>::from_bytes(&buf);
         assert!(faulty_ctor.is_err());
         let error = faulty_ctor.unwrap_err();
         if let TimestampError::Cds(CdsError::InvalidCtorForDaysOfLenInPreamble(len_of_day)) = error
@@ -1415,15 +1462,15 @@ mod tests {
     #[test]
     fn test_write() {
         let mut buf = [0; 16];
-        let time_stamper_0 = TimeProvider::new_with_u16_days(0, 0);
-        let unix_stamp = time_stamper_0.unix_stamp();
+        let time_stamper_0 = CdsTime::new_with_u16_days(0, 0);
+        let unix_stamp = time_stamper_0.unix_time();
         assert_eq!(
-            unix_stamp.unix_seconds,
+            unix_stamp.secs,
             (DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32).into()
         );
         let mut res = time_stamper_0.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
             u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
             0
@@ -1432,10 +1479,10 @@ mod tests {
             u32::from_be_bytes(buf[3..7].try_into().expect("Byte conversion failed")),
             0
         );
-        let time_stamper_1 = TimeProvider::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
+        let time_stamper_1 = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
         res = time_stamper_1.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
             u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
             u16::MAX - 1
@@ -1449,7 +1496,7 @@ mod tests {
     #[test]
     fn test_faulty_write_buf_too_small() {
         let mut buf = [0; 7];
-        let time_stamper = TimeProvider::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
+        let time_stamper = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
         for i in 0..6 {
             let res = time_stamper.write_to_bytes(&mut buf[0..i]);
             assert!(res.is_err());
@@ -1475,7 +1522,7 @@ mod tests {
     fn test_faulty_read_buf_too_small() {
         let buf = [0; 7];
         for i in 0..6 {
-            let res = TimeProvider::<DaysLen16Bits>::from_bytes(&buf[0..i]);
+            let res = CdsTime::<DaysLen16Bits>::from_bytes(&buf[0..i]);
             assert!(res.is_err());
             let err = res.unwrap_err();
             match err {
@@ -1496,15 +1543,15 @@ mod tests {
     #[test]
     fn test_faulty_invalid_pfield() {
         let mut buf = [0; 16];
-        let time_stamper_0 = TimeProvider::new_with_u16_days(0, 0);
+        let time_stamper_0 = CdsTime::new_with_u16_days(0, 0);
         let res = time_stamper_0.write_to_bytes(&mut buf);
         assert!(res.is_ok());
         buf[0] = 0;
-        let res = TimeProvider::<DaysLen16Bits>::from_bytes(&buf);
+        let res = CdsTime::<DaysLen16Bits>::from_bytes(&buf);
         assert!(res.is_err());
         let err = res.unwrap_err();
         if let InvalidTimeCode { expected, found } = err {
-            assert_eq!(expected, CcsdsTimeCodes::Cds);
+            assert_eq!(expected, CcsdsTimeCode::Cds);
             assert_eq!(found, 0);
             assert_eq!(
                 err.to_string(),
@@ -1516,10 +1563,10 @@ mod tests {
     #[test]
     fn test_reading() {
         let mut buf = [0; 16];
-        let time_stamper = TimeProvider::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
+        let time_stamper = CdsTime::new_with_u16_days(u16::MAX - 1, u32::MAX - 1);
         let res = time_stamper.write_to_bytes(&mut buf);
         assert!(res.is_ok());
-        assert_eq!(buf[0], (CcsdsTimeCodes::Cds as u8) << 4);
+        assert_eq!(buf[0], (CcsdsTimeCode::Cds as u8) << 4);
         assert_eq!(
             u16::from_be_bytes(buf[1..3].try_into().expect("Byte conversion failed")),
             u16::MAX - 1
@@ -1529,17 +1576,17 @@ mod tests {
             u32::MAX - 1
         );
 
-        let read_stamp: TimeProvider<DaysLen16Bits> =
-            TimeProvider::from_bytes(&buf).expect("Reading timestamp failed");
+        let read_stamp: CdsTime<DaysLen16Bits> =
+            CdsTime::from_bytes(&buf).expect("Reading timestamp failed");
         assert_eq!(read_stamp.ccsds_days(), u16::MAX - 1);
         assert_eq!(read_stamp.ms_of_day(), u32::MAX - 1);
     }
 
     fn generic_now_test<T: ProvidesDaysLength>(
-        timestamp_now: TimeProvider<T>,
-        compare_stamp: DateTime<Utc>,
+        timestamp_now: CdsTime<T>,
+        compare_stamp: chrono::DateTime<chrono::Utc>,
     ) {
-        let dt = timestamp_now.date_time().unwrap();
+        let dt = timestamp_now.chrono_date_time().unwrap();
         if compare_stamp.year() > dt.year() {
             assert_eq!(compare_stamp.year() - dt.year(), 1);
         } else {
@@ -1562,42 +1609,42 @@ mod tests {
 
     #[test]
     fn test_time_now() {
-        let timestamp_now = TimeProvider::from_now_with_u16_days().unwrap();
-        let compare_stamp = Utc::now();
+        let timestamp_now = CdsTime::from_now_with_u16_days().unwrap();
+        let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_time_now_us_prec() {
-        let timestamp_now = TimeProvider::from_now_with_u16_days_us_precision().unwrap();
-        let compare_stamp = Utc::now();
+        let timestamp_now = CdsTime::from_now_with_u16_days_us_precision().unwrap();
+        let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_time_now_ps_prec() {
-        let timestamp_now = TimeProvider::from_now_with_u16_days_ps_precision().unwrap();
-        let compare_stamp = Utc::now();
+        let timestamp_now = CdsTime::from_now_with_u16_days_ps_precision().unwrap();
+        let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_time_now_ps_prec_u16_days() {
-        let timestamp_now = TimeProvider::from_now_with_u16_days_ps_precision().unwrap();
-        let compare_stamp = Utc::now();
+        let timestamp_now = CdsTime::from_now_with_u16_days_ps_precision().unwrap();
+        let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_time_now_ps_prec_u24_days() {
-        let timestamp_now = TimeProvider::from_now_with_u24_days_ps_precision().unwrap();
-        let compare_stamp = Utc::now();
+        let timestamp_now = CdsTime::from_now_with_u24_days_ps_precision().unwrap();
+        let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_submillis_precision_micros() {
-        let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
+        let mut time_stamper = CdsTime::new_with_u16_days(0, 0);
         time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         assert_eq!(
             time_stamper.submillis_precision(),
@@ -1615,7 +1662,7 @@ mod tests {
 
     #[test]
     fn test_submillis_precision_picos() {
-        let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
+        let mut time_stamper = CdsTime::new_with_u16_days(0, 0);
         time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         assert_eq!(
             time_stamper.submillis_precision(),
@@ -1633,14 +1680,14 @@ mod tests {
 
     #[test]
     fn read_stamp_with_ps_submillis_precision() {
-        let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
+        let mut time_stamper = CdsTime::new_with_u16_days(0, 0);
         time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 11);
-        let stamp_deserialized = TimeProvider::<DaysLen16Bits>::from_bytes(&write_buf);
+        let stamp_deserialized = CdsTime::<DaysLen16Bits>::from_bytes(&write_buf);
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 11);
@@ -1653,14 +1700,14 @@ mod tests {
 
     #[test]
     fn read_stamp_with_us_submillis_precision() {
-        let mut time_stamper = TimeProvider::new_with_u16_days(0, 0);
+        let mut time_stamper = CdsTime::new_with_u16_days(0, 0);
         time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
             .write_to_bytes(&mut write_buf)
             .expect("Writing timestamp failed");
         assert_eq!(written, 9);
-        let stamp_deserialized = TimeProvider::<DaysLen16Bits>::from_bytes(&write_buf);
+        let stamp_deserialized = CdsTime::<DaysLen16Bits>::from_bytes(&write_buf);
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 9);
@@ -1673,7 +1720,7 @@ mod tests {
 
     #[test]
     fn read_u24_stamp_with_us_submillis_precision() {
-        let mut time_stamper = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
+        let mut time_stamper = CdsTime::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
         time_stamper.set_submillis(SubmillisPrecision::Microseconds, 500);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
@@ -1681,7 +1728,7 @@ mod tests {
             .expect("Writing timestamp failed");
         // 1 byte pfield + 3 bytes days + 4 bytes ms of day + 2 bytes us precision
         assert_eq!(written, 10);
-        let stamp_deserialized = TimeProvider::from_bytes_with_u24_days(&write_buf);
+        let stamp_deserialized = CdsTime::from_bytes_with_u24_days(&write_buf);
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 10);
@@ -1695,7 +1742,7 @@ mod tests {
 
     #[test]
     fn read_u24_stamp_with_ps_submillis_precision() {
-        let mut time_stamper = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
+        let mut time_stamper = CdsTime::new_with_u24_days(u16::MAX as u32 + 1, 0).unwrap();
         time_stamper.set_submillis(SubmillisPrecision::Picoseconds, 5e8 as u32);
         let mut write_buf: [u8; 16] = [0; 16];
         let written = time_stamper
@@ -1703,7 +1750,7 @@ mod tests {
             .expect("Writing timestamp failed");
         // 1 byte pfield + 3 bytes days + 4 bytes ms of day + 4 bytes us precision
         assert_eq!(written, 12);
-        let stamp_deserialized = TimeProvider::from_bytes_with_u24_days(&write_buf);
+        let stamp_deserialized = CdsTime::from_bytes_with_u24_days(&write_buf);
         assert!(stamp_deserialized.is_ok());
         let stamp_deserialized = stamp_deserialized.unwrap();
         assert_eq!(stamp_deserialized.len_as_bytes(), 12);
@@ -1715,19 +1762,19 @@ mod tests {
         assert_eq!(stamp_deserialized.submillis(), 5e8 as u32);
     }
 
-    fn generic_dt_case_0_no_prec(subsec_millis: u32) -> DateTime<Utc> {
+    fn generic_dt_case_0_no_prec(subsec_millis: u32) -> chrono::DateTime<chrono::Utc> {
         NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
             .unwrap()
-            .and_local_timezone(Utc)
+            .and_local_timezone(chrono::Utc)
             .unwrap()
     }
 
     fn generic_check_dt_case_0<DaysLen: ProvidesDaysLength>(
-        time_provider: &TimeProvider<DaysLen>,
+        time_provider: &CdsTime<DaysLen>,
         subsec_millis: u32,
-        datetime_utc: DateTime<Utc>,
+        datetime_utc: chrono::DateTime<chrono::Utc>,
     ) {
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
@@ -1736,16 +1783,16 @@ mod tests {
             time_provider.ms_of_day,
             30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
         );
-        assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
+        assert_eq!(time_provider.chrono_date_time().unwrap(), datetime_utc);
     }
 
     #[test]
     fn test_creation_from_dt_u16_days() {
         let subsec_millis = 250;
         let datetime_utc = generic_dt_case_0_no_prec(subsec_millis);
-        let time_provider = TimeProvider::from_dt_with_u16_days(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u16_days(&datetime_utc).unwrap();
         generic_check_dt_case_0(&time_provider, subsec_millis, datetime_utc);
-        let time_provider_2: TimeProvider<DaysLen16Bits> =
+        let time_provider_2: CdsTime<DaysLen16Bits> =
             datetime_utc.try_into().expect("conversion failed");
         // Test the TryInto trait impl
         assert_eq!(time_provider, time_provider_2);
@@ -1754,29 +1801,29 @@ mod tests {
     fn test_creation_from_dt_u24_days() {
         let subsec_millis = 250;
         let datetime_utc = generic_dt_case_0_no_prec(subsec_millis);
-        let time_provider = TimeProvider::from_dt_with_u24_days(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u24_days(&datetime_utc).unwrap();
         generic_check_dt_case_0(&time_provider, subsec_millis, datetime_utc);
-        let time_provider_2: TimeProvider<DaysLen24Bits> =
+        let time_provider_2: CdsTime<DaysLen24Bits> =
             datetime_utc.try_into().expect("conversion failed");
         // Test the TryInto trait impl
         assert_eq!(time_provider, time_provider_2);
     }
 
-    fn generic_dt_case_1_us_prec(subsec_millis: u32) -> DateTime<Utc> {
+    fn generic_dt_case_1_us_prec(subsec_millis: u32) -> chrono::DateTime<chrono::Utc> {
         // 250 ms + 500 us
         let subsec_micros = subsec_millis * 1000 + 500;
         NaiveDate::from_ymd_opt(2023, 1, 14)
             .unwrap()
             .and_hms_micro_opt(16, 49, 30, subsec_micros)
             .unwrap()
-            .and_local_timezone(Utc)
+            .and_local_timezone(chrono::Utc)
             .unwrap()
     }
 
     fn generic_check_dt_case_1_us_prec<DaysLen: ProvidesDaysLength>(
-        time_provider: &TimeProvider<DaysLen>,
+        time_provider: &CdsTime<DaysLen>,
         subsec_millis: u32,
-        datetime_utc: DateTime<Utc>,
+        datetime_utc: chrono::DateTime<chrono::Utc>,
     ) {
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
@@ -1790,15 +1837,14 @@ mod tests {
             SubmillisPrecision::Microseconds
         );
         assert_eq!(time_provider.submillis(), 500);
-        assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
+        assert_eq!(time_provider.chrono_date_time().unwrap(), datetime_utc);
     }
 
     #[test]
     fn test_creation_from_dt_u16_days_us_prec() {
         let subsec_millis = 250;
         let datetime_utc = generic_dt_case_1_us_prec(subsec_millis);
-        let time_provider =
-            TimeProvider::from_dt_with_u16_days_us_precision(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u16_days_us_precision(&datetime_utc).unwrap();
         generic_check_dt_case_1_us_prec(&time_provider, subsec_millis, datetime_utc);
     }
 
@@ -1806,12 +1852,11 @@ mod tests {
     fn test_creation_from_dt_u24_days_us_prec() {
         let subsec_millis = 250;
         let datetime_utc = generic_dt_case_1_us_prec(subsec_millis);
-        let time_provider =
-            TimeProvider::from_dt_with_u24_days_us_precision(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u24_days_us_precision(&datetime_utc).unwrap();
         generic_check_dt_case_1_us_prec(&time_provider, subsec_millis, datetime_utc);
     }
 
-    fn generic_dt_case_2_ps_prec(subsec_millis: u32) -> (DateTime<Utc>, u32) {
+    fn generic_dt_case_2_ps_prec(subsec_millis: u32) -> (chrono::DateTime<chrono::Utc>, u32) {
         // 250 ms + 500 us
         let subsec_nanos = subsec_millis * 1000 * 1000 + 500 * 1000;
         let submilli_nanos = subsec_nanos % 10_u32.pow(6);
@@ -1820,17 +1865,17 @@ mod tests {
                 .unwrap()
                 .and_hms_nano_opt(16, 49, 30, subsec_nanos)
                 .unwrap()
-                .and_local_timezone(Utc)
+                .and_local_timezone(chrono::Utc)
                 .unwrap(),
             submilli_nanos,
         )
     }
 
     fn generic_check_dt_case_2_ps_prec<DaysLen: ProvidesDaysLength>(
-        time_provider: &TimeProvider<DaysLen>,
+        time_provider: &CdsTime<DaysLen>,
         subsec_millis: u32,
         submilli_nanos: u32,
-        datetime_utc: DateTime<Utc>,
+        datetime_utc: chrono::DateTime<chrono::Utc>,
     ) {
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
@@ -1844,15 +1889,14 @@ mod tests {
             SubmillisPrecision::Picoseconds
         );
         assert_eq!(time_provider.submillis(), submilli_nanos * 1000);
-        assert_eq!(time_provider.date_time().unwrap(), datetime_utc);
+        assert_eq!(time_provider.chrono_date_time().unwrap(), datetime_utc);
     }
 
     #[test]
     fn test_creation_from_dt_u16_days_ps_prec() {
         let subsec_millis = 250;
         let (datetime_utc, submilli_nanos) = generic_dt_case_2_ps_prec(subsec_millis);
-        let time_provider =
-            TimeProvider::from_dt_with_u16_days_ps_precision(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u16_days_ps_precision(&datetime_utc).unwrap();
         generic_check_dt_case_2_ps_prec(
             &time_provider,
             subsec_millis,
@@ -1865,8 +1909,7 @@ mod tests {
     fn test_creation_from_dt_u24_days_ps_prec() {
         let subsec_millis = 250;
         let (datetime_utc, submilli_nanos) = generic_dt_case_2_ps_prec(subsec_millis);
-        let time_provider =
-            TimeProvider::from_dt_with_u24_days_ps_precision(&datetime_utc).unwrap();
+        let time_provider = CdsTime::from_dt_with_u24_days_ps_precision(&datetime_utc).unwrap();
         generic_check_dt_case_2_ps_prec(
             &time_provider,
             subsec_millis,
@@ -1879,10 +1922,10 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u16_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            unix_secs,
-            subsec_millis,
-        ))
+        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
+            &UnixTime::new(unix_secs, subsec_millis),
+            SubmillisPrecision::Absent,
+        )
         .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, -DAYS_CCSDS_TO_UNIX as u16)
     }
@@ -1891,10 +1934,10 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u24_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u24_days(&UnixTimestamp::const_new(
-            unix_secs,
-            subsec_millis,
-        ))
+        let time_provider = CdsTime::from_unix_stamp_with_u24_days(
+            &UnixTime::new(unix_secs, subsec_millis),
+            SubmillisPrecision::Absent,
+        )
         .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, (-DAYS_CCSDS_TO_UNIX) as u32)
     }
@@ -1906,10 +1949,13 @@ mod tests {
             .unwrap()
             .and_hms_milli_opt(16, 49, 30, subsec_millis)
             .unwrap()
-            .and_local_timezone(Utc)
+            .and_local_timezone(chrono::Utc)
             .unwrap();
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&datetime_utc.into())
-            .expect("creating provider from unix stamp failed");
+        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
+            &datetime_utc.into(),
+            SubmillisPrecision::Absent,
+        )
+        .expect("creating provider from unix stamp failed");
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
@@ -1917,7 +1963,7 @@ mod tests {
             time_provider.ms_of_day,
             30 * 1000 + 49 * 60 * 1000 + 16 * 60 * 60 * 1000 + subsec_millis
         );
-        let dt_back = time_provider.date_time().unwrap();
+        let dt_back = time_provider.chrono_date_time().unwrap();
         assert_eq!(datetime_utc, dt_back);
     }
 
@@ -1925,10 +1971,10 @@ mod tests {
     fn test_creation_0_ccsds_days() {
         let unix_secs = DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        let time_provider = TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            unix_secs,
-            subsec_millis,
-        ))
+        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
+            &UnixTime::new(unix_secs, subsec_millis),
+            SubmillisPrecision::Absent,
+        )
         .expect("creating provider from unix stamp failed");
         assert_eq!(time_provider.ccsds_days, 0)
     }
@@ -1937,10 +1983,10 @@ mod tests {
     fn test_invalid_creation_from_unix_stamp_days_too_large() {
         let invalid_unix_secs: i64 = (u16::MAX as i64 + 1) * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            invalid_unix_secs,
-            subsec_millis,
-        )) {
+        match CdsTime::from_unix_stamp_with_u16_days(
+            &UnixTime::new(invalid_unix_secs, subsec_millis),
+            SubmillisPrecision::Absent,
+        ) {
             Ok(_) => {
                 panic!("creation should not succeed")
             }
@@ -1964,21 +2010,26 @@ mod tests {
         // precisely 31-12-1957 23:59:55
         let unix_secs = DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32 - 5;
         let subsec_millis = 0;
-        match TimeProvider::from_unix_secs_with_u16_days(&UnixTimestamp::const_new(
-            unix_secs as i64,
-            subsec_millis,
-        )) {
+        match CdsTime::from_unix_stamp_with_u16_days(
+            &UnixTime::new(unix_secs as i64, subsec_millis),
+            SubmillisPrecision::Absent,
+        ) {
             Ok(_) => {
                 panic!("creation should not succeed")
             }
             Err(e) => {
                 if let TimestampError::DateBeforeCcsdsEpoch(dt) = e {
-                    assert_eq!(dt.year(), 1957);
-                    assert_eq!(dt.month(), 12);
-                    assert_eq!(dt.day(), 31);
-                    assert_eq!(dt.hour(), 23);
-                    assert_eq!(dt.minute(), 59);
-                    assert_eq!(dt.second(), 55);
+                    let dt = dt.chrono_date_time();
+                    if let chrono::LocalResult::Single(dt) = dt {
+                        assert_eq!(dt.year(), 1957);
+                        assert_eq!(dt.month(), 12);
+                        assert_eq!(dt.day(), 31);
+                        assert_eq!(dt.hour(), 23);
+                        assert_eq!(dt.minute(), 59);
+                        assert_eq!(dt.second(), 55);
+                    } else {
+                        panic!("unexpected error {}", e)
+                    }
                 } else {
                     panic!("unexpected error {}", e)
                 }
@@ -1988,7 +2039,7 @@ mod tests {
 
     #[test]
     fn test_addition_u16_days_day_increment() {
-        let mut provider = TimeProvider::new_with_u16_days(0, MS_PER_DAY - 5 * 1000);
+        let mut provider = CdsTime::new_with_u16_days(0, MS_PER_DAY - 5 * 1000);
         let seconds_offset = Duration::from_secs(10);
         assert_eq!(provider.ccsds_days, 0);
         assert_eq!(provider.ms_of_day, MS_PER_DAY - 5 * 1000);
@@ -1999,7 +2050,7 @@ mod tests {
 
     #[test]
     fn test_addition_u16_days() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         let seconds_offset = Duration::from_secs(5);
         assert_eq!(provider.ccsds_days, 0);
         assert_eq!(provider.ms_of_day, 0);
@@ -2013,7 +2064,7 @@ mod tests {
 
     #[test]
     fn test_addition_u24_days() {
-        let mut provider = TimeProvider::new_with_u24_days(u16::MAX as u32, 0).unwrap();
+        let mut provider = CdsTime::new_with_u24_days(u16::MAX as u32, 0).unwrap();
         let seconds_offset = Duration::from_secs(5);
         assert_eq!(provider.ccsds_days, u16::MAX as u32);
         assert_eq!(provider.ms_of_day, 0);
@@ -2027,13 +2078,13 @@ mod tests {
 
     #[test]
     fn test_dyn_creation_u24_days() {
-        let stamp = TimeProvider::new_with_u24_days(u16::MAX as u32 + 1, 24).unwrap();
+        let stamp = CdsTime::new_with_u24_days(u16::MAX as u32 + 1, 24).unwrap();
         let mut buf: [u8; 32] = [0; 32];
         stamp.write_to_bytes(&mut buf).unwrap();
         let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
         assert!(dyn_provider.is_ok());
         let dyn_provider = dyn_provider.unwrap();
-        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCode::Cds);
         assert_eq!(dyn_provider.ccsds_days_as_u32(), u16::MAX as u32 + 1);
         assert_eq!(dyn_provider.ms_of_day(), 24);
         assert_eq!(
@@ -2048,7 +2099,7 @@ mod tests {
 
     #[test]
     fn test_addition_with_us_precision_u16_days() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         provider.set_submillis(SubmillisPrecision::Microseconds, 0);
         let duration = Duration::from_micros(500);
         provider += duration;
@@ -2061,7 +2112,7 @@ mod tests {
 
     #[test]
     fn test_addition_with_us_precision_u16_days_with_subsec_millis() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         provider.set_submillis(SubmillisPrecision::Microseconds, 0);
         let duration = Duration::from_micros(1200);
         provider += duration;
@@ -2075,7 +2126,7 @@ mod tests {
 
     #[test]
     fn test_addition_with_us_precision_u16_days_carry_over() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         provider.set_submillis(SubmillisPrecision::Microseconds, 800);
         let duration = Duration::from_micros(400);
         provider += duration;
@@ -2090,7 +2141,7 @@ mod tests {
 
     #[test]
     fn test_addition_with_ps_precision_u16_days() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         provider.set_submillis(SubmillisPrecision::Picoseconds, 0);
         // 500 us as ns
         let duration = Duration::from_nanos(500 * 10u32.pow(3) as u64);
@@ -2107,7 +2158,7 @@ mod tests {
     fn test_addition_on_ref() {
         // This test case also tests the case where there is no submillis precision but subsecond
         // milliseconds.
-        let provider_ref = &TimeProvider::new_with_u16_days(2, 500);
+        let provider_ref = &CdsTime::new_with_u16_days(2, 500);
         let new_stamp = provider_ref + Duration::from_millis(2 * 24 * 60 * 60 * 1000 + 500);
         assert_eq!(new_stamp.ccsds_days_as_u32(), 4);
         assert_eq!(new_stamp.ms_of_day, 1000);
@@ -2123,7 +2174,7 @@ mod tests {
     }
     #[test]
     fn test_addition_with_ps_precision_u16_days_with_subsec_millis() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         provider.set_submillis(SubmillisPrecision::Picoseconds, 0);
         // 1200 us as ns
         let duration = Duration::from_nanos(1200 * 10u32.pow(3) as u64);
@@ -2138,7 +2189,7 @@ mod tests {
 
     #[test]
     fn test_addition_with_ps_precision_u16_days_carryover() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 0);
+        let mut provider = CdsTime::new_with_u16_days(0, 0);
         // 800 us as ps
         provider.set_submillis(SubmillisPrecision::Picoseconds, 800 * 10_u32.pow(6));
         // 400 us as ns
@@ -2154,14 +2205,14 @@ mod tests {
 
     #[test]
     fn test_dyn_creation_u16_days_with_precision() {
-        let mut stamp = TimeProvider::new_with_u16_days(24, 24);
+        let mut stamp = CdsTime::new_with_u16_days(24, 24);
         stamp.set_submillis(SubmillisPrecision::Microseconds, 666);
         let mut buf: [u8; 32] = [0; 32];
         stamp.write_to_bytes(&mut buf).unwrap();
         let dyn_provider = get_dyn_time_provider_from_bytes(&buf);
         assert!(dyn_provider.is_ok());
         let dyn_provider = dyn_provider.unwrap();
-        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCodes::Cds);
+        assert_eq!(dyn_provider.ccdsd_time_code(), CcsdsTimeCode::Cds);
         assert_eq!(dyn_provider.ccsds_days_as_u32(), 24);
         assert_eq!(dyn_provider.ms_of_day(), 24);
         assert_eq!(
@@ -2177,7 +2228,7 @@ mod tests {
 
     #[test]
     fn test_new_u24_days_too_large() {
-        let time_provider = TimeProvider::new_with_u24_days(2_u32.pow(24), 0);
+        let time_provider = CdsTime::new_with_u24_days(2_u32.pow(24), 0);
         assert!(time_provider.is_err());
         let e = time_provider.unwrap_err();
         if let CdsError::InvalidCcsdsDays(days) = e {
@@ -2194,21 +2245,21 @@ mod tests {
             .unwrap()
             .and_hms_milli_opt(23, 59, 59, 999)
             .unwrap()
-            .and_local_timezone(Utc)
+            .and_local_timezone(chrono::Utc)
             .unwrap();
-        let time_provider = TimeProvider::from_dt_with_u24_days(&datetime_utc);
+        let time_provider = CdsTime::from_dt_with_u24_days(&datetime_utc);
         assert!(time_provider.is_err());
         if let TimestampError::DateBeforeCcsdsEpoch(dt) = time_provider.unwrap_err() {
-            assert_eq!(dt, datetime_utc);
+            assert_eq!(dt, datetime_utc.into());
         }
     }
 
     #[test]
     fn test_eq() {
-        let stamp0 = TimeProvider::new_with_u16_days(0, 0);
+        let stamp0 = CdsTime::new_with_u16_days(0, 0);
         let mut buf: [u8; 7] = [0; 7];
         stamp0.write_to_bytes(&mut buf).unwrap();
-        let stamp1 = TimeProvider::from_bytes_with_u16_days(&buf).unwrap();
+        let stamp1 = CdsTime::from_bytes_with_u16_days(&buf).unwrap();
         assert_eq!(stamp0, stamp1);
         assert!(stamp0 >= stamp1);
         assert!(stamp1 <= stamp0);
@@ -2216,11 +2267,11 @@ mod tests {
 
     #[test]
     fn test_ord() {
-        let stamp0 = TimeProvider::new_with_u24_days(0, 0).unwrap();
-        let stamp1 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
-        let mut stamp2 = TimeProvider::new_with_u24_days(0, 50000).unwrap();
+        let stamp0 = CdsTime::new_with_u24_days(0, 0).unwrap();
+        let stamp1 = CdsTime::new_with_u24_days(0, 50000).unwrap();
+        let mut stamp2 = CdsTime::new_with_u24_days(0, 50000).unwrap();
         stamp2.set_submillis(SubmillisPrecision::Microseconds, 500);
-        let stamp3 = TimeProvider::new_with_u24_days(1, 0).unwrap();
+        let stamp3 = CdsTime::new_with_u24_days(1, 0).unwrap();
         assert!(stamp1 > stamp0);
         assert!(stamp2 > stamp0);
         assert!(stamp2 > stamp1);
@@ -2231,8 +2282,8 @@ mod tests {
 
     #[test]
     fn test_conversion() {
-        let mut stamp_small = TimeProvider::new_with_u16_days(u16::MAX, 500);
-        let stamp_larger: TimeProvider<DaysLen24Bits> = stamp_small.into();
+        let mut stamp_small = CdsTime::new_with_u16_days(u16::MAX, 500);
+        let stamp_larger: CdsTime<DaysLen24Bits> = stamp_small.into();
         assert_eq!(stamp_larger.ccsds_days_as_u32(), u16::MAX as u32);
         assert_eq!(stamp_larger.ms_of_day(), 500);
         stamp_small = stamp_larger.try_into().unwrap();
@@ -2242,25 +2293,25 @@ mod tests {
 
     #[test]
     fn test_update_from_now() {
-        let mut stamp = TimeProvider::new_with_u16_days(0, 0);
+        let mut stamp = CdsTime::new_with_u16_days(0, 0);
         let _ = stamp.update_from_now();
-        let dt = stamp.unix_stamp().as_date_time().unwrap();
+        let dt = stamp.unix_time().chrono_date_time().unwrap();
         assert!(dt.year() > 2020);
     }
 
     #[test]
     fn test_setting_submillis_precision() {
-        let mut provider = TimeProvider::new_with_u16_days(0, 15);
+        let mut provider = CdsTime::new_with_u16_days(0, 15);
         provider.set_submillis(SubmillisPrecision::Microseconds, 500);
     }
 
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization() {
-        let stamp_now = TimeProvider::from_now_with_u16_days().expect("Error retrieving time");
+        let stamp_now = CdsTime::from_now_with_u16_days().expect("Error retrieving time");
         let val = to_allocvec(&stamp_now).expect("Serializing timestamp failed");
         assert!(val.len() > 0);
-        let stamp_deser: TimeProvider = from_bytes(&val).expect("Stamp deserialization failed");
+        let stamp_deser: CdsTime = from_bytes(&val).expect("Stamp deserialization failed");
         assert_eq!(stamp_deser, stamp_now);
     }
 
@@ -2277,7 +2328,7 @@ mod tests {
 
     #[test]
     fn test_stamp_to_vec_u16() {
-        let stamp = TimeProvider::new_with_u16_days(1, 1);
+        let stamp = CdsTime::new_with_u16_days(1, 1);
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 7] = [0; 7];
         stamp.write_to_bytes(&mut buf).unwrap();
@@ -2286,10 +2337,23 @@ mod tests {
 
     #[test]
     fn test_stamp_to_vec_u24() {
-        let stamp = TimeProvider::new_with_u24_days(1, 1).unwrap();
+        let stamp = CdsTime::new_with_u24_days(1, 1).unwrap();
         let stamp_vec = stamp.to_vec().unwrap();
         let mut buf: [u8; 10] = [0; 10];
         stamp.write_to_bytes(&mut buf).unwrap();
         assert_eq!(stamp_vec, buf[..stamp.len_written()]);
+    }
+
+    #[test]
+    #[cfg(feature = "timelib")]
+    fn test_timelib_stamp() {
+        let stamp = CdsTime::new_with_u16_days(0, 0);
+        let timelib_dt = stamp.timelib_date_time().unwrap();
+        assert_eq!(timelib_dt.year(), 1958);
+        assert_eq!(timelib_dt.month(), time::Month::January);
+        assert_eq!(timelib_dt.day(), 1);
+        assert_eq!(timelib_dt.hour(), 0);
+        assert_eq!(timelib_dt.minute(), 0);
+        assert_eq!(timelib_dt.second(), 0);
     }
 }

@@ -1097,7 +1097,7 @@ mod tests {
 
     use super::*;
     use crate::ecss::PusVersion::PusC;
-    use crate::time::cds::TimeProvider;
+    use crate::time::cds::CdsTime;
     #[cfg(feature = "serde")]
     use crate::time::CcsdsTimeProvider;
     use crate::SpHeader;
@@ -1136,7 +1136,7 @@ mod tests {
     #[test]
     fn test_basic_simple_api() {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let time_provider = TimeProvider::new_with_u16_days(0, 0);
+        let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
             PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
@@ -1534,7 +1534,7 @@ mod tests {
     #[cfg(feature = "serde")]
     fn test_serialization_creator_serde() {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let time_provider = TimeProvider::new_with_u16_days(0, 0);
+        let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
             PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
@@ -1549,7 +1549,7 @@ mod tests {
     #[cfg(feature = "serde")]
     fn test_serialization_reader_serde() {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
-        let time_provider = TimeProvider::new_with_u16_days(0, 0);
+        let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
             PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)

@@ -34,22 +34,31 @@ optional = true
 default-features = false
 features = ["derive"]
 
+[dependencies.time]
+version = "0.3"
+default-features = false
+optional = true
+
 [dependencies.chrono]
 version = "0.4"
 default-features = false
+optional = true
 
 [dependencies.num-traits]
 version = "0.2"
 default-features = false
 
-[dev-dependencies.postcard]
-version = "1"
+[dev-dependencies]
+postcard = "1"
+chrono = "0.4"
 
 [features]
 default = ["std"]
 std = ["chrono/std", "chrono/clock", "alloc", "thiserror"]
 serde = ["dep:serde", "chrono/serde"]
 alloc = ["postcard/alloc", "chrono/alloc"]
+chrono = ["dep:chrono"]
+timelib = ["dep:time"]
 
 [package.metadata.docs.rs]
 all-features = true

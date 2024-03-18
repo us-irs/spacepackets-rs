@@ -43,6 +43,8 @@ deserializing them with an appropriate `serde` provider like
 ## Optional Features
 
  - [`serde`](https://serde.rs/): Adds `serde` support for most types by adding `Serialize` and `Deserialize` `derive`s
+ - [`chrono`](https://crates.io/crates/chrono): Add basic support for the `chrono` time library.
+ - [`timelib`](https://crates.io/crates/time): Add basic support for the `time` time library.
 
 # Examples
 

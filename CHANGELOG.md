@@ -8,9 +8,41 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+Major API changes for the time API. If you are using the time API, it is strongly recommended
+to check all the API changes in the **Changed** chapter.
+
+## Fixed
+
+- CUC timestamp was fixed to include leap second corrections because it is based on the TAI
+  time reference. The default CUC time object do not implement `CcsdsTimeProvider` anymore
+  because the trait methods require cached leap second information. This task is now performed
+  by the `cuc::CucTimeWithLeapSecs` which implements the trait.
+
 ## Added
 
 - `From<$EcssEnum$TY> from $TY` for the ECSS enum type definitions.
+- Added basic support conversions to the `time` library. Introduce new `chrono` and `timelib`
+  feature gate.
+- Added `CcsdsTimeProvider::timelib_date_time`.
+
+## Changed
+
+- Renamed `CcsdsTimeProvider::date_time` to `CcsdsTimeProvider::chrono_date_time`
+- Renamed `CcsdsTimeCodes` to `CcsdsTimeCode`
+- Renamed `cds::TimeProvider` to `cds::CdsTime`
+- Renamed `cuc::TimeProviderCcsdsEpoch` to `cuc::CucTime`
+- `UnixTimestamp` renamed to `UnixTime`
+- `UnixTime` seconds are now private and can be retrieved using the `secs` member method.
+- `UnixTime::new` renamed to `UnixTime::new_checked`.
+- `UnixTime` now has a nanosecond subsecond precision. The `new` constructor now expects
+   nanoseconds as the second argument.
+- Added new `UnixTime::new_subsec_millis` and `UnixTime::new_subsec_millis_checked` API
+  to still allow creating a timestamp with only millisecond subsecond resolution.
+- `CcsdsTimeProvider` now has a new `subsec_nanos` method in addition to a default
+  implementation for the `subsec_millis` method.
+- `CcsdsTimeProvider::date_time` renamed to `CcsdsTimeProvider::chrono_date_time`.
+- Added `UnixTime::MIN`, `UnixTime::MAX` and `UnixTime::EPOCH`.
+- Added `UnixTime::timelib_date_time`.
 
 # [v0.11.0-rc.0] 2024-03-04
 
