@@ -341,7 +341,6 @@ pub mod legacy_tm {
 
         /// Append the raw PUS byte representation to a provided [alloc::vec::Vec]
         #[cfg(feature = "alloc")]
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
             let sph_zc = crate::zc::SpHeader::from(self.sp_header);
             let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
@@ -662,7 +661,6 @@ impl<'raw_data> PusTmCreator<'raw_data> {
 
     /// Append the raw PUS byte representation to a provided [alloc::vec::Vec]
     #[cfg(feature = "alloc")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.timestamp.len();

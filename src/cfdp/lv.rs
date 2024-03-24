@@ -88,7 +88,6 @@ impl<'data> Lv<'data> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvError> {
         Self::new(string.as_bytes())
     }

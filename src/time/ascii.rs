@@ -40,13 +40,11 @@ pub mod alloc_mod_chrono {
     };
 
     /// Generates a time code formatter using the [FMT_STR_CODE_A_WITH_SIZE] format.
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "alloc", feature = "chrono"))))]
     pub fn generate_time_code_a(date: &DateTime<Utc>) -> DelayedFormat<StrftimeItems<'static>> {
         date.format(FMT_STR_CODE_A_WITH_SIZE.0)
     }
 
     /// Generates a time code formatter using the [FMT_STR_CODE_A_TERMINATED_WITH_SIZE] format.
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "alloc", feature = "chrono"))))]
     pub fn generate_time_code_a_terminated(
         date: &DateTime<Utc>,
     ) -> DelayedFormat<StrftimeItems<'static>> {
@@ -54,13 +52,11 @@ pub mod alloc_mod_chrono {
     }
 
     /// Generates a time code formatter using the [FMT_STR_CODE_B_WITH_SIZE] format.
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "alloc", feature = "chrono"))))]
     pub fn generate_time_code_b(date: &DateTime<Utc>) -> DelayedFormat<StrftimeItems<'static>> {
         date.format(FMT_STR_CODE_B_WITH_SIZE.0)
     }
 
     /// Generates a time code formatter using the [FMT_STR_CODE_B_TERMINATED_WITH_SIZE] format.
-    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "alloc", feature = "chrono"))))]
     pub fn generate_time_code_b_terminated(
         date: &DateTime<Utc>,
     ) -> DelayedFormat<StrftimeItems<'static>> {
