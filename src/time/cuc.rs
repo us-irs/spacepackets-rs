@@ -17,7 +17,8 @@ use crate::ByteConversionError;
 use super::StdTimestampError;
 use super::{
     ccsds_epoch_to_unix_epoch, ccsds_time_code_from_p_field, unix_epoch_to_ccsds_epoch,
-    CcsdsTimeCode, CcsdsTimeProvider, TimeReader, TimeWriter, TimestampError, UnixTime,
+    CcsdsTimeCode, CcsdsTimeProvider, DateBeforeCcsdsEpochError, TimeReader, TimeWriter,
+    TimestampError, UnixTime,
 };
 #[cfg(feature = "std")]
 use std::error::Error;
@@ -116,6 +117,7 @@ pub enum CucError {
         value: u64,
     },
     LeapSecondCorrectionError,
+    DateBeforeCcsdsEpoch(DateBeforeCcsdsEpochError),
 }
 
 impl Display for CucError {
@@ -136,12 +138,28 @@ impl Display for CucError {
             CucError::LeapSecondCorrectionError => {
                 write!(f, "error while correcting for leap seconds")
             }
+            CucError::DateBeforeCcsdsEpoch(e) => {
+                write!(f, "date before ccsds epoch: {e}")
+            }
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl Error for CucError {}
+impl Error for CucError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            CucError::DateBeforeCcsdsEpoch(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<DateBeforeCcsdsEpochError> for CucError {
+    fn from(e: DateBeforeCcsdsEpochError) -> Self {
+        Self::DateBeforeCcsdsEpoch(e)
+    }
+}
 
 /// Tuple object where the first value is the width of the counter and the second value
 /// is the counter value.
@@ -395,20 +413,19 @@ impl CucTime {
         dt: &chrono::DateTime<chrono::Utc>,
         res: FractionalResolution,
         leap_seconds: u32,
-    ) -> Result<Self, TimestampError> {
+    ) -> Result<Self, CucError> {
         // Year before CCSDS epoch is invalid.
         if dt.year() < 1958 {
-            return Err(TimestampError::DateBeforeCcsdsEpoch(UnixTime::from(*dt)));
+            return Err(DateBeforeCcsdsEpochError(UnixTime::from(*dt)).into());
         }
         let counter = dt
             .timestamp()
             .checked_add(i64::from(leap_seconds))
-            .ok_or(TimestampError::Cuc(CucError::LeapSecondCorrectionError))?;
+            .ok_or(CucError::LeapSecondCorrectionError)?;
         Self::new_generic(
             WidthCounterPair(4, counter as u32),
             fractional_part_from_subsec_ns(res, dt.timestamp_subsec_nanos() as u64),
         )
-        .map_err(|e| e.into())
     }
 
     /// Generates a CUC timestamp from a UNIX timestamp with a width of 4. This width is able
@@ -417,11 +434,11 @@ impl CucTime {
         unix_stamp: &UnixTime,
         res: FractionalResolution,
         leap_seconds: u32,
-    ) -> Result<Self, TimestampError> {
+    ) -> Result<Self, CucError> {
         let counter = unix_epoch_to_ccsds_epoch(unix_stamp.secs);
         // Negative CCSDS epoch is invalid.
         if counter < 0 {
-            return Err(TimestampError::DateBeforeCcsdsEpoch(*unix_stamp));
+            return Err(DateBeforeCcsdsEpochError(*unix_stamp).into());
         }
         // We already excluded negative values, so the conversion to u64 should always work.
         let mut counter = u32::try_from(counter).map_err(|_| CucError::InvalidCounter {
@@ -430,10 +447,10 @@ impl CucTime {
         })?;
         counter = counter
             .checked_add(leap_seconds)
-            .ok_or(TimestampError::Cuc(CucError::LeapSecondCorrectionError))?;
+            .ok_or(CucError::LeapSecondCorrectionError)?;
         let fractions =
             fractional_part_from_subsec_ns(res, unix_stamp.subsec_millis() as u64 * 10_u64.pow(6));
-        Self::new_generic(WidthCounterPair(4, counter as u32), fractions).map_err(|e| e.into())
+        Self::new_generic(WidthCounterPair(4, counter as u32), fractions)
     }
 
     /// Most generic constructor which allows full configurability for the counter and for the

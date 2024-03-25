@@ -43,6 +43,9 @@ to check all the API changes in the **Changed** chapter.
 - `CcsdsTimeProvider::date_time` renamed to `CcsdsTimeProvider::chrono_date_time`.
 - Added `UnixTime::MIN`, `UnixTime::MAX` and `UnixTime::EPOCH`.
 - Added `UnixTime::timelib_date_time`.
+- Error handling for ECSS and time module is more granular now, with a new
+  `DateBeforeCcsdsEpochError` error and a `DateBeforeCcsdsEpoch` enum variant for both
+  `CdsError` and `CucError`.
 
 # [v0.11.0-rc.0] 2024-03-04
 

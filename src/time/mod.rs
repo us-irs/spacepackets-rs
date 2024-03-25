@@ -65,13 +65,25 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCode, u8> {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct DateBeforeCcsdsEpochError(UnixTime);
+
+impl Display for DateBeforeCcsdsEpochError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "date before ccsds epoch: {:?}", self.0)
+    }
+}
+
+#[cfg(feature = "std")]
+impl Error for DateBeforeCcsdsEpochError {}
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[non_exhaustive]
 pub enum TimestampError {
     InvalidTimeCode { expected: CcsdsTimeCode, found: u8 },
     ByteConversion(ByteConversionError),
     Cds(cds::CdsError),
     Cuc(cuc::CucError),
-    DateBeforeCcsdsEpoch(UnixTime),
     CustomEpochNotSupported,
 }
 
@@ -93,9 +105,6 @@ impl Display for TimestampError {
             TimestampError::ByteConversion(e) => {
                 write!(f, "time stamp: {e}")
             }
-            TimestampError::DateBeforeCcsdsEpoch(e) => {
-                write!(f, "datetime with date before ccsds epoch: {e:?}")
-            }
             TimestampError::CustomEpochNotSupported => {
                 write!(f, "custom epochs are not supported")
             }
@@ -114,6 +123,7 @@ impl Error for TimestampError {
         }
     }
 }
+
 impl From<cds::CdsError> for TimestampError {
     fn from(e: cds::CdsError) -> Self {
         TimestampError::Cds(e)
