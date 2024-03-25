@@ -249,7 +249,7 @@ impl FractionalPart {
 /// const LEAP_SECONDS: u32 = 37;
 ///
 /// // Highest fractional resolution
-/// let timestamp_now = CucTime::from_now(FractionalResolution::SixtyNs, LEAP_SECONDS)
+/// let timestamp_now = CucTime::now(FractionalResolution::SixtyNs, LEAP_SECONDS)
 ///     .expect("creating cuc stamp failed");
 /// let mut raw_stamp = [0; 16];
 /// {
@@ -359,7 +359,7 @@ impl CucTime {
     /// must be applied on top of the UTC based time retrieved from the system in addition to the
     /// conversion to the CCSDS epoch.
     #[cfg(feature = "std")]
-    pub fn from_now(
+    pub fn now(
         fraction_resolution: FractionalResolution,
         leap_seconds: u32,
     ) -> Result<Self, StdTimestampError> {
@@ -430,15 +430,15 @@ impl CucTime {
 
     /// Generates a CUC timestamp from a UNIX timestamp with a width of 4. This width is able
     /// to accomodate all possible UNIX timestamp values.
-    pub fn from_unix_stamp(
-        unix_stamp: &UnixTime,
+    pub fn from_unix_time(
+        unix_time: &UnixTime,
         res: FractionalResolution,
         leap_seconds: u32,
     ) -> Result<Self, CucError> {
-        let counter = unix_epoch_to_ccsds_epoch(unix_stamp.secs);
+        let counter = unix_epoch_to_ccsds_epoch(unix_time.secs);
         // Negative CCSDS epoch is invalid.
         if counter < 0 {
-            return Err(DateBeforeCcsdsEpochError(*unix_stamp).into());
+            return Err(DateBeforeCcsdsEpochError(*unix_time).into());
         }
         // We already excluded negative values, so the conversion to u64 should always work.
         let mut counter = u32::try_from(counter).map_err(|_| CucError::InvalidCounter {
@@ -449,7 +449,7 @@ impl CucTime {
             .checked_add(leap_seconds)
             .ok_or(CucError::LeapSecondCorrectionError)?;
         let fractions =
-            fractional_part_from_subsec_ns(res, unix_stamp.subsec_millis() as u64 * 10_u64.pow(6));
+            fractional_part_from_subsec_ns(res, unix_time.subsec_millis() as u64 * 10_u64.pow(6));
         Self::new_generic(WidthCounterPair(4, counter as u32), fractions)
     }
 
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn test_datetime_now() {
         let now = chrono::Utc::now();
-        let cuc_now = CucTime::from_now(FractionalResolution::SixtyNs, LEAP_SECONDS);
+        let cuc_now = CucTime::now(FractionalResolution::SixtyNs, LEAP_SECONDS);
         assert!(cuc_now.is_ok());
         let cuc_now = cuc_now.unwrap();
         let ccsds_cuc = cuc_now.to_leap_sec_helper(LEAP_SECONDS);
@@ -1251,6 +1251,7 @@ mod tests {
         );
         assert_eq!(stamp.fractions().counter(), 0);
         let res = stamp.update_from_now(LEAP_SECONDS);
+
         assert!(res.is_ok());
     }
 
@@ -1382,9 +1383,8 @@ mod tests {
     #[test]
     fn from_unix_stamp() {
         let unix_stamp = UnixTime::new(0, 0);
-        let cuc =
-            CucTime::from_unix_stamp(&unix_stamp, FractionalResolution::Seconds, LEAP_SECONDS)
-                .expect("failed to create cuc from unix stamp");
+        let cuc = CucTime::from_unix_time(&unix_stamp, FractionalResolution::Seconds, LEAP_SECONDS)
+            .expect("failed to create cuc from unix stamp");
         assert_eq!(
             cuc.counter(),
             (-DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32) as u32 + LEAP_SECONDS

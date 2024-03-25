@@ -176,7 +176,7 @@ pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
 /// use spacepackets::time::cds::{CdsTime, length_of_day_segment_from_pfield, LengthOfDaySegment};
 /// use spacepackets::time::{TimeWriter, CcsdsTimeCode, CcsdsTimeProvider};
 ///
-/// let timestamp_now = CdsTime::from_now_with_u16_days().unwrap();
+/// let timestamp_now = CdsTime::now_with_u16_days().unwrap();
 /// let mut raw_stamp = [0; 7];
 /// {
 ///     let written = timestamp_now.write_to_bytes(&mut raw_stamp).unwrap();
@@ -727,14 +727,14 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     }
 
     #[cfg(feature = "std")]
-    fn from_now_generic(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
+    fn now_generic(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
             .map_err(|e| StdTimestampError::Timestamp(TimestampError::from(e)))
     }
 
     #[cfg(feature = "std")]
-    fn from_now_generic_us_prec(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
+    fn now_generic_with_us_prec(days_len: LengthOfDaySegment) -> Result<Self, StdTimestampError> {
         let conversion_from_now = ConversionFromNow::new_with_submillis_us_prec()?;
         Self::generic_from_conversion(days_len, conversion_from_now)
             .map_err(|e| StdTimestampError::Timestamp(TimestampError::from(e)))
@@ -822,8 +822,8 @@ impl CdsTime<DaysLen24Bits> {
 
     /// Generate a time stamp from the current time using the system clock.
     #[cfg(feature = "std")]
-    pub fn from_now_with_u24_days() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic(LengthOfDaySegment::Long24Bits)
+    pub fn now_with_u24_days() -> Result<Self, StdTimestampError> {
+        Self::now_generic(LengthOfDaySegment::Long24Bits)
     }
 
     /// Create a provider from a [`chrono::DateTime<chrono::Utc>`] struct.
@@ -845,7 +845,7 @@ impl CdsTime<DaysLen24Bits> {
     /// This function will return [CdsError::DateBeforeCcsdsEpoch] if the time is before the CCSDS
     /// epoch (1958-01-01T00:00:00+00:00) or the CCSDS days value exceeds the allowed bit width
     /// (24 bits).
-    pub fn from_unix_stamp_with_u24_days(
+    pub fn from_unix_time_with_u24_day(
         unix_stamp: &UnixTime,
         submillis_prec: SubmillisPrecision,
     ) -> Result<Self, CdsError> {
@@ -868,16 +868,16 @@ impl CdsTime<DaysLen24Bits> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Long24Bits)
     }
 
-    /// Like [Self::from_now_with_u24_days] but with microsecond sub-millisecond precision.
+    /// Like [Self::now_with_u24_days] but with microsecond sub-millisecond precision.
     #[cfg(feature = "std")]
-    pub fn from_now_with_u24_days_us_precision() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
+    pub fn now_with_u24_days_us_precision() -> Result<Self, StdTimestampError> {
+        Self::now_generic_with_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
-    /// Like [Self::from_now_with_u24_days] but with picoseconds sub-millisecond precision.
+    /// Like [Self::now_with_u24_days] but with picoseconds sub-millisecond precision.
     #[cfg(feature = "std")]
-    pub fn from_now_with_u24_days_ps_precision() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
+    pub fn now_with_u24_days_ps_precision() -> Result<Self, StdTimestampError> {
+        Self::now_generic_with_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
     pub fn from_bytes_with_u24_days(buf: &[u8]) -> Result<Self, TimestampError> {
@@ -926,8 +926,8 @@ impl CdsTime<DaysLen16Bits> {
 
     /// Generate a time stamp from the current time using the system clock.
     #[cfg(feature = "std")]
-    pub fn from_now_with_u16_days() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic(LengthOfDaySegment::Short16Bits)
+    pub fn now_with_u16_days() -> Result<Self, StdTimestampError> {
+        Self::now_generic(LengthOfDaySegment::Short16Bits)
     }
 
     /// Create a provider from a generic UNIX timestamp (seconds since 1970-01-01T00:00:00+00:00).
@@ -937,7 +937,7 @@ impl CdsTime<DaysLen16Bits> {
     /// This function will return [CdsError::DateBeforeCcsdsEpoch] if the time is before the CCSDS
     /// epoch (1958-01-01T00:00:00+00:00) or the CCSDS days value exceeds the allowed bit width
     /// (24 bits).
-    pub fn from_unix_stamp_with_u16_days(
+    pub fn from_unix_time_with_u16_days(
         unix_stamp: &UnixTime,
         submillis_prec: SubmillisPrecision,
     ) -> Result<Self, CdsError> {
@@ -960,13 +960,13 @@ impl CdsTime<DaysLen16Bits> {
         Self::from_dt_generic_ps_prec(dt, LengthOfDaySegment::Short16Bits)
     }
 
-    /// Like [Self::from_now_with_u16_days] but with microsecond sub-millisecond precision.
+    /// Like [Self::now_with_u16_days] but with microsecond sub-millisecond precision.
     #[cfg(feature = "std")]
-    pub fn from_now_with_u16_days_us_precision() -> Result<Self, StdTimestampError> {
-        Self::from_now_generic_us_prec(LengthOfDaySegment::Short16Bits)
+    pub fn now_with_u16_days_us_precision() -> Result<Self, StdTimestampError> {
+        Self::now_generic_with_us_prec(LengthOfDaySegment::Short16Bits)
     }
 
-    /// Like [Self::from_now_with_u16_days] but with picosecond sub-millisecond precision.
+    /// Like [Self::now_with_u16_days] but with picosecond sub-millisecond precision.
     #[cfg(feature = "std")]
     pub fn from_now_with_u16_days_ps_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_ps_prec(LengthOfDaySegment::Short16Bits)
@@ -1608,14 +1608,14 @@ mod tests {
 
     #[test]
     fn test_time_now() {
-        let timestamp_now = CdsTime::from_now_with_u16_days().unwrap();
+        let timestamp_now = CdsTime::now_with_u16_days().unwrap();
         let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
 
     #[test]
     fn test_time_now_us_prec() {
-        let timestamp_now = CdsTime::from_now_with_u16_days_us_precision().unwrap();
+        let timestamp_now = CdsTime::now_with_u16_days_us_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
@@ -1636,7 +1636,7 @@ mod tests {
 
     #[test]
     fn test_time_now_ps_prec_u24_days() {
-        let timestamp_now = CdsTime::from_now_with_u24_days_ps_precision().unwrap();
+        let timestamp_now = CdsTime::now_with_u24_days_ps_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
         generic_now_test(timestamp_now, compare_stamp);
     }
@@ -1921,7 +1921,7 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u16_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
+        let time_provider = CdsTime::from_unix_time_with_u16_days(
             &UnixTime::new(unix_secs, subsec_millis),
             SubmillisPrecision::Absent,
         )
@@ -1933,7 +1933,7 @@ mod tests {
     fn test_creation_from_unix_stamp_0_u24_days() {
         let unix_secs = 0;
         let subsec_millis = 0;
-        let time_provider = CdsTime::from_unix_stamp_with_u24_days(
+        let time_provider = CdsTime::from_unix_time_with_u24_day(
             &UnixTime::new(unix_secs, subsec_millis),
             SubmillisPrecision::Absent,
         )
@@ -1950,11 +1950,9 @@ mod tests {
             .unwrap()
             .and_local_timezone(chrono::Utc)
             .unwrap();
-        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
-            &datetime_utc.into(),
-            SubmillisPrecision::Absent,
-        )
-        .expect("creating provider from unix stamp failed");
+        let time_provider =
+            CdsTime::from_unix_time_with_u16_days(&datetime_utc.into(), SubmillisPrecision::Absent)
+                .expect("creating provider from unix stamp failed");
         // https://www.timeanddate.com/date/durationresult.html?d1=01&m1=01&y1=1958&d2=14&m2=01&y2=2023
         // Leap years need to be accounted for as well.
         assert_eq!(time_provider.ccsds_days, 23754);
@@ -1970,7 +1968,7 @@ mod tests {
     fn test_creation_0_ccsds_days() {
         let unix_secs = DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        let time_provider = CdsTime::from_unix_stamp_with_u16_days(
+        let time_provider = CdsTime::from_unix_time_with_u16_days(
             &UnixTime::new(unix_secs, subsec_millis),
             SubmillisPrecision::Absent,
         )
@@ -1982,7 +1980,7 @@ mod tests {
     fn test_invalid_creation_from_unix_stamp_days_too_large() {
         let invalid_unix_secs: i64 = (u16::MAX as i64 + 1) * SECONDS_PER_DAY as i64;
         let subsec_millis = 0;
-        match CdsTime::from_unix_stamp_with_u16_days(
+        match CdsTime::from_unix_time_with_u16_days(
             &UnixTime::new(invalid_unix_secs, subsec_millis),
             SubmillisPrecision::Absent,
         ) {
@@ -2009,7 +2007,7 @@ mod tests {
         // precisely 31-12-1957 23:59:55
         let unix_secs = DAYS_CCSDS_TO_UNIX * SECONDS_PER_DAY as i32 - 5;
         let subsec_millis = 0;
-        match CdsTime::from_unix_stamp_with_u16_days(
+        match CdsTime::from_unix_time_with_u16_days(
             &UnixTime::new(unix_secs as i64, subsec_millis),
             SubmillisPrecision::Absent,
         ) {
@@ -2309,7 +2307,7 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization() {
-        let stamp_now = CdsTime::from_now_with_u16_days().expect("Error retrieving time");
+        let stamp_now = CdsTime::now_with_u16_days().expect("Error retrieving time");
         let val = to_allocvec(&stamp_now).expect("Serializing timestamp failed");
         assert!(val.len() > 0);
         let stamp_deser: CdsTime = from_bytes(&val).expect("Stamp deserialization failed");
