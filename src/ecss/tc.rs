@@ -374,7 +374,6 @@ pub mod legacy_tc {
         }
 
         #[cfg(feature = "alloc")]
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
         pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
             let sph_zc = crate::zc::SpHeader::from(self.sp_header);
             let appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len();

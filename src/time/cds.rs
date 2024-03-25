@@ -451,13 +451,10 @@ impl CdsConverter for ConversionFromNow {
 }
 
 #[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl DynCdsTimeProvider for CdsTime<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl DynCdsTimeProvider for CdsTime<DaysLen24Bits> {}
 
 /// This function returns the correct [CdsTime] instance from a raw byte array
@@ -487,7 +484,6 @@ impl DynCdsTimeProvider for CdsTime<DaysLen24Bits> {}
 /// }
 /// ```
 #[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 pub fn get_dyn_time_provider_from_bytes(
     buf: &[u8],
 ) -> Result<Box<dyn DynCdsTimeProvider>, TimestampError> {
@@ -791,7 +787,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     }
 
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
         let conversion_from_now = self.generic_conversion_from_now()?;
         let ccsds_days: ProvidesDaysLen::FieldType = conversion_from_now
@@ -827,7 +822,6 @@ impl CdsTime<DaysLen24Bits> {
 
     /// Generate a time stamp from the current time using the system clock.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u24_days() -> Result<Self, StdTimestampError> {
         Self::from_now_generic(LengthOfDaySegment::Long24Bits)
     }
@@ -876,14 +870,12 @@ impl CdsTime<DaysLen24Bits> {
 
     /// Like [Self::from_now_with_u24_days] but with microsecond sub-millisecond precision.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u24_days_us_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
     /// Like [Self::from_now_with_u24_days] but with picoseconds sub-millisecond precision.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u24_days_ps_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Long24Bits)
     }
@@ -934,7 +926,6 @@ impl CdsTime<DaysLen16Bits> {
 
     /// Generate a time stamp from the current time using the system clock.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u16_days() -> Result<Self, StdTimestampError> {
         Self::from_now_generic(LengthOfDaySegment::Short16Bits)
     }
@@ -971,14 +962,12 @@ impl CdsTime<DaysLen16Bits> {
 
     /// Like [Self::from_now_with_u16_days] but with microsecond sub-millisecond precision.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u16_days_us_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_us_prec(LengthOfDaySegment::Short16Bits)
     }
 
     /// Like [Self::from_now_with_u16_days] but with picosecond sub-millisecond precision.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now_with_u16_days_ps_precision() -> Result<Self, StdTimestampError> {
         Self::from_now_generic_ps_prec(LengthOfDaySegment::Short16Bits)
     }

@@ -137,7 +137,6 @@ impl From<cuc::CucError> for TimestampError {
 }
 
 #[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub mod std_mod {
     use crate::time::TimestampError;
     use std::time::SystemTimeError;
@@ -145,7 +144,7 @@ pub mod std_mod {
 
     #[derive(Debug, Clone, Error)]
     pub enum StdTimestampError {
-        #[error("system time error: {0}")]
+        #[error("system time error: {0:?}")]
         SystemTime(#[from] SystemTimeError),
         #[error("timestamp error: {0}")]
         Timestamp(#[from] TimestampError),
@@ -153,7 +152,6 @@ pub mod std_mod {
 }
 
 #[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub fn seconds_since_epoch() -> f64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -188,7 +186,6 @@ pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: i64) -> i64 {
 }
 
 #[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub fn ms_of_day_using_sysclock() -> u32 {
     ms_of_day(seconds_since_epoch())
 }
@@ -209,7 +206,6 @@ pub trait TimeWriter {
     fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError>;
 
     #[cfg(feature = "alloc")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
     fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
         let mut vec = alloc::vec![0; self.len_written()];
         self.write_to_bytes(&mut vec)?;
@@ -248,13 +244,11 @@ pub trait CcsdsTimeProvider {
     }
 
     #[cfg(feature = "chrono")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "chrono")))]
     fn chrono_date_time(&self) -> chrono::LocalResult<chrono::DateTime<chrono::Utc>> {
         chrono::Utc.timestamp_opt(self.unix_secs(), self.subsec_nanos())
     }
 
     #[cfg(feature = "timelib")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "timelib")))]
     fn timelib_date_time(&self) -> Result<time::OffsetDateTime, time::error::ComponentRange> {
         Ok(time::OffsetDateTime::from_unix_timestamp(self.unix_secs())?
             + time::Duration::nanoseconds(self.subsec_nanos().into()))
@@ -351,7 +345,6 @@ impl UnixTime {
     }
 
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
@@ -368,13 +361,11 @@ impl UnixTime {
     }
 
     #[cfg(feature = "chrono")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "chrono")))]
     pub fn chrono_date_time(&self) -> chrono::LocalResult<chrono::DateTime<chrono::Utc>> {
         Utc.timestamp_opt(self.secs, self.subsec_nanos)
     }
 
     #[cfg(feature = "timelib")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "timelib")))]
     pub fn timelib_date_time(&self) -> Result<time::OffsetDateTime, time::error::ComponentRange> {
         Ok(time::OffsetDateTime::from_unix_timestamp(self.secs())?
             + time::Duration::nanoseconds(self.subsec_nanos().into()))
@@ -395,7 +386,6 @@ impl UnixTime {
 }
 
 #[cfg(feature = "chrono")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "chrono")))]
 impl From<chrono::DateTime<chrono::Utc>> for UnixTime {
     fn from(value: chrono::DateTime<chrono::Utc>) -> Self {
         Self::new(value.timestamp(), value.timestamp_subsec_nanos())
@@ -403,7 +393,6 @@ impl From<chrono::DateTime<chrono::Utc>> for UnixTime {
 }
 
 #[cfg(feature = "timelib")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "timelib")))]
 impl From<time::OffsetDateTime> for UnixTime {
     fn from(value: time::OffsetDateTime) -> Self {
         Self::new(value.unix_timestamp(), value.nanosecond())

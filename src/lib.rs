@@ -55,7 +55,7 @@
 //! println!("{:x?}", &ccsds_buf[0..6]);
 //! ```
 #![no_std]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 #[cfg(any(feature = "std", test))]

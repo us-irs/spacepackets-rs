@@ -359,7 +359,6 @@ impl CucTime {
     /// must be applied on top of the UTC based time retrieved from the system in addition to the
     /// conversion to the CCSDS epoch.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn from_now(
         fraction_resolution: FractionalResolution,
         leap_seconds: u32,
@@ -391,7 +390,6 @@ impl CucTime {
     /// must be applied on top of the UTC based time retrieved from the system in addition to the
     /// conversion to the CCSDS epoch.
     #[cfg(feature = "std")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
     pub fn update_from_now(&mut self, leap_seconds: u32) -> Result<(), StdTimestampError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         self.counter.1 = unix_epoch_to_ccsds_epoch(now.as_secs() as i64) as u32;
@@ -411,7 +409,6 @@ impl CucTime {
     }
 
     #[cfg(feature = "chrono")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "chrono")))]
     pub fn from_chrono_date_time(
         dt: &chrono::DateTime<chrono::Utc>,
         res: FractionalResolution,
