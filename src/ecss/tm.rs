@@ -660,6 +660,37 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         self.update_ccsds_data_len();
     }
 
+    /// Write the raw PUS byte representation to a provided buffer.
+    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let mut curr_idx = 0;
+        let total_size = self.len_written();
+        if total_size > slice.len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: slice.len(),
+                expected: total_size,
+            });
+        }
+        self.sp_header
+            .write_to_be_bytes(&mut slice[0..CCSDS_HEADER_LEN])?;
+        curr_idx += CCSDS_HEADER_LEN;
+        let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
+        let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
+        sec_header
+            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
+            .ok_or(ByteConversionError::ZeroCopyToError)?;
+        curr_idx += sec_header_len;
+        slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
+            .copy_from_slice(self.sec_header.timestamp);
+        curr_idx += self.sec_header.timestamp.len();
+        slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
+        curr_idx += self.source_data.len();
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(&slice[0..curr_idx]);
+        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+        curr_idx += 2;
+        Ok(curr_idx)
+    }
+
     /// Append the raw PUS byte representation to a provided [alloc::vec::Vec]
     #[cfg(feature = "alloc")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
@@ -689,34 +720,7 @@ impl WritablePusPacket for PusTmCreator<'_> {
     }
     /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = 0;
-        let total_size = self.len_written();
-        if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: slice.len(),
-                expected: total_size,
-            }
-            .into());
-        }
-        self.sp_header
-            .write_to_be_bytes(&mut slice[0..CCSDS_HEADER_LEN])?;
-        curr_idx += CCSDS_HEADER_LEN;
-        let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
-        let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
-        sec_header
-            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
-        curr_idx += sec_header_len;
-        slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
-            .copy_from_slice(self.sec_header.timestamp);
-        curr_idx += self.sec_header.timestamp.len();
-        slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
-        curr_idx += self.source_data.len();
-        let mut digest = CRC_CCITT_FALSE.digest();
-        digest.update(&slice[0..curr_idx]);
-        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
-        curr_idx += 2;
-        Ok(curr_idx)
+        Ok(Self::write_to_bytes(self, slice)?)
     }
 }
 
@@ -788,6 +792,9 @@ impl<'raw_data> PusTmReader<'raw_data> {
     /// Create a [PusTmReader] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet. The timestamp length needs to be
     /// known beforehand.
+    ///
+    /// This function will check the CRC-16 of the PUS packet and will return an appropriate
+    /// [PusError] if the check fails.
     pub fn new(slice: &'raw_data [u8], timestamp_len: usize) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
@@ -1260,18 +1267,11 @@ mod tests {
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
         let error = res.unwrap_err();
-        assert!(matches!(error, PusError::ByteConversion { .. }));
-        match error {
-            PusError::ByteConversion(err) => match err {
-                ByteConversionError::ToSliceTooSmall { found, expected } => {
-                    assert_eq!(expected, 22);
-                    assert_eq!(found, 16);
-                }
-                _ => panic!("Invalid PUS error {:?}", err),
-            },
-            _ => {
-                panic!("Invalid error {:?}", error);
-            }
+        if let ByteConversionError::ToSliceTooSmall { found, expected } = error {
+            assert_eq!(expected, 22);
+            assert_eq!(found, 16);
+        } else {
+            panic!("Invalid error {:?}", error);
         }
     }
 

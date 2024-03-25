@@ -205,13 +205,12 @@ pub trait PusPacket: CcsdsPacket {
     fn crc16(&self) -> Option<u16>;
 }
 
-pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, PusError> {
+pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, ByteConversionError> {
     if raw_data.len() < 2 {
         return Err(ByteConversionError::FromSliceTooSmall {
             found: raw_data.len(),
             expected: 2,
-        }
-        .into());
+        });
     }
     Ok(u16::from_be_bytes(
         raw_data[raw_data.len() - 2..raw_data.len()]
@@ -248,13 +247,12 @@ pub(crate) fn user_data_from_raw(
     current_idx: usize,
     total_len: usize,
     slice: &[u8],
-) -> Result<&[u8], PusError> {
+) -> Result<&[u8], ByteConversionError> {
     match current_idx {
         _ if current_idx > total_len - 2 => Err(ByteConversionError::FromSliceTooSmall {
             found: total_len - 2,
             expected: current_idx,
-        }
-        .into()),
+        }),
         _ => Ok(&slice[current_idx..total_len - 2]),
     }
 }

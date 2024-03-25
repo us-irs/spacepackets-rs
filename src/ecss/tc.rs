@@ -654,8 +654,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     }
 
     #[cfg(feature = "alloc")]
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-    pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
+    pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> usize {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
         appended_len += self.app_data.len();
@@ -668,7 +667,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
-        Ok(appended_len)
+        appended_len
     }
 }
 
@@ -763,7 +762,8 @@ pub struct PusTcReader<'raw_data> {
 
 impl<'raw_data> PusTcReader<'raw_data> {
     /// Create a [PusTcReader] instance from a raw slice. On success, it returns a tuple containing
-    /// the instance and the found byte length of the packet.
+    /// the instance and the found byte length of the packet. This function also performs a CRC
+    /// check and will return an appropriate [PusError] if the check fails.
     pub fn new(slice: &'raw_data [u8]) -> Result<(Self, usize), PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
@@ -1010,9 +1010,7 @@ mod tests {
     fn test_vec_ser_deser() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_vec = Vec::new();
-        let size = pus_tc
-            .append_to_vec(&mut test_vec)
-            .expect("Error writing TC to vector");
+        let size = pus_tc.append_to_vec(&mut test_vec);
         assert_eq!(size, 13);
         verify_test_tc_raw(&test_vec.as_slice());
         verify_crc_no_app_data(&test_vec.as_slice());
@@ -1058,9 +1056,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
         verify_test_tc(&pus_tc, true, 16);
         let mut test_vec = Vec::new();
-        let size = pus_tc
-            .append_to_vec(&mut test_vec)
-            .expect("Error writing TC to vector");
+        let size = pus_tc.append_to_vec(&mut test_vec);
         assert_eq!(test_vec[11], 1);
         assert_eq!(test_vec[12], 2);
         assert_eq!(test_vec[13], 3);
