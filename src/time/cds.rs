@@ -830,9 +830,9 @@ impl CdsTime<DaysLen24Bits> {
     ///
     /// ## Errors
     ///
-    /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
-    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// This function will return [CdsError::DateBeforeCcsdsEpoch] if the time is before the CCSDS
+    /// epoch (1958-01-01T00:00:00+00:00) or the CCSDS days value exceeds the allowed bit width
+    /// (24 bits).
     #[cfg(feature = "chrono")]
     pub fn from_dt_with_u24_days(dt: &chrono::DateTime<chrono::Utc>) -> Result<Self, CdsError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Long24Bits)
@@ -842,9 +842,9 @@ impl CdsTime<DaysLen24Bits> {
     ///
     /// ## Errors
     ///
-    /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
-    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// This function will return [CdsError::DateBeforeCcsdsEpoch] if the time is before the CCSDS
+    /// epoch (1958-01-01T00:00:00+00:00) or the CCSDS days value exceeds the allowed bit width
+    /// (24 bits).
     pub fn from_unix_stamp_with_u24_days(
         unix_stamp: &UnixTime,
         submillis_prec: SubmillisPrecision,
@@ -916,9 +916,9 @@ impl CdsTime<DaysLen16Bits> {
 
     /// Create a provider from a [`chrono::DateTime<Utc>`] struct.
     ///
-    /// This function will return a [TimestampError::DateBeforeCcsdsEpoch] or a
-    /// [TimestampError::Cds] if the time is before the CCSDS epoch (01-01-1958 00:00:00) or
-    /// the CCSDS days value exceeds the allowed bit width (16 bits).
+    /// This function will return a [CdsError::DateBeforeCcsdsEpoch] if the time is before the
+    /// CCSDS epoch (01-01-1958 00:00:00) or the CCSDS days value exceeds the allowed bit width
+    /// (16 bits).
     #[cfg(feature = "chrono")]
     pub fn from_dt_with_u16_days(dt: &chrono::DateTime<chrono::Utc>) -> Result<Self, CdsError> {
         Self::from_dt_generic(dt, LengthOfDaySegment::Short16Bits)
@@ -934,9 +934,9 @@ impl CdsTime<DaysLen16Bits> {
     ///
     /// ## Errors
     ///
-    /// This function will return [TimestampError::DateBeforeCcsdsEpoch] or
-    /// [TimestampError::Cds] if the time is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
-    /// or the CCSDS days value exceeds the allowed bit width (24 bits).
+    /// This function will return [CdsError::DateBeforeCcsdsEpoch] if the time is before the CCSDS
+    /// epoch (1958-01-01T00:00:00+00:00) or the CCSDS days value exceeds the allowed bit width
+    /// (24 bits).
     pub fn from_unix_stamp_with_u16_days(
         unix_stamp: &UnixTime,
         submillis_prec: SubmillisPrecision,
