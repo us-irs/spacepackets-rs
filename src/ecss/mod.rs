@@ -150,6 +150,7 @@ pub enum PfcReal {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature="defmt", derive(defmt::Format))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     ChecksumFailure(u16),
