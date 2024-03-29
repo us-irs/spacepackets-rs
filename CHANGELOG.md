@@ -48,7 +48,13 @@ to check all the API changes in the **Changed** chapter.
 - Error handling for ECSS and time module is more granular now, with a new
   `DateBeforeCcsdsEpochError` error and a `DateBeforeCcsdsEpoch` enum variant for both
   `CdsError` and `CucError`.
+- `PusTmCreator` now has two lifetimes: One for the raw source data buffer and one for the
+  raw timestamp.
 - Time API `from_now*` API renamed to `now*`.
+
+## Removed
+
+- Legacy `PusTm` and `PusTc` objects.
 
 # [v0.11.0-rc.0] 2024-03-04
 

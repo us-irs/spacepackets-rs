@@ -19,7 +19,6 @@ use alloc::vec::Vec;
 use delegate::delegate;
 
 use crate::time::{TimeWriter, TimestampError};
-pub use legacy_tm::*;
 
 use self::zc::PusTmSecHeaderWithoutTimestamp;
 
@@ -198,334 +197,6 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
     }
 }
 
-pub mod legacy_tm {
-    use crate::ecss::tm::{
-        zc, GenericPusTmSecondaryHeader, IsPusTelemetry, PusTmSecondaryHeader,
-        PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA, PUS_TM_MIN_SEC_HEADER_LEN,
-    };
-    use crate::ecss::PusVersion;
-    use crate::ecss::{
-        ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls, user_data_from_raw,
-        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, WritablePusPacket,
-        CCSDS_HEADER_LEN,
-    };
-    use crate::SequenceFlags;
-    use crate::{ByteConversionError, CcsdsPacket, PacketType, SpHeader, CRC_CCITT_FALSE};
-    use core::mem::size_of;
-    use zerocopy::AsBytes;
-
-    #[cfg(feature = "serde")]
-    use serde::{Deserialize, Serialize};
-
-    #[cfg(feature = "alloc")]
-    use alloc::vec::Vec;
-    use delegate::delegate;
-
-    /// This class models the PUS C telemetry packet. It is the primary data structure to generate the
-    /// raw byte representation of PUS telemetry or to deserialize from one from raw bytes.
-    ///
-    /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the [serde]
-    /// feature is used which allows to send around TM packets in a raw byte format using a serde
-    /// provider like [postcard](https://docs.rs/postcard/latest/postcard/).
-    ///
-    /// There is no spare bytes support yet.
-    ///
-    /// # Lifetimes
-    ///
-    /// * `'raw_data` - If the TM is not constructed from a raw slice, this will be the life time of
-    ///    a buffer where the user provided time stamp and source data will be serialized into. If it
-    ///    is, this is the lifetime of the raw byte slice it is constructed from.
-    #[derive(Eq, Debug, Copy, Clone)]
-    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-    pub struct PusTm<'raw_data> {
-        pub sp_header: SpHeader,
-        pub sec_header: PusTmSecondaryHeader<'raw_data>,
-        /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
-        /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
-        pub calc_crc_on_serialization: bool,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        raw_data: Option<&'raw_data [u8]>,
-        source_data: &'raw_data [u8],
-        crc16: Option<u16>,
-    }
-
-    impl<'raw_data> PusTm<'raw_data> {
-        /// Generates a new struct instance.
-        ///
-        /// # Arguments
-        ///
-        /// * `sp_header` - Space packet header information. The correct packet type will be set
-        ///     automatically
-        /// * `sec_header` - Information contained in the secondary header, including the service
-        ///     and subservice type
-        /// * `app_data` - Custom application data
-        /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-        ///     field. If this is not set to true, [PusTm::update_ccsds_data_len] can be called to set
-        ///     the correct value to this field manually
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTmCreator or PusTmReader classes instead"
-        )]
-        pub fn new(
-            sp_header: &mut SpHeader,
-            sec_header: PusTmSecondaryHeader<'raw_data>,
-            source_data: Option<&'raw_data [u8]>,
-            set_ccsds_len: bool,
-        ) -> Self {
-            sp_header.set_packet_type(PacketType::Tm);
-            sp_header.set_sec_header_flag();
-            let mut pus_tm = PusTm {
-                sp_header: *sp_header,
-                raw_data: None,
-                source_data: source_data.unwrap_or(&[]),
-                sec_header,
-                calc_crc_on_serialization: true,
-                crc16: None,
-            };
-            if set_ccsds_len {
-                pus_tm.update_ccsds_data_len();
-            }
-            pus_tm
-        }
-
-        pub fn timestamp(&self) -> &[u8] {
-            self.sec_header.timestamp
-        }
-
-        pub fn source_data(&self) -> &[u8] {
-            self.source_data
-        }
-
-        pub fn set_dest_id(&mut self, dest_id: u16) {
-            self.sec_header.dest_id = dest_id;
-        }
-
-        pub fn set_msg_counter(&mut self, msg_counter: u16) {
-            self.sec_header.msg_counter = msg_counter
-        }
-
-        pub fn set_sc_time_ref_status(&mut self, sc_time_ref_status: u8) {
-            self.sec_header.sc_time_ref_status = sc_time_ref_status & 0b1111;
-        }
-
-        sp_header_impls!();
-
-        /// This is called automatically if the `set_ccsds_len` argument in the [PusTm::new] call was
-        /// used.
-        /// If this was not done or the time stamp or source data is set or changed after construction,
-        /// this function needs to be called to ensure that the data length field of the CCSDS header
-        /// is set correctly
-        pub fn update_ccsds_data_len(&mut self) {
-            self.sp_header.data_len =
-                self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
-        }
-
-        /// This function should be called before the TM packet is serialized if
-        /// [PusTm.calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
-        pub fn calc_own_crc16(&mut self) {
-            let mut digest = CRC_CCITT_FALSE.digest();
-            let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-            digest.update(sph_zc.as_bytes());
-            let pus_tc_header =
-                zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
-            digest.update(pus_tc_header.as_bytes());
-            digest.update(self.sec_header.timestamp);
-            digest.update(self.source_data);
-            self.crc16 = Some(digest.finalize())
-        }
-
-        /// This helper function calls both [PusTm.update_ccsds_data_len] and [PusTm.calc_own_crc16]
-        pub fn update_packet_fields(&mut self) {
-            self.update_ccsds_data_len();
-            self.calc_own_crc16();
-        }
-
-        /// Append the raw PUS byte representation to a provided [alloc::vec::Vec]
-        #[cfg(feature = "alloc")]
-        pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
-            let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-            let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA;
-            appended_len += self.sec_header.timestamp.len();
-            appended_len += self.source_data.len();
-            let start_idx = vec.len();
-            let mut ser_len = 0;
-            vec.extend_from_slice(sph_zc.as_bytes());
-            ser_len += sph_zc.as_bytes().len();
-            // The PUS version is hardcoded to PUS C
-            let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
-            vec.extend_from_slice(sec_header.as_bytes());
-            ser_len += sec_header.as_bytes().len();
-            ser_len += self.sec_header.timestamp.len();
-            vec.extend_from_slice(self.sec_header.timestamp);
-            vec.extend_from_slice(self.source_data);
-            ser_len += self.source_data.len();
-            let crc16 = crc_procedure(
-                self.calc_crc_on_serialization,
-                &self.crc16,
-                start_idx,
-                ser_len,
-                &vec[start_idx..start_idx + ser_len],
-            )?;
-            vec.extend_from_slice(crc16.to_be_bytes().as_slice());
-            Ok(appended_len)
-        }
-
-        /// Create a [PusTm] instance from a raw slice. On success, it returns a tuple containing
-        /// the instance and the found byte length of the packet. The timestamp length needs to be
-        /// known beforehand.
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTmCreator or PusTmReader classes instead"
-        )]
-        pub fn from_bytes(
-            slice: &'raw_data [u8],
-            timestamp_len: usize,
-        ) -> Result<(Self, usize), PusError> {
-            let raw_data_len = slice.len();
-            if raw_data_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: raw_data_len,
-                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
-                }
-                .into());
-            }
-            let mut current_idx = 0;
-            let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
-            current_idx += 6;
-            let total_len = sp_header.total_len();
-            if raw_data_len < total_len {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: raw_data_len,
-                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
-                }
-                .into());
-            }
-            if total_len < PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: total_len,
-                    expected: PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA,
-                }
-                .into());
-            }
-            let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
-                &slice[current_idx..current_idx + PUS_TM_MIN_SEC_HEADER_LEN],
-            )
-            .ok_or(ByteConversionError::ZeroCopyFromError)?;
-            current_idx += PUS_TM_MIN_SEC_HEADER_LEN;
-            let zc_sec_header_wrapper = zc::PusTmSecHeader {
-                zc_header: sec_header_zc,
-                timestamp: &slice[current_idx..current_idx + timestamp_len],
-            };
-            current_idx += timestamp_len;
-            let raw_data = &slice[0..total_len];
-            let pus_tm = PusTm {
-                sp_header,
-                sec_header: PusTmSecondaryHeader::try_from(zc_sec_header_wrapper).unwrap(),
-                raw_data: Some(&slice[0..total_len]),
-                source_data: user_data_from_raw(current_idx, total_len, slice)?,
-                calc_crc_on_serialization: false,
-                crc16: Some(crc_from_raw_data(raw_data)?),
-            };
-            verify_crc16_ccitt_false_from_raw_to_pus_error(
-                raw_data,
-                pus_tm.crc16.expect("CRC16 invalid"),
-            )?;
-            Ok((pus_tm, total_len))
-        }
-
-        /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
-        /// constructed from. Otherwise, [None] will be returned.
-        pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
-            self.raw_data
-        }
-    }
-
-    impl WritablePusPacket for PusTm<'_> {
-        fn len_written(&self) -> usize {
-            PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
-                + self.sec_header.timestamp.len()
-                + self.source_data.len()
-        }
-        /// Write the raw PUS byte representation to a provided buffer.
-        fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-            let mut curr_idx = 0;
-            let total_size = self.len_written();
-            if total_size > slice.len() {
-                return Err(ByteConversionError::ToSliceTooSmall {
-                    found: slice.len(),
-                    expected: total_size,
-                }
-                .into());
-            }
-            self.sp_header
-                .write_to_be_bytes(&mut slice[0..CCSDS_HEADER_LEN])?;
-            curr_idx += CCSDS_HEADER_LEN;
-            let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
-            let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
-            sec_header
-                .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-                .ok_or(ByteConversionError::ZeroCopyToError)?;
-            curr_idx += sec_header_len;
-            slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
-                .copy_from_slice(self.sec_header.timestamp);
-            curr_idx += self.sec_header.timestamp.len();
-            slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
-            curr_idx += self.source_data.len();
-            let crc16 = crc_procedure(
-                self.calc_crc_on_serialization,
-                &self.crc16,
-                0,
-                curr_idx,
-                slice,
-            )?;
-            slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
-            curr_idx += 2;
-            Ok(curr_idx)
-        }
-    }
-
-    impl PartialEq for PusTm<'_> {
-        fn eq(&self, other: &Self) -> bool {
-            self.sp_header == other.sp_header
-                && self.sec_header == other.sec_header
-                && self.source_data == other.source_data
-        }
-    }
-
-    impl CcsdsPacket for PusTm<'_> {
-        ccsds_impl!();
-    }
-
-    impl PusPacket for PusTm<'_> {
-        delegate!(to self.sec_header {
-            fn pus_version(&self) -> PusVersion;
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-        });
-
-        fn user_data(&self) -> &[u8] {
-            self.source_data
-        }
-
-        fn crc16(&self) -> Option<u16> {
-            self.crc16
-        }
-    }
-
-    impl GenericPusTmSecondaryHeader for PusTm<'_> {
-        delegate!(to self.sec_header {
-            fn pus_version(&self) -> PusVersion;
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-            fn dest_id(&self) -> u16;
-            fn msg_counter(&self) -> u16;
-            fn sc_time_ref_status(&self) -> u8;
-        });
-    }
-
-    impl IsPusTelemetry for PusTm<'_> {}
-}
-
 /// This class models the PUS C telemetry packet. It is the primary data structure to generate the
 /// raw byte representation of PUS telemetry.
 ///
@@ -541,16 +212,17 @@ pub mod legacy_tm {
 #[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PusTmCreator<'raw_data> {
+pub struct PusTmCreator<'time, 'raw_data> {
     pub sp_header: SpHeader,
-    pub sec_header: PusTmSecondaryHeader<'raw_data>,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    pub sec_header: PusTmSecondaryHeader<'time>,
     source_data: &'raw_data [u8],
-    /// If this is set to false, a manual call to [PusTm::calc_own_crc16] or
-    /// [PusTm::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
+    /// If this is set to false, a manual call to [Self::calc_own_crc16] or
+    /// [Self::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
 }
 
-impl<'raw_data> PusTmCreator<'raw_data> {
+impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
@@ -561,11 +233,11 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     ///     and subservice type
     /// * `source_data` - Custom application data
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-    ///     field. If this is not set to true, [PusTm::update_ccsds_data_len] can be called to set
+    ///     field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
     pub fn new(
         sp_header: &mut SpHeader,
-        sec_header: PusTmSecondaryHeader<'raw_data>,
+        sec_header: PusTmSecondaryHeader<'time>,
         source_data: &'raw_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
@@ -588,7 +260,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         service: u8,
         subservice: u8,
         time_provider: &impl TimeWriter,
-        stamp_buf: &'raw_data mut [u8],
+        stamp_buf: &'time mut [u8],
         source_data: Option<&'raw_data [u8]>,
         set_ccsds_len: bool,
     ) -> Result<Self, TimestampError> {
@@ -605,7 +277,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
 
     pub fn new_no_source_data(
         sp_header: &mut SpHeader,
-        sec_header: PusTmSecondaryHeader<'raw_data>,
+        sec_header: PusTmSecondaryHeader<'time>,
         set_ccsds_len: bool,
     ) -> Self {
         Self::new(sp_header, sec_header, &[], set_ccsds_len)
@@ -633,7 +305,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
 
     sp_header_impls!();
 
-    /// This is called automatically if the `set_ccsds_len` argument in the [PusTm::new] call was
+    /// This is called automatically if the `set_ccsds_len` argument in the [Self::new] call was
     /// used.
     /// If this was not done or the time stamp or source data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
@@ -644,7 +316,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     }
 
     /// This function should be called before the TM packet is serialized if
-    /// [PusTm.calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
+    /// [Self::calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
     pub fn calc_own_crc16(&self) -> u16 {
         let mut digest = CRC_CCITT_FALSE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -656,7 +328,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
         digest.finalize()
     }
 
-    /// This helper function calls both [PusTm.update_ccsds_data_len] and [PusTm.calc_own_crc16]
+    /// This helper function calls both [Self::update_ccsds_data_len] and [Self::calc_own_crc16]
     pub fn update_packet_fields(&mut self) {
         self.update_ccsds_data_len();
     }
@@ -712,7 +384,7 @@ impl<'raw_data> PusTmCreator<'raw_data> {
     }
 }
 
-impl WritablePusPacket for PusTmCreator<'_> {
+impl WritablePusPacket for PusTmCreator<'_, '_> {
     fn len_written(&self) -> usize {
         PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
             + self.sec_header.timestamp.len()
@@ -724,7 +396,7 @@ impl WritablePusPacket for PusTmCreator<'_> {
     }
 }
 
-impl PartialEq for PusTmCreator<'_> {
+impl PartialEq for PusTmCreator<'_, '_> {
     fn eq(&self, other: &Self) -> bool {
         self.sp_header == other.sp_header
             && self.sec_header == other.sec_header
@@ -732,11 +404,11 @@ impl PartialEq for PusTmCreator<'_> {
     }
 }
 
-impl CcsdsPacket for PusTmCreator<'_> {
+impl CcsdsPacket for PusTmCreator<'_, '_> {
     ccsds_impl!();
 }
 
-impl PusPacket for PusTmCreator<'_> {
+impl PusPacket for PusTmCreator<'_, '_> {
     delegate!(to self.sec_header {
         fn pus_version(&self) -> PusVersion;
         fn service(&self) -> u8;
@@ -752,7 +424,7 @@ impl PusPacket for PusTmCreator<'_> {
     }
 }
 
-impl GenericPusTmSecondaryHeader for PusTmCreator<'_> {
+impl GenericPusTmSecondaryHeader for PusTmCreator<'_, '_> {
     delegate!(to self.sec_header {
         fn pus_version(&self) -> PusVersion;
         fn service(&self) -> u8;
@@ -763,7 +435,7 @@ impl GenericPusTmSecondaryHeader for PusTmCreator<'_> {
     });
 }
 
-impl IsPusTelemetry for PusTmCreator<'_> {}
+impl IsPusTelemetry for PusTmCreator<'_, '_> {}
 
 /// This class models the PUS C telemetry packet. It is the primary data structure to read
 /// a telemetry packet from raw bytes.
@@ -905,15 +577,15 @@ impl GenericPusTmSecondaryHeader for PusTmReader<'_> {
 
 impl IsPusTelemetry for PusTmReader<'_> {}
 
-impl PartialEq<PusTmCreator<'_>> for PusTmReader<'_> {
-    fn eq(&self, other: &PusTmCreator<'_>) -> bool {
+impl PartialEq<PusTmCreator<'_, '_>> for PusTmReader<'_> {
+    fn eq(&self, other: &PusTmCreator<'_, '_>) -> bool {
         self.sp_header == other.sp_header
             && self.sec_header == other.sec_header
             && self.source_data == other.source_data
     }
 }
 
-impl PartialEq<PusTmReader<'_>> for PusTmCreator<'_> {
+impl PartialEq<PusTmReader<'_>> for PusTmCreator<'_, '_> {
     fn eq(&self, other: &PusTmReader<'_>) -> bool {
         self.sp_header == other.sp_header
             && self.sec_header == other.sec_header
@@ -1125,7 +797,7 @@ mod tests {
         PusTmCreator::new(&mut sph, tm_header, DUMMY_DATA, true)
     }
 
-    fn base_hk_reply<'a>(timestamp: &'a [u8], src_data: &'a [u8]) -> PusTmCreator<'a> {
+    fn base_hk_reply<'a, 'b>(timestamp: &'a [u8], src_data: &'b [u8]) -> PusTmCreator<'a, 'b> {
         let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
         PusTmCreator::new(&mut sph, tc_header, src_data, true)

@@ -227,24 +227,6 @@ pub(crate) fn calc_pus_crc16(bytes: &[u8]) -> u16 {
     digest.finalize()
 }
 
-pub(crate) fn crc_procedure(
-    calc_on_serialization: bool,
-    cached_crc16: &Option<u16>,
-    start_idx: usize,
-    curr_idx: usize,
-    slice: &[u8],
-) -> Result<u16, PusError> {
-    let crc16;
-    if calc_on_serialization {
-        crc16 = calc_pus_crc16(&slice[start_idx..curr_idx])
-    } else if cached_crc16.is_none() {
-        return Err(PusError::CrcCalculationMissing);
-    } else {
-        crc16 = cached_crc16.unwrap();
-    }
-    Ok(crc16)
-}
-
 pub(crate) fn user_data_from_raw(
     current_idx: usize,
     total_len: usize,
