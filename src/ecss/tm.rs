@@ -214,7 +214,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmCreator<'time, 'raw_data> {
     pub sp_header: SpHeader,
-     #[cfg_attr(feature="serde", serde(borrow))]
+    #[cfg_attr(feature = "serde", serde(borrow))]
     pub sec_header: PusTmSecondaryHeader<'time>,
     source_data: &'raw_data [u8],
     /// If this is set to false, a manual call to [Self::calc_own_crc16] or
