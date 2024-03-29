@@ -349,7 +349,7 @@ impl UnixTime {
     }
 
     #[cfg(feature = "std")]
-    pub fn from_now() -> Result<Self, SystemTimeError> {
+    pub fn now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
         let epoch = now.as_secs();
         Ok(Self::new(epoch as i64, now.subsec_nanos()))
@@ -360,7 +360,7 @@ impl UnixTime {
         self.secs as f64 + (self.subsec_nanos as f64 / 1_000_000_000.0)
     }
 
-    pub fn secs(&self) -> i64 {
+    pub fn as_secs(&self) -> i64 {
         self.secs
     }
 
@@ -371,7 +371,7 @@ impl UnixTime {
 
     #[cfg(feature = "timelib")]
     pub fn timelib_date_time(&self) -> Result<time::OffsetDateTime, time::error::ComponentRange> {
-        Ok(time::OffsetDateTime::from_unix_timestamp(self.secs())?
+        Ok(time::OffsetDateTime::from_unix_timestamp(self.as_secs())?
             + time::Duration::nanoseconds(self.subsec_nanos().into()))
     }
 
@@ -653,7 +653,7 @@ mod tests {
     fn test_addition() {
         let mut stamp0 = UnixTime::new_only_secs(1);
         stamp0 += Duration::from_secs(5);
-        assert_eq!(stamp0.secs(), 6);
+        assert_eq!(stamp0.as_secs(), 6);
         assert_eq!(stamp0.subsec_millis(), 0);
         let stamp1 = stamp0 + Duration::from_millis(500);
         assert_eq!(stamp1.secs, 6);
@@ -682,7 +682,7 @@ mod tests {
 
     #[test]
     fn test_from_now() {
-        let stamp_now = UnixTime::from_now().unwrap();
+        let stamp_now = UnixTime::now().unwrap();
         let dt_now = stamp_now.chrono_date_time().unwrap();
         assert!(dt_now.year() >= 2020);
     }
