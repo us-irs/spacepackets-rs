@@ -52,6 +52,7 @@ pub trait WritableTlv {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum TlvType {
     FilestoreRequest = 0x00,
@@ -64,6 +65,7 @@ pub enum TlvType {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvTypeField {
     Standard(TlvType),
     Custom(u8),
@@ -71,6 +73,7 @@ pub enum TlvTypeField {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FilestoreActionCode {
     CreateFile = 0b0000,
@@ -118,6 +121,7 @@ impl From<TlvTypeField> for u8 {
 ///    this will be the lifetime of that data reference.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Tlv<'data> {
     tlv_type_field: TlvTypeField,
     #[cfg_attr(feature = "serde", serde(borrow))]
@@ -224,6 +228,7 @@ pub(crate) fn verify_tlv_type(raw_type: u8, expected_tlv_type: TlvType) -> Resul
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct EntityIdTlv {
     entity_id: UnsignedByteField,
 }
@@ -348,6 +353,7 @@ pub fn fs_request_has_second_filename(action_code: FilestoreActionCode) -> bool 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 struct FilestoreTlvBase<'first_name, 'second_name> {
     pub action_code: FilestoreActionCode,
     #[cfg_attr(feature = "serde", serde(borrow))]
@@ -561,6 +567,7 @@ impl GenericTlv for FilestoreRequestTlv<'_, '_> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct FilestoreResponseTlv<'first_name, 'second_name, 'fs_msg> {
     #[cfg_attr(feature = "serde", serde(borrow))]
     base: FilestoreTlvBase<'first_name, 'second_name>,

@@ -12,6 +12,7 @@ use super::{
 /// Helper type to encapsulate both normal file size segment requests and large file size segment
 /// requests.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SegmentRequests<'a> {
     U32Pairs(&'a [(u32, u32)]),
     U64Pairs(&'a [(u64, u64)]),
@@ -31,6 +32,7 @@ impl SegmentRequests<'_> {
 /// It exposes a specialized API which simplifies to generate these NAK PDUs with the
 /// format according to CFDP chapter 5.2.6.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NakPduCreator<'seg_reqs> {
     pdu_header: PduHeader,
     start_of_scope: u64,
@@ -353,6 +355,7 @@ impl<T: SegReqFromBytes> SegmentRequestIter<'_, T> {
 ///
 /// The NAK format is expected to be conforming to CFDP chapter 5.2.6.
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NakPduReader<'seg_reqs> {
     pdu_header: PduHeader,
     start_of_scope: u64,

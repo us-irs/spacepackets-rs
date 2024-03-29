@@ -93,6 +93,7 @@ pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 /// Generic error type when converting to and from raw byte slices.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the passed slice length and expected minimum size
     ToSliceTooSmall {
@@ -142,6 +143,7 @@ impl Error for ByteConversionError {}
 /// CCSDS packet type enumeration.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PacketType {
     Tm = 0,
     Tc = 1,
@@ -165,6 +167,7 @@ pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SequenceFlags {
     ContinuationSegment = 0b00,
     FirstSegment = 0b01,
@@ -192,6 +195,7 @@ impl TryFrom<u8> for SequenceFlags {
 /// of the first two bytes in the CCSDS primary header.
 #[derive(Debug, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PacketId {
     pub ptype: PacketType,
     pub sec_header_flag: bool,
@@ -303,6 +307,7 @@ impl From<u16> for PacketId {
 /// third and the fourth byte in the CCSDS primary header.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PacketSequenceCtrl {
     pub seq_flags: SequenceFlags,
     seq_count: u16,
@@ -463,6 +468,7 @@ pub trait CcsdsPrimaryHeader {
 /// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SpHeader {
     pub version: u8,
     pub packet_id: PacketId,
@@ -798,7 +804,7 @@ pub(crate) mod tests {
         let id_default = PacketId::default();
         assert_eq!(id_default.ptype, PacketType::Tm);
         assert_eq!(id_default.apid, 0x000);
-        assert_eq!(id_default.sec_header_flag, false);
+        assert!(!id_default.sec_header_flag);
     }
 
     #[test]
@@ -808,7 +814,7 @@ pub(crate) mod tests {
         let packet_id = packet_id.unwrap();
         assert_eq!(packet_id.apid(), 0x1ff);
         assert_eq!(packet_id.ptype, PacketType::Tc);
-        assert_eq!(packet_id.sec_header_flag, true);
+        assert!(packet_id.sec_header_flag);
         let packet_id_tc = PacketId::tc(true, 0x1ff);
         assert!(packet_id_tc.is_some());
         let packet_id_tc = packet_id_tc.unwrap();

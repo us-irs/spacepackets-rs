@@ -33,6 +33,7 @@ pub const NANOS_PER_SECOND: u32 = 1_000_000_000;
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CcsdsTimeCode {
     CucCcsdsEpoch = 0b001,
     CucAgencyEpoch = 0b010,
@@ -65,6 +66,7 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCode, u8> {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct DateBeforeCcsdsEpochError(UnixTime);
 
 impl Display for DateBeforeCcsdsEpochError {
@@ -78,6 +80,7 @@ impl Error for DateBeforeCcsdsEpochError {}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
 pub enum TimestampError {
     InvalidTimeCode { expected: CcsdsTimeCode, found: u8 },
@@ -262,6 +265,7 @@ pub trait CcsdsTimeProvider {
 /// similarly to other common time formats and libraries.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct UnixTime {
     secs: i64,
     subsec_nanos: u32,

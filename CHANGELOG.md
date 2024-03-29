@@ -24,6 +24,7 @@ to check all the API changes in the **Changed** chapter.
 - Added basic support conversions to the `time` library. Introduce new `chrono` and `timelib`
   feature gate.
 - Added `CcsdsTimeProvider::timelib_date_time`.
+- Optional support for `defmt` by adding optional `defmt::Format` derives for common types.
 
 ## Changed
 

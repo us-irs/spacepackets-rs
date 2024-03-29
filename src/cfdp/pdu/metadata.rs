@@ -15,6 +15,7 @@ use super::{CfdpPdu, WritablePduPacket};
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MetadataGenericParams {
     pub closure_requested: bool,
     pub checksum_type: ChecksumType,
@@ -55,6 +56,7 @@ pub fn build_metadata_opts_from_vec(
 /// This abstraction exposes a specialized API for creating metadata PDUs as specified in
 /// CFDP chapter 5.2.5.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MetadataPduCreator<'src_name, 'dest_name, 'opts> {
     pdu_header: PduHeader,
     metadata_params: MetadataGenericParams,
@@ -241,6 +243,7 @@ impl<'opts> Iterator for OptionsIter<'opts> {
 /// involved.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MetadataPduReader<'buf> {
     pdu_header: PduHeader,
     metadata_params: MetadataGenericParams,

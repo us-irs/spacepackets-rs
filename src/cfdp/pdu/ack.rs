@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 /// For more information, refer to CFDP chapter 5.2.4.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AckPdu {
     pdu_header: PduHeader,
     directive_code_of_acked_pdu: FileDirectiveType,

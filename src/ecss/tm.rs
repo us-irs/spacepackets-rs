@@ -116,6 +116,7 @@ pub mod zc {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmSecondaryHeader<'stamp> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u8,
@@ -539,6 +540,7 @@ pub mod legacy_tm {
 /// * `'raw_data` - This is the lifetime of the user provided time stamp and source data.
 #[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmCreator<'raw_data> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'raw_data>,
@@ -777,6 +779,7 @@ impl IsPusTelemetry for PusTmCreator<'_> {}
 /// * `'raw_data` - Lifetime of the raw slice this class is constructed from.
 #[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmReader<'raw_data> {
     pub sp_header: SpHeader,
     pub sec_header: PusTmSecondaryHeader<'raw_data>,

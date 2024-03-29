@@ -131,6 +131,7 @@ impl Error for UnsignedByteFieldError {}
 /// Type erased variant.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct UnsignedByteField {
     width: usize,
     value: u64,
@@ -220,6 +221,7 @@ impl UnsignedEnum for UnsignedByteField {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct GenericUnsignedByteField<TYPE: Copy + Into<u64>> {
     value: TYPE,
 }

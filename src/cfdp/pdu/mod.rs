@@ -18,6 +18,7 @@ pub mod nak;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FileDirectiveType {
     EofPdu = 0x04,
@@ -220,6 +221,7 @@ pub trait CfdpPdu {
 /// same.
 #[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CommonPduConfig {
     source_entity_id: UnsignedByteField,
     dest_entity_id: UnsignedByteField,
@@ -358,6 +360,7 @@ pub const FIXED_HEADER_LEN: usize = 4;
 /// For detailed information, refer to chapter 5.1 of the CFDP standard.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PduHeader {
     pdu_type: PduType,
     pdu_conf: CommonPduConfig,

@@ -63,7 +63,7 @@ serde = ["dep:serde", "chrono/serde"]
 alloc = ["postcard/alloc", "chrono/alloc"]
 chrono = ["dep:chrono"]
 timelib = ["dep:time"]
-defmt = []
+defmt = ["dep:defmt"]
 
 [package.metadata.docs.rs]
 all-features = true

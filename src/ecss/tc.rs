@@ -61,6 +61,7 @@ pub trait IsPusTelecommand {}
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 enum AckOpts {
     Acceptance = 0b1000,
@@ -146,6 +147,7 @@ pub mod zc {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcSecondaryHeader {
     pub service: u8,
     pub subservice: u8,
@@ -548,6 +550,7 @@ pub mod legacy_tc {
 /// There is no spare bytes support yet.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcCreator<'raw_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
@@ -750,6 +753,7 @@ impl IsPusTelecommand for PusTcCreator<'_> {}
 /// * `'raw_data` - Lifetime of the provided raw slice.
 #[derive(Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcReader<'raw_data> {
     #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: &'raw_data [u8],

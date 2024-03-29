@@ -78,6 +78,7 @@ impl ProvidesDaysLength for DaysLen24Bits {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum LengthOfDaySegment {
     Short16Bits = 0,
     Long24Bits = 1,
@@ -94,6 +95,7 @@ pub enum SubmillisPrecision {
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CdsError {
     /// CCSDS days value exceeds maximum allowed size or is negative
     InvalidCcsdsDays(i64),
