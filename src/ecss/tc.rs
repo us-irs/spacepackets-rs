@@ -48,8 +48,6 @@ use zerocopy::AsBytes;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-pub use legacy_tc::*;
-
 /// PUS C secondary header length is fixed
 pub const PUC_TC_SECONDARY_HEADER_LEN: usize = size_of::<zc::PusTcSecondaryHeader>();
 pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize =
@@ -214,332 +212,6 @@ impl PusTcSecondaryHeader {
     }
 }
 
-pub mod legacy_tc {
-    use crate::ecss::tc::{
-        zc, GenericPusTcSecondaryHeader, IsPusTelecommand, PusTcSecondaryHeader, ACK_ALL,
-        PUC_TC_SECONDARY_HEADER_LEN, PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
-    };
-    use crate::ecss::{
-        ccsds_impl, crc_from_raw_data, crc_procedure, sp_header_impls,
-        verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, WritablePusPacket,
-        CCSDS_HEADER_LEN,
-    };
-    use crate::ecss::{user_data_from_raw, PusVersion};
-    use crate::SequenceFlags;
-    use crate::{ByteConversionError, CcsdsPacket, PacketType, SpHeader, CRC_CCITT_FALSE};
-    use core::mem::size_of;
-    use delegate::delegate;
-    use zerocopy::AsBytes;
-
-    #[cfg(feature = "alloc")]
-    use alloc::vec::Vec;
-
-    #[cfg(feature = "serde")]
-    use serde::{Deserialize, Serialize};
-
-    /// This class models the PUS C telecommand packet. It is the primary data structure to generate the
-    /// raw byte representation of a PUS telecommand or to deserialize from one from raw bytes.
-    ///
-    /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
-    /// [serde] feature is used, which allows to send around TC packets in a raw byte format using a
-    /// serde provider like [postcard](https://docs.rs/postcard/latest/postcard/).
-    ///
-    /// There is no spare bytes support yet.
-    ///
-    /// # Lifetimes
-    ///
-    /// * `'raw_data` - If the TC is not constructed from a raw slice, this will be the life time of
-    ///    a buffer where the user provided application data will be serialized into. If it
-    ///    is, this is the lifetime of the raw byte slice it is constructed from.
-    #[derive(Eq, Copy, Clone, Debug)]
-    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-    pub struct PusTc<'raw_data> {
-        sp_header: SpHeader,
-        pub sec_header: PusTcSecondaryHeader,
-        /// If this is set to false, a manual call to [PusTc::calc_own_crc16] or
-        /// [PusTc::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
-        pub calc_crc_on_serialization: bool,
-        #[cfg_attr(feature = "serde", serde(skip))]
-        raw_data: Option<&'raw_data [u8]>,
-        app_data: &'raw_data [u8],
-        crc16: Option<u16>,
-    }
-
-    impl<'raw_data> PusTc<'raw_data> {
-        /// Generates a new struct instance.
-        ///
-        /// # Arguments
-        ///
-        /// * `sp_header` - Space packet header information. The correct packet type will be set
-        ///     automatically
-        /// * `sec_header` - Information contained in the data field header, including the service
-        ///     and subservice type
-        /// * `app_data` - Custom application data
-        /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-        ///     field. If this is not set to true, [PusTc::update_ccsds_data_len] can be called to set
-        ///     the correct value to this field manually
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTcCreator or PusTcReader classes instead"
-        )]
-        pub fn new(
-            sp_header: &mut SpHeader,
-            sec_header: PusTcSecondaryHeader,
-            app_data: Option<&'raw_data [u8]>,
-            set_ccsds_len: bool,
-        ) -> Self {
-            sp_header.set_packet_type(PacketType::Tc);
-            sp_header.set_sec_header_flag();
-            let mut pus_tc = Self {
-                sp_header: *sp_header,
-                raw_data: None,
-                app_data: app_data.unwrap_or(&[]),
-                sec_header,
-                calc_crc_on_serialization: true,
-                crc16: None,
-            };
-            if set_ccsds_len {
-                pus_tc.update_ccsds_data_len();
-            }
-            pus_tc
-        }
-
-        /// Simplified version of the [PusTc::new] function which allows to only specify service and
-        /// subservice instead of the full PUS TC secondary header.
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTcCreator or PusTcReader classes instead"
-        )]
-        pub fn new_simple(
-            sph: &mut SpHeader,
-            service: u8,
-            subservice: u8,
-            app_data: Option<&'raw_data [u8]>,
-            set_ccsds_len: bool,
-        ) -> Self {
-            #[allow(deprecated)]
-            Self::new(
-                sph,
-                PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
-                app_data,
-                set_ccsds_len,
-            )
-        }
-
-        pub fn sp_header(&self) -> &SpHeader {
-            &self.sp_header
-        }
-
-        pub fn set_ack_field(&mut self, ack: u8) -> bool {
-            if ack > 0b1111 {
-                return false;
-            }
-            self.sec_header.ack = ack & 0b1111;
-            true
-        }
-
-        pub fn set_source_id(&mut self, source_id: u16) {
-            self.sec_header.source_id = source_id;
-        }
-
-        sp_header_impls!();
-
-        /// Calculate the CCSDS space packet data length field and sets it
-        /// This is called automatically if the `set_ccsds_len` argument in the [PusTc::new] call was
-        /// used.
-        /// If this was not done or the application data is set or changed after construction,
-        /// this function needs to be called to ensure that the data length field of the CCSDS header
-        /// is set correctly.
-        pub fn update_ccsds_data_len(&mut self) {
-            self.sp_header.data_len =
-                self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
-        }
-
-        /// This function should be called before the TC packet is serialized if
-        /// [PusTc::calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
-        pub fn calc_own_crc16(&mut self) {
-            let mut digest = CRC_CCITT_FALSE.digest();
-            let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-            digest.update(sph_zc.as_bytes());
-            let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-            digest.update(pus_tc_header.as_bytes());
-            if !self.app_data.is_empty() {
-                digest.update(self.app_data);
-            }
-            self.crc16 = Some(digest.finalize())
-        }
-
-        /// This helper function calls both [PusTc::update_ccsds_data_len] and [PusTc::calc_own_crc16].
-        pub fn update_packet_fields(&mut self) {
-            self.update_ccsds_data_len();
-            self.calc_own_crc16();
-        }
-
-        #[cfg(feature = "alloc")]
-        pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
-            let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-            let appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len();
-            let start_idx = vec.len();
-            let mut ser_len = 0;
-            vec.extend_from_slice(sph_zc.as_bytes());
-            ser_len += sph_zc.as_bytes().len();
-            // The PUS version is hardcoded to PUS C
-            let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-            vec.extend_from_slice(pus_tc_header.as_bytes());
-            ser_len += pus_tc_header.as_bytes().len();
-            vec.extend_from_slice(self.app_data);
-            ser_len += self.app_data.len();
-            let crc16 = crc_procedure(
-                self.calc_crc_on_serialization,
-                &self.crc16,
-                start_idx,
-                ser_len,
-                &vec[start_idx..ser_len],
-            )?;
-            vec.extend_from_slice(crc16.to_be_bytes().as_slice());
-            Ok(appended_len)
-        }
-
-        /// Create a [PusTc] instance from a raw slice. On success, it returns a tuple containing
-        /// the instance and the found byte length of the packet.
-        #[deprecated(
-            since = "0.7.0",
-            note = "Use specialized PusTcCreator or PusTcReader classes instead"
-        )]
-        pub fn from_bytes(slice: &'raw_data [u8]) -> Result<(Self, usize), PusError> {
-            let raw_data_len = slice.len();
-            if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: raw_data_len,
-                    expected: PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
-                }
-                .into());
-            }
-            let mut current_idx = 0;
-            let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
-            current_idx += CCSDS_HEADER_LEN;
-            let total_len = sp_header.total_len();
-            if raw_data_len < total_len || total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
-                return Err(ByteConversionError::FromSliceTooSmall {
-                    found: raw_data_len,
-                    expected: total_len,
-                }
-                .into());
-            }
-            let sec_header = zc::PusTcSecondaryHeader::from_bytes(
-                &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
-            )
-            .ok_or(ByteConversionError::ZeroCopyFromError)?;
-            current_idx += PUC_TC_SECONDARY_HEADER_LEN;
-            let raw_data = &slice[0..total_len];
-            let pus_tc = Self {
-                sp_header,
-                sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
-                raw_data: Some(raw_data),
-                app_data: user_data_from_raw(current_idx, total_len, slice)?,
-                calc_crc_on_serialization: false,
-                crc16: Some(crc_from_raw_data(raw_data)?),
-            };
-            verify_crc16_ccitt_false_from_raw_to_pus_error(
-                raw_data,
-                pus_tc.crc16.expect("CRC16 invalid"),
-            )?;
-            Ok((pus_tc, total_len))
-        }
-
-        #[deprecated(since = "0.5.2", note = "use raw_bytes() instead")]
-        pub fn raw(&self) -> Option<&'raw_data [u8]> {
-            self.raw_bytes()
-        }
-
-        /// If [Self] was constructed [Self::from_bytes], this function will return the slice it was
-        /// constructed from. Otherwise, [None] will be returned.
-        pub fn raw_bytes(&self) -> Option<&'raw_data [u8]> {
-            self.raw_data
-        }
-    }
-
-    impl WritablePusPacket for PusTc<'_> {
-        fn len_written(&self) -> usize {
-            PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
-        }
-
-        /// Write the raw PUS byte representation to a provided buffer.
-        fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-            let mut curr_idx = 0;
-            let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
-            let total_size = self.len_written();
-            if total_size > slice.len() {
-                return Err(ByteConversionError::ToSliceTooSmall {
-                    found: slice.len(),
-                    expected: total_size,
-                }
-                .into());
-            }
-            self.sp_header.write_to_be_bytes(slice)?;
-            curr_idx += CCSDS_HEADER_LEN;
-            let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-            sec_header
-                .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-                .ok_or(ByteConversionError::ZeroCopyToError)?;
-
-            curr_idx += tc_header_len;
-            slice[curr_idx..curr_idx + self.app_data.len()].copy_from_slice(self.app_data);
-            curr_idx += self.app_data.len();
-            let crc16 = crc_procedure(
-                self.calc_crc_on_serialization,
-                &self.crc16,
-                0,
-                curr_idx,
-                slice,
-            )?;
-            slice[curr_idx..curr_idx + 2].copy_from_slice(crc16.to_be_bytes().as_slice());
-            curr_idx += 2;
-            Ok(curr_idx)
-        }
-    }
-
-    impl PartialEq for PusTc<'_> {
-        fn eq(&self, other: &Self) -> bool {
-            self.sp_header == other.sp_header
-                && self.sec_header == other.sec_header
-                && self.app_data == other.app_data
-        }
-    }
-
-    impl CcsdsPacket for PusTc<'_> {
-        ccsds_impl!();
-    }
-
-    impl PusPacket for PusTc<'_> {
-        delegate!(to self.sec_header {
-            fn pus_version(&self) -> PusVersion;
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-        });
-
-        fn user_data(&self) -> &[u8] {
-            self.app_data
-        }
-
-        fn crc16(&self) -> Option<u16> {
-            self.crc16
-        }
-    }
-
-    impl GenericPusTcSecondaryHeader for PusTc<'_> {
-        delegate!(to self.sec_header {
-            fn pus_version(&self) -> PusVersion;
-            fn service(&self) -> u8;
-            fn subservice(&self) -> u8;
-            fn source_id(&self) -> u16;
-            fn ack_flags(&self) -> u8;
-        });
-    }
-
-    impl IsPusTelecommand for PusTc<'_> {}
-}
-
 /// This class can be used to create PUS C telecommand packet. It is the primary data structure to
 /// generate the raw byte representation of a PUS telecommand.
 ///
@@ -568,7 +240,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     ///     and subservice type
     /// * `app_data` - Custom application data
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-    ///     field. If this is not set to true, [PusTc::update_ccsds_data_len] can be called to set
+    ///     field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
     pub fn new(
         sp_header: &mut SpHeader,
@@ -589,7 +261,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         pus_tc
     }
 
-    /// Simplified version of the [PusTcCreator::new] function which allows to only specify service
+    /// Simplified version of the [Self::new] function which allows to only specify service
     /// and subservice instead of the full PUS TC secondary header.
     pub fn new_simple(
         sph: &mut SpHeader,
@@ -633,7 +305,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     sp_header_impls!();
 
     /// Calculate the CCSDS space packet data length field and sets it
-    /// This is called automatically if the `set_ccsds_len` argument in the [PusTc::new] call was
+    /// This is called automatically if the `set_ccsds_len` argument in the [Self::new] call was
     /// used.
     /// If this was not done or the application data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
@@ -643,8 +315,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
             self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
     }
 
-    /// This function should be called before the TC packet is serialized if
-    /// [PusTc::calc_crc_on_serialization] is set to False. It will calculate and cache the CRC16.
+    /// This function calculates and returns the CRC16 for the current packet.
     pub fn calc_own_crc16(&self) -> u16 {
         let mut digest = CRC_CCITT_FALSE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
