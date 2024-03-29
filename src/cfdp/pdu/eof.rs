@@ -15,6 +15,7 @@ use super::{CfdpPdu, WritablePduPacket};
 /// For more information, refer to CFDP chapter 5.2.2.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct EofPdu {
     pdu_header: PduHeader,
     condition_code: ConditionCode,

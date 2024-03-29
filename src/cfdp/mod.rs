@@ -18,6 +18,7 @@ pub const CFDP_VERSION_2: u8 = 0b001;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PduType {
     FileDirective = 0,
@@ -26,6 +27,7 @@ pub enum PduType {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Direction {
     TowardsReceiver = 0,
@@ -34,6 +36,7 @@ pub enum Direction {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum TransmissionMode {
     Acknowledged = 0,
@@ -42,6 +45,7 @@ pub enum TransmissionMode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum CrcFlag {
     NoCrc = 0,
@@ -69,6 +73,7 @@ impl From<CrcFlag> for bool {
 /// Always 0 and ignored for File Directive PDUs (CCSDS 727.0-B-5 P.75)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SegmentMetadataFlag {
     NotPresent = 0,
@@ -78,6 +83,7 @@ pub enum SegmentMetadataFlag {
 /// Always 0 and ignored for File Directive PDUs (CCSDS 727.0-B-5 P.75)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum SegmentationControl {
     NoRecordBoundaryPreservation = 0,
@@ -86,6 +92,7 @@ pub enum SegmentationControl {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FaultHandlerCode {
     NoticeOfCancellation = 0b0001,
@@ -96,6 +103,7 @@ pub enum FaultHandlerCode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ConditionCode {
     /// This is not an error condition for which a faulty handler override can be specified
@@ -118,6 +126,7 @@ pub enum ConditionCode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum LargeFileFlag {
     /// 32 bit maximum file size and FSS size
@@ -129,6 +138,7 @@ pub enum LargeFileFlag {
 /// Transaction status for the ACK PDU field according to chapter 5.2.4 of the CFDP standard.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum TransactionStatus {
     /// Transaction is not currently active and the CFDP implementation does not retain a
@@ -146,6 +156,7 @@ pub enum TransactionStatus {
 /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ChecksumType {
     /// Modular legacy checksum
@@ -167,6 +178,7 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvLvError {
     DataTooLarge(usize),
     ByteConversion(ByteConversionError),

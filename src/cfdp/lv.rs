@@ -20,6 +20,7 @@ pub const MIN_LV_LEN: usize = 1;
 ///    this will be the lifetime of that data reference.
 #[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Lv<'data> {
     data: &'data [u8],
     // If the LV was generated from a raw bytestream, this will contain the start of the

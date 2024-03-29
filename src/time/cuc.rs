@@ -37,6 +37,7 @@ pub const MAX_CUC_LEN_SMALL_PREAMBLE: usize = 8;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum FractionalResolution {
     /// No fractional part, only second resolution
     Seconds = 0,
@@ -105,6 +106,7 @@ pub fn fractional_part_from_subsec_ns(res: FractionalResolution, ns: u64) -> Fra
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CucError {
     InvalidCounterWidth(u8),
     /// Invalid counter supplied.

@@ -74,6 +74,7 @@ pub enum PusServiceId {
 /// All PUS versions. Only PUS C is supported by this library.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
 pub enum PusVersion {
     EsaPus = 0,
@@ -150,6 +151,7 @@ pub enum PfcReal {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
     VersionNotSupported(PusVersion),
     ChecksumFailure(u16),

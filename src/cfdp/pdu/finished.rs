@@ -14,6 +14,7 @@ use super::{CfdpPdu, WritablePduPacket};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum DeliveryCode {
     Complete = 0,
@@ -22,6 +23,7 @@ pub enum DeliveryCode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FileStatus {
     DiscardDeliberately = 0b00,
@@ -34,6 +36,7 @@ pub enum FileStatus {
 ///
 /// For more information, refer to CFDP chapter 5.2.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct FinishedPduCreator<'fs_responses> {
     pdu_header: PduHeader,
     condition_code: ConditionCode,
@@ -219,6 +222,7 @@ impl<'buf> Iterator for FilestoreResponseIterator<'buf> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct FinishedPduReader<'buf> {
     pdu_header: PduHeader,
     condition_code: ConditionCode,
