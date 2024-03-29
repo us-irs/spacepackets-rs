@@ -34,6 +34,7 @@ to check all the API changes in the **Changed** chapter.
 - `UnixTimestamp` renamed to `UnixTime`
 - `UnixTime` seconds are now private and can be retrieved using the `secs` member method.
 - `UnixTime::new` renamed to `UnixTime::new_checked`.
+- `UnixTime::secs` renamed to `UnixTime::as_secs`.
 - `UnixTime` now has a nanosecond subsecond precision. The `new` constructor now expects
    nanoseconds as the second argument.
 - Added new `UnixTime::new_subsec_millis` and `UnixTime::new_subsec_millis_checked` API
@@ -46,6 +47,7 @@ to check all the API changes in the **Changed** chapter.
 - Error handling for ECSS and time module is more granular now, with a new
   `DateBeforeCcsdsEpochError` error and a `DateBeforeCcsdsEpoch` enum variant for both
   `CdsError` and `CucError`.
+- Time API `from_now*` API renamed to `now*`.
 
 # [v0.11.0-rc.0] 2024-03-04
 
