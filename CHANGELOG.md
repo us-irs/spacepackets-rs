@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- Renamed `PacketId` and `PacketSequenceCtrl` `new` method to `new_checked` and former
+  `new_const` method to `new`.
+- Renamed `tc`, `tm`, `tc_unseg` and `tm_unseg` variants for `PacketId` and `SpHeader`
+  to `new_for_tc_checked`, `new_for_tm_checked`, `new_for_unseg_tc_checked` and
+  `new_for_unseg_tm_checked`.
+
 # [v0.11.0-rc.1] 2024-04-03
 
 Major API changes for the time API. If you are using the time API, it is strongly recommended
