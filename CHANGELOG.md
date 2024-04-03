@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   to `new_for_tc_checked`, `new_for_tm_checked`, `new_for_unseg_tc_checked` and
   `new_for_unseg_tm_checked`.
 
+## Added
+
+- `SpHeader::new_from_apid` and `SpHeader::new_from_apid_checked` constructor.
+- `#[inline]` attribute for a lot of small functions.
+
 # [v0.11.0-rc.1] 2024-04-03
 
 Major API changes for the time API. If you are using the time API, it is strongly recommended

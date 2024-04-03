@@ -15,10 +15,12 @@ pub trait ToBeBytes {
 impl ToBeBytes for () {
     type ByteArray = [u8; 0];
 
+    #[inline]
     fn written_len(&self) -> usize {
         0
     }
 
+    #[inline]
     fn to_be_bytes(&self) -> Self::ByteArray {
         []
     }
@@ -27,9 +29,12 @@ impl ToBeBytes for () {
 impl ToBeBytes for u8 {
     type ByteArray = [u8; 1];
 
+    #[inline]
     fn written_len(&self) -> usize {
         1
     }
+
+    #[inline]
     fn to_be_bytes(&self) -> Self::ByteArray {
         u8::to_be_bytes(*self)
     }
@@ -38,9 +43,12 @@ impl ToBeBytes for u8 {
 impl ToBeBytes for u16 {
     type ByteArray = [u8; 2];
 
+    #[inline]
     fn written_len(&self) -> usize {
         2
     }
+
+    #[inline]
     fn to_be_bytes(&self) -> Self::ByteArray {
         u16::to_be_bytes(*self)
     }
@@ -49,9 +57,12 @@ impl ToBeBytes for u16 {
 impl ToBeBytes for u32 {
     type ByteArray = [u8; 4];
 
+    #[inline]
     fn written_len(&self) -> usize {
         4
     }
+
+    #[inline]
     fn to_be_bytes(&self) -> Self::ByteArray {
         u32::to_be_bytes(*self)
     }
@@ -60,9 +71,12 @@ impl ToBeBytes for u32 {
 impl ToBeBytes for u64 {
     type ByteArray = [u8; 8];
 
+    #[inline]
     fn written_len(&self) -> usize {
         8
     }
+
+    #[inline]
     fn to_be_bytes(&self) -> Self::ByteArray {
         u64::to_be_bytes(*self)
     }
@@ -104,6 +118,7 @@ pub enum UnsignedByteFieldError {
 }
 
 impl From<ByteConversionError> for UnsignedByteFieldError {
+    #[inline]
     fn from(value: ByteConversionError) -> Self {
         Self::ByteConversionError(value)
     }
@@ -138,14 +153,17 @@ pub struct UnsignedByteField {
 }
 
 impl UnsignedByteField {
+    #[inline]
     pub const fn new(width: usize, value: u64) -> Self {
         Self { width, value }
     }
 
+    #[inline]
     pub const fn value_const(&self) -> u64 {
         self.value
     }
 
+    #[inline]
     pub fn new_from_be_bytes(width: usize, buf: &[u8]) -> Result<Self, UnsignedByteFieldError> {
         if width > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall {
@@ -178,10 +196,12 @@ impl UnsignedByteField {
 }
 
 impl UnsignedEnum for UnsignedByteField {
+    #[inline]
     fn size(&self) -> usize {
         self.width
     }
 
+    #[inline]
     fn value(&self) -> u64 {
         self.value_const()
     }
@@ -237,6 +257,7 @@ impl<TYPE: Copy + Into<u64>> GenericUnsignedByteField<TYPE> {
 }
 
 impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericUnsignedByteField<TYPE> {
+    #[inline]
     fn size(&self) -> usize {
         self.value.written_len()
     }
@@ -252,6 +273,7 @@ impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericUnsignedByteFie
         Ok(self.value.written_len())
     }
 
+    #[inline]
     fn value(&self) -> u64 {
         self.value_typed().into()
     }
@@ -277,6 +299,7 @@ impl From<UnsignedByteFieldU8> for UnsignedByteField {
 impl TryFrom<UnsignedByteField> for UnsignedByteFieldU8 {
     type Error = UnsignedByteFieldError;
 
+    #[inline]
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 1 {
             return Err(UnsignedByteFieldError::InvalidWidth {
@@ -289,6 +312,7 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU8 {
 }
 
 impl From<UnsignedByteFieldU16> for UnsignedByteField {
+    #[inline]
     fn from(value: UnsignedByteFieldU16) -> Self {
         Self::new(2, value.value as u64)
     }
@@ -297,6 +321,7 @@ impl From<UnsignedByteFieldU16> for UnsignedByteField {
 impl TryFrom<UnsignedByteField> for UnsignedByteFieldU16 {
     type Error = UnsignedByteFieldError;
 
+    #[inline]
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 2 {
             return Err(UnsignedByteFieldError::InvalidWidth {
@@ -309,6 +334,7 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU16 {
 }
 
 impl From<UnsignedByteFieldU32> for UnsignedByteField {
+    #[inline]
     fn from(value: UnsignedByteFieldU32) -> Self {
         Self::new(4, value.value as u64)
     }
@@ -317,6 +343,7 @@ impl From<UnsignedByteFieldU32> for UnsignedByteField {
 impl TryFrom<UnsignedByteField> for UnsignedByteFieldU32 {
     type Error = UnsignedByteFieldError;
 
+    #[inline]
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 4 {
             return Err(UnsignedByteFieldError::InvalidWidth {
@@ -329,6 +356,7 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU32 {
 }
 
 impl From<UnsignedByteFieldU64> for UnsignedByteField {
+    #[inline]
     fn from(value: UnsignedByteFieldU64) -> Self {
         Self::new(8, value.value)
     }
@@ -337,6 +365,7 @@ impl From<UnsignedByteFieldU64> for UnsignedByteField {
 impl TryFrom<UnsignedByteField> for UnsignedByteFieldU64 {
     type Error = UnsignedByteFieldError;
 
+    #[inline]
     fn try_from(value: UnsignedByteField) -> Result<Self, Self::Error> {
         if value.width != 8 {
             return Err(UnsignedByteFieldError::InvalidWidth {

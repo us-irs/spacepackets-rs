@@ -54,6 +54,7 @@ pub enum SchedStatus {
 }
 
 impl From<bool> for SchedStatus {
+    #[inline]
     fn from(value: bool) -> Self {
         if value {
             SchedStatus::Enabled

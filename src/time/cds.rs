@@ -145,6 +145,7 @@ pub fn length_of_day_segment_from_pfield(pfield: u8) -> LengthOfDaySegment {
     LengthOfDaySegment::Short16Bits
 }
 
+#[inline]
 pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
     match pfield & 0b11 {
         0b01 => SubmillisPrecision::Microseconds,
@@ -272,24 +273,29 @@ impl ConversionFromUnix {
 }
 
 impl CdsCommon for ConversionFromUnix {
+    #[inline]
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submilis_prec
     }
 
+    #[inline]
     fn ms_of_day(&self) -> u32 {
         self.ms_of_day
     }
 
+    #[inline]
     fn ccsds_days_as_u32(&self) -> u32 {
         self.ccsds_days
     }
 
+    #[inline]
     fn submillis(&self) -> u32 {
         self.submillis
     }
 }
 
 impl CdsConverter for ConversionFromUnix {
+    #[inline]
     fn unix_days_seconds(&self) -> i64 {
         self.unix_days_seconds
     }
@@ -302,24 +308,31 @@ struct ConversionFromChronoDatetime {
 }
 
 impl CdsCommon for ConversionFromChronoDatetime {
+    #[inline]
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
 
     delegate! {
         to self.unix_conversion {
+            #[inline]
             fn ms_of_day(&self) -> u32;
+            #[inline]
             fn ccsds_days_as_u32(&self) -> u32;
         }
     }
 
+    #[inline]
     fn submillis(&self) -> u32 {
         self.submillis
     }
 }
 
 impl CdsConverter for ConversionFromChronoDatetime {
-    delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
+    delegate! {to self.unix_conversion {
+        #[inline]
+        fn unix_days_seconds(&self) -> i64;
+    }}
 }
 
 #[inline]

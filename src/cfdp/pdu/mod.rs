@@ -150,12 +150,14 @@ impl Error for PduError {
 }
 
 impl From<ByteConversionError> for PduError {
+    #[inline]
     fn from(value: ByteConversionError) -> Self {
         Self::ByteConversion(value)
     }
 }
 
 impl From<TlvLvError> for PduError {
+    #[inline]
     fn from(e: TlvLvError) -> Self {
         Self::TlvLvError(e)
     }
@@ -179,33 +181,42 @@ pub trait WritablePduPacket {
 pub trait CfdpPdu {
     fn pdu_header(&self) -> &PduHeader;
 
+    #[inline]
     fn source_id(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().source_entity_id
     }
 
+    #[inline]
     fn dest_id(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().dest_entity_id
     }
 
+    #[inline]
     fn transaction_seq_num(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().transaction_seq_num
     }
 
+    #[inline]
     fn transmission_mode(&self) -> TransmissionMode {
         self.pdu_header().common_pdu_conf().trans_mode
     }
+
+    #[inline]
     fn direction(&self) -> Direction {
         self.pdu_header().common_pdu_conf().direction
     }
 
+    #[inline]
     fn crc_flag(&self) -> CrcFlag {
         self.pdu_header().common_pdu_conf().crc_flag
     }
 
+    #[inline]
     fn file_flag(&self) -> LargeFileFlag {
         self.pdu_header().common_pdu_conf().file_flag
     }
 
+    #[inline]
     fn pdu_type(&self) -> PduType {
         self.pdu_header().pdu_type()
     }
@@ -234,6 +245,7 @@ pub struct CommonPduConfig {
 
 // TODO: Builder pattern might be applicable here..
 impl CommonPduConfig {
+    #[inline]
     pub fn new(
         source_id: impl Into<UnsignedByteField>,
         dest_id: impl Into<UnsignedByteField>,
@@ -265,6 +277,7 @@ impl CommonPduConfig {
         })
     }
 
+    #[inline]
     pub fn new_with_byte_fields(
         source_id: impl Into<UnsignedByteField>,
         dest_id: impl Into<UnsignedByteField>,
@@ -281,10 +294,12 @@ impl CommonPduConfig {
         )
     }
 
+    #[inline]
     pub fn source_id(&self) -> UnsignedByteField {
         self.source_entity_id
     }
 
+    #[inline]
     fn source_dest_id_check(
         source_id: impl Into<UnsignedByteField>,
         dest_id: impl Into<UnsignedByteField>,
@@ -307,6 +322,7 @@ impl CommonPduConfig {
         Ok((source_id, dest_id))
     }
 
+    #[inline]
     pub fn set_source_and_dest_id(
         &mut self,
         source_id: impl Into<UnsignedByteField>,
@@ -318,6 +334,7 @@ impl CommonPduConfig {
         Ok(())
     }
 
+    #[inline]
     pub fn dest_id(&self) -> UnsignedByteField {
         self.dest_entity_id
     }
@@ -326,6 +343,7 @@ impl CommonPduConfig {
 impl Default for CommonPduConfig {
     /// The defaults for the source ID, destination ID and the transaction sequence number is the
     /// [UnsignedByteFieldU8] with an intitial value of 0
+    #[inline]
     fn default() -> Self {
         // The new function can not fail for these input parameters.
         Self::new(
@@ -342,6 +360,7 @@ impl Default for CommonPduConfig {
 }
 
 impl PartialEq for CommonPduConfig {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.source_entity_id.value() == other.source_entity_id.value()
             && self.dest_entity_id.value() == other.dest_entity_id.value()
@@ -370,6 +389,7 @@ pub struct PduHeader {
 }
 
 impl PduHeader {
+    #[inline]
     pub fn new_for_file_data(
         pdu_conf: CommonPduConfig,
         pdu_datafield_len: u16,
@@ -385,6 +405,7 @@ impl PduHeader {
         )
     }
 
+    #[inline]
     pub fn new_for_file_data_default(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         Self::new_generic(
             PduType::FileData,
@@ -394,6 +415,7 @@ impl PduHeader {
             SegmentationControl::NoRecordBoundaryPreservation,
         )
     }
+    #[inline]
     pub fn new_no_file_data(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         Self::new_generic(
             PduType::FileDirective,
@@ -404,6 +426,7 @@ impl PduHeader {
         )
     }
 
+    #[inline]
     pub fn new_generic(
         pdu_type: PduType,
         pdu_conf: CommonPduConfig,
@@ -421,6 +444,7 @@ impl PduHeader {
     }
 
     /// Returns only the length of the PDU header when written to a raw buffer.
+    #[inline]
     pub fn header_len(&self) -> usize {
         FIXED_HEADER_LEN
             + self.pdu_conf.source_entity_id.size()
@@ -428,12 +452,14 @@ impl PduHeader {
             + self.pdu_conf.dest_entity_id.size()
     }
 
+    #[inline]
     pub fn pdu_datafield_len(&self) -> usize {
         self.pdu_datafield_len.into()
     }
 
     /// Returns the full length of the PDU when written to a raw buffer, which is the header length
     /// plus the PDU datafield length.
+    #[inline]
     pub fn pdu_len(&self) -> usize {
         self.header_len() + self.pdu_datafield_len as usize
     }
@@ -606,10 +632,13 @@ impl PduHeader {
             current_idx,
         ))
     }
+
+    #[inline]
     pub fn pdu_type(&self) -> PduType {
         self.pdu_type
     }
 
+    #[inline]
     pub fn common_pdu_conf(&self) -> &CommonPduConfig {
         &self.pdu_conf
     }
@@ -617,6 +646,8 @@ impl PduHeader {
     pub fn seg_metadata_flag(&self) -> SegmentMetadataFlag {
         self.seg_metadata_flag
     }
+
+    #[inline]
     pub fn seg_ctrl(&self) -> SegmentationControl {
         self.seg_ctrl
     }

@@ -62,6 +62,7 @@ pub(crate) fn generic_len_check_deserialization(
 }
 
 impl<'data> Lv<'data> {
+    #[inline]
     pub fn new(data: &[u8]) -> Result<Lv, TlvLvError> {
         if data.len() > u8::MAX as usize {
             return Err(TlvLvError::DataTooLarge(data.len()));
@@ -73,6 +74,7 @@ impl<'data> Lv<'data> {
     }
 
     /// Creates a LV with an empty value field.
+    #[inline]
     pub fn new_empty() -> Lv<'data> {
         Lv {
             data: &[],
@@ -82,6 +84,7 @@ impl<'data> Lv<'data> {
 
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
+    #[inline]
     pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvError> {
         Self::new(str_slice.as_bytes())
     }
@@ -89,37 +92,44 @@ impl<'data> Lv<'data> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[cfg(feature = "std")]
+    #[inline]
     pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvError> {
         Self::new(string.as_bytes())
     }
 
     /// Returns the length of the value part, not including the length byte.
+    #[inline]
     pub fn len_value(&self) -> usize {
         self.data.len()
     }
 
     /// Returns the full raw length, including the length byte.
+    #[inline]
     pub fn len_full(&self) -> usize {
         self.len_value() + 1
     }
 
     /// Checks whether the value field is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.len() == 0
     }
 
+    #[inline]
     pub fn value(&self) -> &[u8] {
         self.data
     }
 
     /// If the LV was generated from a raw bytestream using [Self::from_bytes], the raw start
     /// of the LV can be retrieved with this method.
+    #[inline]
     pub fn raw_data(&self) -> Option<&[u8]> {
         self.raw_data
     }
 
     /// Convenience function to extract the value as a [str]. This is useful if the LV is
     /// known to contain a [str], for example being a file name.
+    #[inline]
     pub fn value_as_str(&self) -> Option<Result<&'data str, Utf8Error>> {
         if self.is_empty() {
             return None;
@@ -135,6 +145,7 @@ impl<'data> Lv<'data> {
     }
 
     /// Reads a LV  from a raw buffer.
+    #[inline]
     pub fn from_bytes(buf: &'data [u8]) -> Result<Lv<'data>, ByteConversionError> {
         generic_len_check_deserialization(buf, MIN_LV_LEN)?;
         Self::from_be_bytes_no_len_check(buf)
@@ -151,6 +162,7 @@ impl<'data> Lv<'data> {
         MIN_LV_LEN + self.data.len()
     }
 
+    #[inline]
     pub(crate) fn from_be_bytes_no_len_check(
         buf: &'data [u8],
     ) -> Result<Lv<'data>, ByteConversionError> {

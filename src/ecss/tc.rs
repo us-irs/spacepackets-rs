@@ -111,22 +111,27 @@ pub mod zc {
     }
 
     impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
+        #[inline]
         fn pus_version(&self) -> PusVersion {
             PusVersion::try_from(self.version_ack >> 4 & 0b1111).unwrap_or(PusVersion::Invalid)
         }
 
+        #[inline]
         fn ack_flags(&self) -> u8 {
             self.version_ack & 0b1111
         }
 
+        #[inline]
         fn service(&self) -> u8 {
             self.service
         }
 
+        #[inline]
         fn subservice(&self) -> u8 {
             self.subservice
         }
 
+        #[inline]
         fn source_id(&self) -> u16 {
             self.source_id.get()
         }
@@ -155,22 +160,27 @@ pub struct PusTcSecondaryHeader {
 }
 
 impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
+    #[inline]
     fn pus_version(&self) -> PusVersion {
         self.version
     }
 
+    #[inline]
     fn ack_flags(&self) -> u8 {
         self.ack
     }
 
+    #[inline]
     fn service(&self) -> u8 {
         self.service
     }
 
+    #[inline]
     fn subservice(&self) -> u8 {
         self.subservice
     }
 
+    #[inline]
     fn source_id(&self) -> u16 {
         self.source_id
     }
@@ -191,6 +201,7 @@ impl TryFrom<zc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
 }
 
 impl PusTcSecondaryHeader {
+    #[inline]
     pub fn new_simple(service: u8, subservice: u8) -> Self {
         PusTcSecondaryHeader {
             service,
@@ -201,6 +212,7 @@ impl PusTcSecondaryHeader {
         }
     }
 
+    #[inline]
     pub fn new(service: u8, subservice: u8, ack: u8, source_id: u16) -> Self {
         PusTcSecondaryHeader {
             service,
@@ -242,6 +254,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
     ///     field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
+    #[inline]
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
@@ -263,6 +276,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
 
     /// Simplified version of the [Self::new] function which allows to only specify service
     /// and subservice instead of the full PUS TC secondary header.
+    #[inline]
     pub fn new_simple(
         sph: &mut SpHeader,
         service: u8,
@@ -278,6 +292,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         )
     }
 
+    #[inline]
     pub fn new_no_app_data(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
@@ -286,10 +301,12 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
 
+    #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 
+    #[inline]
     pub fn set_ack_field(&mut self, ack: u8) -> bool {
         if ack > 0b1111 {
             return false;
@@ -298,6 +315,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         true
     }
 
+    #[inline]
     pub fn set_source_id(&mut self, source_id: u16) {
         self.sec_header.source_id = source_id;
     }
@@ -310,6 +328,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     /// If this was not done or the application data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
     /// is set correctly.
+    #[inline]
     pub fn update_ccsds_data_len(&mut self) {
         self.sp_header.data_len =
             self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
@@ -345,6 +364,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
 }
 
 impl WritablePusPacket for PusTcCreator<'_> {
+    #[inline]
     fn len_written(&self) -> usize {
         PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
     }
@@ -385,15 +405,20 @@ impl CcsdsPacket for PusTcCreator<'_> {
 
 impl PusPacket for PusTcCreator<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
     });
 
+    #[inline]
     fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
+    #[inline]
     fn crc16(&self) -> Option<u16> {
         Some(self.calc_own_crc16())
     }
@@ -401,10 +426,15 @@ impl PusPacket for PusTcCreator<'_> {
 
 impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
+        #[inline]
         fn source_id(&self) -> u16;
+        #[inline]
         fn ack_flags(&self) -> u8;
     });
 }
@@ -482,24 +512,29 @@ impl<'raw_data> PusTcReader<'raw_data> {
         Ok((pus_tc, total_len))
     }
 
+    #[inline]
     pub fn app_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    #[inline]
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
 
+    #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.total_len()
     }
 
+    #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 }
 
 impl PartialEq for PusTcReader<'_> {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.raw_data == other.raw_data
     }
@@ -511,15 +546,20 @@ impl CcsdsPacket for PusTcReader<'_> {
 
 impl PusPacket for PusTcReader<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
     });
 
+    #[inline]
     fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
+    #[inline]
     fn crc16(&self) -> Option<u16> {
         Some(self.crc16)
     }
@@ -527,10 +567,15 @@ impl PusPacket for PusTcReader<'_> {
 
 impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
+        #[inline]
         fn source_id(&self) -> u16;
+        #[inline]
         fn ack_flags(&self) -> u8;
     });
 }

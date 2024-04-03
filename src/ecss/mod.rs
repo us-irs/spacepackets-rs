@@ -262,9 +262,13 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
 macro_rules! ccsds_impl {
     () => {
         delegate!(to self.sp_header {
+            #[inline]
             fn ccsds_version(&self) -> u8;
+            #[inline]
             fn packet_id(&self) -> crate::PacketId;
+            #[inline]
             fn psc(&self) -> crate::PacketSequenceCtrl;
+            #[inline]
             fn data_len(&self) -> u16;
         });
     }
@@ -273,8 +277,11 @@ macro_rules! ccsds_impl {
 macro_rules! sp_header_impls {
     () => {
         delegate!(to self.sp_header {
+            #[inline]
             pub fn set_apid(&mut self, apid: u16) -> bool;
+            #[inline]
             pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+            #[inline]
             pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
         });
     }
