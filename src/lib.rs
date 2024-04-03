@@ -40,7 +40,7 @@
 //!  - [`chrono`](https://crates.io/crates/chrono): Add basic support for the `chrono` time library.
 //!  - [`timelib`](https://crates.io/crates/time): Add basic support for the `time` time library.
 //!  - [`defmt`](https://defmt.ferrous-systems.com/): Add support for the `defmt` by adding the
-//!  - [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on many types.
+//!    [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on many types.
 //!
 //! ## Module
 //!
