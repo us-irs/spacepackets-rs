@@ -46,7 +46,7 @@ deserializing them with an appropriate `serde` provider like
  - [`chrono`](https://crates.io/crates/chrono): Add basic support for the `chrono` time library.
  - [`timelib`](https://crates.io/crates/time): Add basic support for the `time` time library.
  - [`defmt`](https://defmt.ferrous-systems.com/): Add support for the `defmt` by adding the
-   `defmt::Format` derive on many objects.
+   [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on many types.
 
 # Examples
 
