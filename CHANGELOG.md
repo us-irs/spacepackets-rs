@@ -28,6 +28,10 @@ to check all the API changes in the **Changed** chapter.
 
 ## Changed
 
+- `PusTcCreator::new_simple` now expects a valid slice for the source data instead of an optional
+  slice. For telecommands without application data, `&[]` can be passed.
+- `PusTmSecondaryHeader` constructors now expects a valid slice for the time stamp instead of an
+  optional slice.
 - Renamed `CcsdsTimeProvider::date_time` to `CcsdsTimeProvider::chrono_date_time`
 - Renamed `CcsdsTimeCodes` to `CcsdsTimeCode`
 - Renamed `cds::TimeProvider` to `cds::CdsTime`

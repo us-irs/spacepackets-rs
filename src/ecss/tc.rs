@@ -267,13 +267,13 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         sph: &mut SpHeader,
         service: u8,
         subservice: u8,
-        app_data: Option<&'raw_data [u8]>,
+        app_data: &'raw_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
         Self::new(
             sph,
             PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
-            app_data.unwrap_or(&[]),
+            app_data,
             set_ccsds_len,
         )
     }
@@ -575,12 +575,12 @@ mod tests {
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(&mut sph, 17, 1, None, true)
+        PusTcCreator::new_simple(&mut sph, 17, 1, &[], true)
     }
 
     fn base_ping_tc_simple_ctor_with_app_data(app_data: &'static [u8]) -> PusTcCreator<'static> {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(&mut sph, 17, 1, Some(app_data), true)
+        PusTcCreator::new_simple(&mut sph, 17, 1, app_data, true)
     }
 
     #[test]
@@ -637,7 +637,7 @@ mod tests {
     #[test]
     fn test_update_func() {
         let mut sph = SpHeader::tc_unseg(0x02, 0x34, 0).unwrap();
-        let mut tc = PusTcCreator::new_simple(&mut sph, 17, 1, None, false);
+        let mut tc = PusTcCreator::new_simple(&mut sph, 17, 1, &[], false);
         assert_eq!(tc.data_len(), 0);
         tc.update_ccsds_data_len();
         assert_eq!(tc.data_len(), 6);
