@@ -788,18 +788,18 @@ mod tests {
     const DUMMY_DATA: &[u8] = &[0, 1, 2];
 
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTmCreator {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
         PusTmCreator::new_no_source_data(&mut sph, tm_header, true)
     }
     fn ping_reply_with_data(timestamp: &[u8]) -> PusTmCreator {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
         PusTmCreator::new(&mut sph, tm_header, DUMMY_DATA, true)
     }
 
     fn base_hk_reply<'a, 'b>(timestamp: &'a [u8], src_data: &'b [u8]) -> PusTmCreator<'a, 'b> {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
         PusTmCreator::new(&mut sph, tc_header, src_data, true)
     }
@@ -816,7 +816,7 @@ mod tests {
     }
     #[test]
     fn test_basic_simple_api() {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
@@ -917,7 +917,7 @@ mod tests {
 
     #[test]
     fn test_manual_field_update() {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_timestamp());
         let mut tm = PusTmCreator::new_no_source_data(&mut sph, tc_header, false);
         tm.calc_crc_on_serialization = false;
@@ -1207,7 +1207,7 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization_creator_serde() {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
@@ -1222,7 +1222,7 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization_reader_serde() {
-        let mut sph = SpHeader::tm_unseg(0x123, 0x234, 0).unwrap();
+        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =

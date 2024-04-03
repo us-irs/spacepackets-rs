@@ -52,7 +52,7 @@
 //!
 //! ```rust
 //! use spacepackets::SpHeader;
-//! let sp_header = SpHeader::tc_unseg(0x42, 12, 1).expect("Error creating CCSDS TC header");
+//! let sp_header = SpHeader::new_for_unseg_tc_checked(0x42, 12, 1).expect("error creating CCSDS TC header");
 //! println!("{:?}", sp_header);
 //! let mut ccsds_buf: [u8; 32] = [0; 32];
 //! sp_header.write_to_be_bytes(&mut ccsds_buf).expect("Writing CCSDS TC header failed");
@@ -242,23 +242,29 @@ impl Default for PacketId {
 }
 
 impl PacketId {
-    pub const fn const_tc(sec_header: bool, apid: u16) -> Self {
-        Self::const_new(PacketType::Tc, sec_header, apid)
-    }
-
-    pub const fn const_tm(sec_header: bool, apid: u16) -> Self {
-        Self::const_new(PacketType::Tm, sec_header, apid)
-    }
-
-    pub fn tc(sec_header: bool, apid: u16) -> Option<Self> {
+    /// This constructor will panic if the passed APID exceeds [MAX_APID].
+    /// Use the checked constructor variants to avoid panics.
+    pub const fn new_for_tc(sec_header: bool, apid: u16) -> Self {
         Self::new(PacketType::Tc, sec_header, apid)
     }
 
-    pub fn tm(sec_header: bool, apid: u16) -> Option<Self> {
+    /// This constructor will panic if the passed APID exceeds [MAX_APID].
+    /// Use the checked constructor variants to avoid panics.
+    pub const fn new_for_tm(sec_header: bool, apid: u16) -> Self {
         Self::new(PacketType::Tm, sec_header, apid)
     }
 
-    pub const fn const_new(ptype: PacketType, sec_header: bool, apid: u16) -> Self {
+    pub fn new_for_tc_checked(sec_header: bool, apid: u16) -> Option<Self> {
+        Self::new_checked(PacketType::Tc, sec_header, apid)
+    }
+
+    pub fn new_for_tm_checked(sec_header: bool, apid: u16) -> Option<Self> {
+        Self::new_checked(PacketType::Tm, sec_header, apid)
+    }
+
+    /// This constructor will panic if the passed APID exceeds [MAX_APID].
+    /// Use the checked variants to avoid panics.
+    pub const fn new(ptype: PacketType, sec_header: bool, apid: u16) -> Self {
         if apid > MAX_APID {
             panic!("APID too large");
         }
@@ -269,11 +275,11 @@ impl PacketId {
         }
     }
 
-    pub fn new(ptype: PacketType, sec_header_flag: bool, apid: u16) -> Option<PacketId> {
+    pub fn new_checked(ptype: PacketType, sec_header_flag: bool, apid: u16) -> Option<PacketId> {
         if apid > MAX_APID {
             return None;
         }
-        Some(PacketId::const_new(ptype, sec_header_flag, apid))
+        Some(PacketId::new(ptype, sec_header_flag, apid))
     }
 
     /// Set a new Application Process ID (APID). If the passed number is invalid, the APID will
@@ -318,9 +324,9 @@ pub struct PacketSequenceCtrl {
 }
 
 impl PacketSequenceCtrl {
-    /// const variant of [PacketSequenceCtrl::new], but panics if the sequence count exceeds
-    /// [MAX_SEQ_COUNT].
-    pub const fn const_new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
+    /// This constructor panics if the sequence count exceeds [MAX_SEQ_COUNT].
+    /// Use [Self::new_checked] to avoid panics.
+    pub const fn new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
         if seq_count > MAX_SEQ_COUNT {
             panic!("Sequence count too large");
         }
@@ -331,11 +337,11 @@ impl PacketSequenceCtrl {
     }
 
     /// Returns [None] if the passed sequence count exceeds [MAX_SEQ_COUNT].
-    pub fn new(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
+    pub fn new_checked(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
         if seq_count > MAX_SEQ_COUNT {
             return None;
         }
-        Some(PacketSequenceCtrl::const_new(seq_flags, seq_count))
+        Some(PacketSequenceCtrl::new(seq_flags, seq_count))
     }
     pub fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count
@@ -506,9 +512,11 @@ impl SpHeader {
         }
     }
 
-    /// const variant of the [SpHeader::new_fron_single_fields] function. Panics if the passed
-    /// APID exceeds [MAX_APID] or the passed packet sequence count exceeds [MAX_SEQ_COUNT].
-    const fn const_new_from_single_fields(
+    /// This constructor panics if the passed APID exceeds [MAX_APID] or the passed packet sequence
+    /// count exceeds [MAX_SEQ_COUNT].
+    ///
+    /// The checked constructor variants can be used to avoid panics.
+    const fn new_from_fields(
         ptype: PacketType,
         sec_header: bool,
         apid: u16,
@@ -523,17 +531,19 @@ impl SpHeader {
             panic!("APID is too large");
         }
         Self {
-            psc: PacketSequenceCtrl::const_new(seq_flags, seq_count),
-            packet_id: PacketId::const_new(ptype, sec_header, apid),
+            psc: PacketSequenceCtrl::new(seq_flags, seq_count),
+            packet_id: PacketId::new(ptype, sec_header, apid),
             data_len,
             version: 0,
         }
     }
 
     /// Create a new Space Packet Header instance which can be used to create generic
-    /// Space Packets. This will return [None] if the APID or sequence count argument
+    /// Space Packets.
+    ///
+    /// This will return [None] if the APID or sequence count argument
     /// exceed [MAX_APID] or [MAX_SEQ_COUNT] respectively. The version field is set to 0b000.
-    pub fn new_from_single_fields(
+    pub fn new_from_fields_checked(
         ptype: PacketType,
         sec_header: bool,
         apid: u16,
@@ -544,43 +554,90 @@ impl SpHeader {
         if seq_count > MAX_SEQ_COUNT || apid > MAX_APID {
             return None;
         }
-        Some(SpHeader::const_new_from_single_fields(
+        Some(SpHeader::new_from_fields(
             ptype, sec_header, apid, seq_flags, seq_count, data_len,
         ))
     }
 
     /// Helper function for telemetry space packet headers. The packet type field will be
     /// set accordingly. The secondary header flag field is set to false.
-    pub fn tm(apid: u16, seq_flags: SequenceFlags, seq_count: u16, data_len: u16) -> Option<Self> {
-        Self::new_from_single_fields(PacketType::Tm, false, apid, seq_flags, seq_count, data_len)
+    pub fn new_for_tm_checked(
+        apid: u16,
+        seq_flags: SequenceFlags,
+        seq_count: u16,
+        data_len: u16,
+    ) -> Option<Self> {
+        Self::new_from_fields_checked(PacketType::Tm, false, apid, seq_flags, seq_count, data_len)
     }
 
     /// Helper function for telemetry space packet headers. The packet type field will be
     /// set accordingly. The secondary header flag field is set to false.
-    pub fn tc(apid: u16, seq_flags: SequenceFlags, seq_count: u16, data_len: u16) -> Option<Self> {
-        Self::new_from_single_fields(PacketType::Tc, false, apid, seq_flags, seq_count, data_len)
+    pub fn new_for_tc_checked(
+        apid: u16,
+        seq_flags: SequenceFlags,
+        seq_count: u16,
+        data_len: u16,
+    ) -> Option<Self> {
+        Self::new_from_fields_checked(PacketType::Tc, false, apid, seq_flags, seq_count, data_len)
     }
 
-    /// Variant of [SpHeader::tm] which sets the sequence flag field to [SequenceFlags::Unsegmented]
-    pub fn tm_unseg(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
-        Self::tm(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    /// This is an unchecked constructor which can panic on invalid input.
+    pub const fn new_for_tm(
+        apid: u16,
+        seq_flags: SequenceFlags,
+        seq_count: u16,
+        data_len: u16,
+    ) -> Self {
+        Self::new_from_fields(PacketType::Tm, false, apid, seq_flags, seq_count, data_len)
     }
 
-    /// Variant of [SpHeader::tc] which sets the sequence flag field to [SequenceFlags::Unsegmented]
-    pub fn tc_unseg(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
-        Self::tc(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    /// This is an unchecked constructor which can panic on invalid input.
+    pub const fn new_for_tc(
+        apid: u16,
+        seq_flags: SequenceFlags,
+        seq_count: u16,
+        data_len: u16,
+    ) -> Self {
+        Self::new_from_fields(PacketType::Tc, false, apid, seq_flags, seq_count, data_len)
     }
 
-    //noinspection RsTraitImplementation
-    delegate!(to self.packet_id {
-        /// Returns [false] and fails if the APID exceeds [MAX_APID]
-        pub fn set_apid(&mut self, apid: u16) -> bool;
-    });
+    /// Variant of [SpHeader::new_for_tm_checked] which sets the sequence flag field to [SequenceFlags::Unsegmented]
+    pub fn new_for_unseg_tm_checked(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+        Self::new_for_tm_checked(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    }
 
-    delegate!(to self.psc {
-        /// Returns [false] and fails if the sequence count exceeds [MAX_SEQ_COUNT]
-        pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
-    });
+    /// Variant of [SpHeader::new_for_tc_checked] which sets the sequence flag field to [SequenceFlags::Unsegmented]
+    pub fn new_for_unseg_tc_checked(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
+        Self::new_for_tc_checked(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    }
+
+    /// Variant of [SpHeader::new_for_tc] which sets the sequence flag field to [SequenceFlags::Unsegmented].
+    ///
+    /// This is an unchecked constructor which can panic on invalid input.
+    pub const fn new_for_unseg_tc(apid: u16, seq_count: u16, data_len: u16) -> Self {
+        Self::new_for_tc(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    }
+
+    /// Variant of [SpHeader::new_for_tm] which sets the sequence flag field to [SequenceFlags::Unsegmented].
+    ///
+    /// This is an unchecked constructor which can panic on invalid input.
+    pub const fn new_for_unseg_tm(apid: u16, seq_count: u16, data_len: u16) -> Self {
+        Self::new_for_tm(apid, SequenceFlags::Unsegmented, seq_count, data_len)
+    }
+
+    delegate! {
+        to self.packet_id {
+            /// Returns [false] and fails if the APID exceeds [MAX_APID]
+            pub fn set_apid(&mut self, apid: u16) -> bool;
+        }
+    }
+
+    delegate! {
+        to self.psc {
+            /// Returns [false] and fails if the sequence count exceeds [MAX_SEQ_COUNT]
+            pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+        }
+    }
 
     pub fn set_seq_flags(&mut self, seq_flags: SequenceFlags) {
         self.psc.seq_flags = seq_flags;
@@ -778,12 +835,12 @@ pub(crate) mod tests {
     use serde::{de::DeserializeOwned, Serialize};
 
     const CONST_SP: SpHeader = SpHeader::new(
-        PacketId::const_tc(true, 0x36),
-        PacketSequenceCtrl::const_new(SequenceFlags::ContinuationSegment, 0x88),
+        PacketId::new_for_tc(true, 0x36),
+        PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 0x88),
         0x90,
     );
 
-    const PACKET_ID_TM: PacketId = PacketId::const_tm(true, 0x22);
+    const PACKET_ID_TM: PacketId = PacketId::new_for_tm(true, 0x22);
 
     #[cfg(feature = "serde")]
     pub(crate) fn generic_serde_test<T: Serialize + DeserializeOwned + PartialEq + Debug>(
@@ -795,11 +852,12 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn verify_const_packet_id() {
         assert_eq!(PACKET_ID_TM.apid(), 0x22);
         assert!(PACKET_ID_TM.sec_header_flag);
         assert_eq!(PACKET_ID_TM.ptype, PacketType::Tm);
-        let const_tc_id = PacketId::const_tc(true, 0x23);
+        let const_tc_id = PacketId::new_for_tc(true, 0x23);
         assert_eq!(const_tc_id.ptype, PacketType::Tc);
     }
 
@@ -813,27 +871,27 @@ pub(crate) mod tests {
 
     #[test]
     fn test_packet_id_ctors() {
-        let packet_id = PacketId::new(PacketType::Tc, true, 0x1ff);
+        let packet_id = PacketId::new_checked(PacketType::Tc, true, 0x1ff);
         assert!(packet_id.is_some());
         let packet_id = packet_id.unwrap();
         assert_eq!(packet_id.apid(), 0x1ff);
         assert_eq!(packet_id.ptype, PacketType::Tc);
         assert!(packet_id.sec_header_flag);
-        let packet_id_tc = PacketId::tc(true, 0x1ff);
+        let packet_id_tc = PacketId::new_for_tc_checked(true, 0x1ff);
         assert!(packet_id_tc.is_some());
         let packet_id_tc = packet_id_tc.unwrap();
         assert_eq!(packet_id_tc, packet_id);
-        let packet_id_tm = PacketId::tm(true, 0x2ff);
+        let packet_id_tm = PacketId::new_for_tm_checked(true, 0x2ff);
         assert!(packet_id_tm.is_some());
         let packet_id_tm = packet_id_tm.unwrap();
-        assert_eq!(packet_id_tm.sec_header_flag, true);
+        assert!(packet_id_tm.sec_header_flag);
         assert_eq!(packet_id_tm.ptype, PacketType::Tm);
         assert_eq!(packet_id_tm.apid, 0x2ff);
     }
 
     #[test]
     fn verify_const_sp_header() {
-        assert_eq!(CONST_SP.sec_header_flag(), true);
+        assert!(CONST_SP.sec_header_flag());
         assert_eq!(CONST_SP.apid(), 0x36);
         assert_eq!(
             CONST_SP.sequence_flags(),
@@ -874,7 +932,7 @@ pub(crate) mod tests {
     #[test]
     fn test_packet_id() {
         let packet_id =
-            PacketId::new(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
+            PacketId::new_checked(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
         assert_eq!(packet_id.raw(), 0x0042);
         let packet_id_from_raw = PacketId::from(packet_id.raw());
         assert_eq!(
@@ -882,26 +940,26 @@ pub(crate) mod tests {
             PacketType::Tm
         );
         assert_eq!(packet_id_from_raw, packet_id);
-        let packet_id_from_new = PacketId::new(PacketType::Tm, false, 0x42).unwrap();
+        let packet_id_from_new = PacketId::new_checked(PacketType::Tm, false, 0x42).unwrap();
         assert_eq!(packet_id_from_new, packet_id);
     }
 
     #[test]
     fn test_invalid_packet_id() {
-        let packet_id_invalid = PacketId::new(PacketType::Tc, true, 0xFFFF);
+        let packet_id_invalid = PacketId::new_checked(PacketType::Tc, true, 0xFFFF);
         assert!(packet_id_invalid.is_none());
     }
 
     #[test]
     fn test_invalid_apid_setter() {
         let mut packet_id =
-            PacketId::new(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
+            PacketId::new_checked(PacketType::Tm, false, 0x42).expect("Packet ID creation failed");
         assert!(!packet_id.set_apid(0xffff));
     }
 
     #[test]
     fn test_invalid_seq_count() {
-        let mut psc = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77)
+        let mut psc = PacketSequenceCtrl::new_checked(SequenceFlags::ContinuationSegment, 77)
             .expect("PSC creation failed");
         assert_eq!(psc.seq_count(), 77);
         assert!(!psc.set_seq_count(0xffff));
@@ -909,7 +967,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_packet_seq_ctrl() {
-        let mut psc = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77)
+        let mut psc = PacketSequenceCtrl::new_checked(SequenceFlags::ContinuationSegment, 77)
             .expect("PSC creation failed");
         assert_eq!(psc.raw(), 77);
         let psc_from_raw = PacketSequenceCtrl::from(psc.raw());
@@ -918,16 +976,18 @@ pub(crate) mod tests {
         assert!(!psc.set_seq_count(2u16.pow(15)));
         assert_eq!(psc.raw(), 77);
 
-        let psc_invalid = PacketSequenceCtrl::new(SequenceFlags::FirstSegment, 0xFFFF);
+        let psc_invalid = PacketSequenceCtrl::new_checked(SequenceFlags::FirstSegment, 0xFFFF);
         assert!(psc_invalid.is_none());
-        let psc_from_new = PacketSequenceCtrl::new(SequenceFlags::ContinuationSegment, 77).unwrap();
+        let psc_from_new =
+            PacketSequenceCtrl::new_checked(SequenceFlags::ContinuationSegment, 77).unwrap();
         assert_eq!(psc_from_new, psc);
     }
 
     #[test]
     #[cfg(feature = "serde")]
     fn test_serde_sph() {
-        let sp_header = SpHeader::tc_unseg(0x42, 12, 0).expect("Error creating SP header");
+        let sp_header =
+            SpHeader::new_for_unseg_tc_checked(0x42, 12, 0).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert!(sp_header.is_tc());
         assert!(!sp_header.sec_header_flag());
@@ -949,7 +1009,8 @@ pub(crate) mod tests {
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert_eq!(sp_header.data_len, 0);
 
-        let sp_header = SpHeader::tm_unseg(0x7, 22, 36).expect("Error creating SP header");
+        let sp_header =
+            SpHeader::new_for_unseg_tm_checked(0x7, 22, 36).expect("Error creating SP header");
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert!(sp_header.is_tm());
         assert!(!sp_header.sec_header_flag());
@@ -963,8 +1024,8 @@ pub(crate) mod tests {
         assert_eq!(sp_header.ccsds_version(), 0b000);
 
         let from_comp_fields = SpHeader::from_composite_fields(
-            PacketId::new(PacketType::Tc, true, 0x42).unwrap(),
-            PacketSequenceCtrl::new(SequenceFlags::Unsegmented, 0x7).unwrap(),
+            PacketId::new(PacketType::Tc, true, 0x42),
+            PacketSequenceCtrl::new(SequenceFlags::Unsegmented, 0x7),
             0,
             None,
         );
@@ -981,7 +1042,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_setters() {
-        let sp_header = SpHeader::tc(0x42, SequenceFlags::Unsegmented, 25, 0);
+        let sp_header = SpHeader::new_for_tc_checked(0x42, SequenceFlags::Unsegmented, 25, 0);
         assert!(sp_header.is_some());
         let mut sp_header = sp_header.unwrap();
         sp_header.set_apid(0x12);
@@ -999,7 +1060,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_tc_ctor() {
-        let sp_header = SpHeader::tc(0x42, SequenceFlags::Unsegmented, 25, 0);
+        let sp_header = SpHeader::new_for_tc_checked(0x42, SequenceFlags::Unsegmented, 25, 0);
         assert!(sp_header.is_some());
         let sp_header = sp_header.unwrap();
         verify_sp_fields(PacketType::Tc, &sp_header);
@@ -1007,23 +1068,35 @@ pub(crate) mod tests {
 
     #[test]
     fn test_tc_ctor_unseg() {
-        let sp_header = SpHeader::tc_unseg(0x42, 25, 0);
+        let sp_header = SpHeader::new_for_unseg_tc_checked(0x42, 25, 0);
         assert!(sp_header.is_some());
         let sp_header = sp_header.unwrap();
         verify_sp_fields(PacketType::Tc, &sp_header);
     }
 
     #[test]
+    fn test_tc_ctor_unseg_const() {
+        let sp_header = SpHeader::new_for_unseg_tc(0x42, 25, 0);
+        verify_sp_fields(PacketType::Tc, &sp_header);
+    }
+
+    #[test]
     fn test_tm_ctor() {
-        let sp_header = SpHeader::tm(0x42, SequenceFlags::Unsegmented, 25, 0);
+        let sp_header = SpHeader::new_for_tm_checked(0x42, SequenceFlags::Unsegmented, 25, 0);
         assert!(sp_header.is_some());
         let sp_header = sp_header.unwrap();
         verify_sp_fields(PacketType::Tm, &sp_header);
     }
 
     #[test]
+    fn test_tm_ctor_const() {
+        let sp_header = SpHeader::new_for_tm(0x42, SequenceFlags::Unsegmented, 25, 0);
+        verify_sp_fields(PacketType::Tm, &sp_header);
+    }
+
+    #[test]
     fn test_tm_ctor_unseg() {
-        let sp_header = SpHeader::tm_unseg(0x42, 25, 0);
+        let sp_header = SpHeader::new_for_unseg_tm_checked(0x42, 25, 0);
         assert!(sp_header.is_some());
         let sp_header = sp_header.unwrap();
         verify_sp_fields(PacketType::Tm, &sp_header);
@@ -1041,8 +1114,8 @@ pub(crate) mod tests {
     fn test_zc_sph() {
         use zerocopy::AsBytes;
 
-        let sp_header =
-            SpHeader::tc_unseg(0x7FF, pow(2, 14) - 1, 0).expect("Error creating SP header");
+        let sp_header = SpHeader::new_for_unseg_tc_checked(0x7FF, pow(2, 14) - 1, 0)
+            .expect("Error creating SP header");
         assert_eq!(sp_header.ptype(), PacketType::Tc);
         assert_eq!(sp_header.apid(), 0x7FF);
         assert_eq!(sp_header.data_len(), 0);
