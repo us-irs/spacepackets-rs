@@ -123,17 +123,17 @@ pub struct PusTmSecondaryHeader<'stamp> {
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub timestamp: &'stamp [u8],
+    pub time_stamp: &'stamp [u8],
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
-    pub fn new_simple(service: u8, subservice: u8, timestamp: &'stamp [u8]) -> Self {
-        Self::new(service, subservice, 0, 0, Some(timestamp))
+    pub fn new_simple(service: u8, subservice: u8, time_stamp: &'stamp [u8]) -> Self {
+        Self::new(service, subservice, 0, 0, time_stamp)
     }
 
     /// Like [Self::new_simple] but without a timestamp.
     pub fn new_simple_no_timestamp(service: u8, subservice: u8) -> Self {
-        Self::new(service, subservice, 0, 0, None)
+        Self::new(service, subservice, 0, 0, &[])
     }
 
     pub fn new(
@@ -141,7 +141,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         subservice: u8,
         msg_counter: u16,
         dest_id: u16,
-        timestamp: Option<&'stamp [u8]>,
+        time_stamp: &'stamp [u8],
     ) -> Self {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
@@ -150,7 +150,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             subservice,
             msg_counter,
             dest_id,
-            timestamp: timestamp.unwrap_or(&[]),
+            time_stamp,
         }
     }
 }
@@ -192,7 +192,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
             subservice: sec_header.zc_header.subservice(),
             msg_counter: sec_header.zc_header.msg_counter(),
             dest_id: sec_header.zc_header.dest_id(),
-            timestamp: sec_header.timestamp,
+            time_stamp: sec_header.timestamp,
         })
     }
 }
@@ -284,7 +284,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     }
 
     pub fn timestamp(&self) -> &[u8] {
-        self.sec_header.timestamp
+        self.sec_header.time_stamp
     }
 
     pub fn source_data(&self) -> &[u8] {
@@ -323,7 +323,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         digest.update(sph_zc.as_bytes());
         let pus_tc_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         digest.update(pus_tc_header.as_bytes());
-        digest.update(self.sec_header.timestamp);
+        digest.update(self.sec_header.time_stamp);
         digest.update(self.source_data);
         digest.finalize()
     }
@@ -352,9 +352,9 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
             .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
             .ok_or(ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
-        slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
-            .copy_from_slice(self.sec_header.timestamp);
-        curr_idx += self.sec_header.timestamp.len();
+        slice[curr_idx..curr_idx + self.sec_header.time_stamp.len()]
+            .copy_from_slice(self.sec_header.time_stamp);
+        curr_idx += self.sec_header.time_stamp.len();
         slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
         curr_idx += self.source_data.len();
         let mut digest = CRC_CCITT_FALSE.digest();
@@ -368,14 +368,15 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.timestamp.len();
+        let mut appended_len =
+            PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.time_stamp.len();
         appended_len += self.source_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(sec_header.as_bytes());
-        vec.extend_from_slice(self.sec_header.timestamp);
+        vec.extend_from_slice(self.sec_header.time_stamp);
         vec.extend_from_slice(self.source_data);
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
@@ -387,7 +388,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
 impl WritablePusPacket for PusTmCreator<'_, '_> {
     fn len_written(&self) -> usize {
         PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
-            + self.sec_header.timestamp.len()
+            + self.sec_header.time_stamp.len()
             + self.source_data.len()
     }
     /// Write the raw PUS byte representation to a provided buffer.
@@ -526,7 +527,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
     }
 
     pub fn timestamp(&self) -> &[u8] {
-        self.sec_header.timestamp
+        self.sec_header.time_stamp
     }
 
     /// This function will return the slice [Self] was constructed from.
@@ -1146,7 +1147,7 @@ mod tests {
     #[test]
     fn test_sec_header_without_stamp() {
         let sec_header = PusTmSecondaryHeader::new_simple_no_timestamp(17, 1);
-        assert_eq!(sec_header.timestamp, &[]);
+        assert_eq!(sec_header.time_stamp, &[]);
     }
 
     #[test]

@@ -67,4 +67,4 @@ defmt = ["dep:defmt"]
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
+rustdoc-args = ["--cfg", "docs_rs", "--generate-link-to-definition"]
