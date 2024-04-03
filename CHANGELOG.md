@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Added
 
 - `SpHeader::new_from_apid` and `SpHeader::new_from_apid_checked` constructor.
+- `#[inline]` attribute for a lot of small functions.
 
 # [v0.11.0-rc.1] 2024-04-03
 

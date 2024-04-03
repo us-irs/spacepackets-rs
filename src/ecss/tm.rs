@@ -86,27 +86,33 @@ pub mod zc {
     }
 
     impl GenericPusTmSecondaryHeader for PusTmSecHeaderWithoutTimestamp {
+        #[inline]
         fn pus_version(&self) -> PusVersion {
             PusVersion::try_from(self.pus_version_and_sc_time_ref_status >> 4 & 0b1111)
                 .unwrap_or(PusVersion::Invalid)
         }
 
+        #[inline]
         fn sc_time_ref_status(&self) -> u8 {
             self.pus_version_and_sc_time_ref_status & 0b1111
         }
 
+        #[inline]
         fn service(&self) -> u8 {
             self.service
         }
 
+        #[inline]
         fn subservice(&self) -> u8 {
             self.subservice
         }
 
+        #[inline]
         fn msg_counter(&self) -> u16 {
             self.msg_counter.get()
         }
 
+        #[inline]
         fn dest_id(&self) -> u16 {
             self.dest_id.get()
         }
@@ -127,15 +133,18 @@ pub struct PusTmSecondaryHeader<'stamp> {
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
+    #[inline]
     pub fn new_simple(service: u8, subservice: u8, time_stamp: &'stamp [u8]) -> Self {
         Self::new(service, subservice, 0, 0, time_stamp)
     }
 
     /// Like [Self::new_simple] but without a timestamp.
+    #[inline]
     pub fn new_simple_no_timestamp(service: u8, subservice: u8) -> Self {
         Self::new(service, subservice, 0, 0, &[])
     }
 
+    #[inline]
     pub fn new(
         service: u8,
         subservice: u8,
@@ -156,26 +165,32 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
 }
 
 impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
+    #[inline]
     fn pus_version(&self) -> PusVersion {
         self.pus_version
     }
 
+    #[inline]
     fn sc_time_ref_status(&self) -> u8 {
         self.sc_time_ref_status
     }
 
+    #[inline]
     fn service(&self) -> u8 {
         self.service
     }
 
+    #[inline]
     fn subservice(&self) -> u8 {
         self.subservice
     }
 
+    #[inline]
     fn msg_counter(&self) -> u16 {
         self.msg_counter
     }
 
+    #[inline]
     fn dest_id(&self) -> u16 {
         self.dest_id
     }
@@ -184,6 +199,7 @@ impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
 impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice> {
     type Error = ();
 
+    #[inline]
     fn try_from(sec_header: zc::PusTmSecHeader<'slice>) -> Result<Self, Self::Error> {
         Ok(PusTmSecondaryHeader {
             pus_version: sec_header.zc_header.pus_version(),
@@ -235,6 +251,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
     ///     field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
     ///     the correct value to this field manually
+    #[inline]
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTmSecondaryHeader<'time>,
@@ -255,6 +272,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         pus_tm
     }
 
+    #[inline]
     pub fn new_simple(
         sp_header: &mut SpHeader,
         service: u8,
@@ -275,6 +293,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         ))
     }
 
+    #[inline]
     pub fn new_no_source_data(
         sp_header: &mut SpHeader,
         sec_header: PusTmSecondaryHeader<'time>,
@@ -283,22 +302,27 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
 
+    #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.time_stamp
     }
 
+    #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.source_data
     }
 
+    #[inline]
     pub fn set_dest_id(&mut self, dest_id: u16) {
         self.sec_header.dest_id = dest_id;
     }
 
+    #[inline]
     pub fn set_msg_counter(&mut self, msg_counter: u16) {
         self.sec_header.msg_counter = msg_counter
     }
 
+    #[inline]
     pub fn set_sc_time_ref_status(&mut self, sc_time_ref_status: u8) {
         self.sec_header.sc_time_ref_status = sc_time_ref_status & 0b1111;
     }
@@ -310,6 +334,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     /// If this was not done or the time stamp or source data is set or changed after construction,
     /// this function needs to be called to ensure that the data length field of the CCSDS header
     /// is set correctly
+    #[inline]
     pub fn update_ccsds_data_len(&mut self) {
         self.sp_header.data_len =
             self.len_written() as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
@@ -329,6 +354,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     }
 
     /// This helper function calls both [Self::update_ccsds_data_len] and [Self::calc_own_crc16]
+    #[inline]
     pub fn update_packet_fields(&mut self) {
         self.update_ccsds_data_len();
     }
@@ -386,6 +412,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
 }
 
 impl WritablePusPacket for PusTmCreator<'_, '_> {
+    #[inline]
     fn len_written(&self) -> usize {
         PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
             + self.sec_header.time_stamp.len()
@@ -411,15 +438,20 @@ impl CcsdsPacket for PusTmCreator<'_, '_> {
 
 impl PusPacket for PusTmCreator<'_, '_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
     });
 
+    #[inline]
     fn user_data(&self) -> &[u8] {
         self.source_data
     }
 
+    #[inline]
     fn crc16(&self) -> Option<u16> {
         Some(self.calc_own_crc16())
     }
@@ -427,11 +459,17 @@ impl PusPacket for PusTmCreator<'_, '_> {
 
 impl GenericPusTmSecondaryHeader for PusTmCreator<'_, '_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
+        #[inline]
         fn dest_id(&self) -> u16;
+        #[inline]
         fn msg_counter(&self) -> u16;
+        #[inline]
         fn sc_time_ref_status(&self) -> u8;
     });
 }
@@ -518,19 +556,23 @@ impl<'raw_data> PusTmReader<'raw_data> {
         Ok((pus_tm, total_len))
     }
 
+    #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.total_len()
     }
 
+    #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.time_stamp
     }
 
     /// This function will return the slice [Self] was constructed from.
+    #[inline]
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
@@ -551,15 +593,20 @@ impl CcsdsPacket for PusTmReader<'_> {
 
 impl PusPacket for PusTmReader<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
     });
 
+    #[inline]
     fn user_data(&self) -> &[u8] {
         self.source_data
     }
 
+    #[inline]
     fn crc16(&self) -> Option<u16> {
         Some(self.crc16)
     }
@@ -567,11 +614,17 @@ impl PusPacket for PusTmReader<'_> {
 
 impl GenericPusTmSecondaryHeader for PusTmReader<'_> {
     delegate!(to self.sec_header {
+        #[inline]
         fn pus_version(&self) -> PusVersion;
+        #[inline]
         fn service(&self) -> u8;
+        #[inline]
         fn subservice(&self) -> u8;
+        #[inline]
         fn dest_id(&self) -> u16;
+        #[inline]
         fn msg_counter(&self) -> u16;
+        #[inline]
         fn sc_time_ref_status(&self) -> u8;
     });
 }
@@ -633,6 +686,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
 
     /// Set the sequence count. Returns false and does not update the value if the passed value
     /// exceeds [MAX_APID].
+    #[inline]
     pub fn set_apid(&mut self, apid: u16) -> bool {
         if apid > MAX_APID {
             return false;
@@ -645,11 +699,13 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
     }
 
     /// This function sets the message counter in the PUS TM secondary header.
+    #[inline]
     pub fn set_msg_count(&mut self, msg_count: u16) {
         self.raw_tm[9..11].copy_from_slice(&msg_count.to_be_bytes());
     }
 
     /// This function sets the destination ID in the PUS TM secondary header.
+    #[inline]
     pub fn set_destination_id(&mut self, dest_id: u16) {
         self.raw_tm[11..13].copy_from_slice(&dest_id.to_be_bytes())
     }
@@ -674,6 +730,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
 
     /// Set the sequence count. Returns false and does not update the value if the passed value
     /// exceeds [MAX_SEQ_COUNT].
+    #[inline]
     pub fn set_seq_count(&mut self, seq_count: u16) -> bool {
         if seq_count > MAX_SEQ_COUNT {
             return false;

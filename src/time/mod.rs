@@ -166,6 +166,7 @@ pub fn seconds_since_epoch() -> f64 {
 ///
 ///  - CCSDS epoch: 1958-01-01T00:00:00+00:00
 ///  - UNIX Epoch: 1970-01-01T00:00:00+00:00
+#[inline]
 pub const fn unix_to_ccsds_days(unix_days: i64) -> i64 {
     unix_days - DAYS_CCSDS_TO_UNIX as i64
 }
@@ -174,16 +175,19 @@ pub const fn unix_to_ccsds_days(unix_days: i64) -> i64 {
 ///
 ///  - CCSDS epoch: 1958-01-01T00:00:00+00:00
 ///  - UNIX Epoch: 1970-01-01T00:00:00+00:00
+#[inline]
 pub const fn ccsds_to_unix_days(ccsds_days: i64) -> i64 {
     ccsds_days + DAYS_CCSDS_TO_UNIX as i64
 }
 
 /// Similar to [unix_to_ccsds_days] but converts the epoch instead, which is the number of elpased
 /// seconds since the CCSDS and UNIX epoch times.
+#[inline]
 pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: i64) -> i64 {
     unix_epoch - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }
 
+#[inline]
 pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: i64) -> i64 {
     ccsds_epoch + (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }

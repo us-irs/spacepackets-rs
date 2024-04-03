@@ -207,18 +207,21 @@ pub struct PacketId {
 }
 
 impl PartialEq for PacketId {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.raw().eq(&other.raw())
     }
 }
 
 impl PartialOrd for PacketId {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for PacketId {
+    #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.raw().cmp(&other.raw())
     }
@@ -232,6 +235,7 @@ impl Hash for PacketId {
 }
 
 impl Default for PacketId {
+    #[inline]
     fn default() -> Self {
         PacketId {
             ptype: PacketType::Tm,
@@ -244,26 +248,31 @@ impl Default for PacketId {
 impl PacketId {
     /// This constructor will panic if the passed APID exceeds [MAX_APID].
     /// Use the checked constructor variants to avoid panics.
+    #[inline]
     pub const fn new_for_tc(sec_header: bool, apid: u16) -> Self {
         Self::new(PacketType::Tc, sec_header, apid)
     }
 
     /// This constructor will panic if the passed APID exceeds [MAX_APID].
     /// Use the checked constructor variants to avoid panics.
+    #[inline]
     pub const fn new_for_tm(sec_header: bool, apid: u16) -> Self {
         Self::new(PacketType::Tm, sec_header, apid)
     }
 
+    #[inline]
     pub fn new_for_tc_checked(sec_header: bool, apid: u16) -> Option<Self> {
         Self::new_checked(PacketType::Tc, sec_header, apid)
     }
 
+    #[inline]
     pub fn new_for_tm_checked(sec_header: bool, apid: u16) -> Option<Self> {
         Self::new_checked(PacketType::Tm, sec_header, apid)
     }
 
     /// This constructor will panic if the passed APID exceeds [MAX_APID].
     /// Use the checked variants to avoid panics.
+    #[inline]
     pub const fn new(ptype: PacketType, sec_header: bool, apid: u16) -> Self {
         if apid > MAX_APID {
             panic!("APID too large");
@@ -275,6 +284,7 @@ impl PacketId {
         }
     }
 
+    #[inline]
     pub fn new_checked(ptype: PacketType, sec_header_flag: bool, apid: u16) -> Option<PacketId> {
         if apid > MAX_APID {
             return None;
@@ -285,6 +295,7 @@ impl PacketId {
     /// Set a new Application Process ID (APID). If the passed number is invalid, the APID will
     /// not be set and false will be returned. The maximum allowed value for the 11-bit field is
     /// 2047
+    #[inline]
     pub fn set_apid(&mut self, apid: u16) -> bool {
         if apid > MAX_APID {
             return false;
@@ -293,6 +304,7 @@ impl PacketId {
         true
     }
 
+    #[inline]
     pub fn apid(&self) -> u16 {
         self.apid
     }
@@ -326,6 +338,7 @@ pub struct PacketSequenceCtrl {
 impl PacketSequenceCtrl {
     /// This constructor panics if the sequence count exceeds [MAX_SEQ_COUNT].
     /// Use [Self::new_checked] to avoid panics.
+    #[inline]
     pub const fn new(seq_flags: SequenceFlags, seq_count: u16) -> PacketSequenceCtrl {
         if seq_count > MAX_SEQ_COUNT {
             panic!("Sequence count too large");
@@ -337,18 +350,22 @@ impl PacketSequenceCtrl {
     }
 
     /// Returns [None] if the passed sequence count exceeds [MAX_SEQ_COUNT].
+    #[inline]
     pub fn new_checked(seq_flags: SequenceFlags, seq_count: u16) -> Option<PacketSequenceCtrl> {
         if seq_count > MAX_SEQ_COUNT {
             return None;
         }
         Some(PacketSequenceCtrl::new(seq_flags, seq_count))
     }
+
+    #[inline]
     pub fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count
     }
 
     /// Set a new sequence count. If the passed number is invalid, the sequence count will not be
     /// set and false will be returned. The maximum allowed value for the 14-bit field is 16383.
+    #[inline]
     pub fn set_seq_count(&mut self, ssc: u16) -> bool {
         if ssc > MAX_SEQ_COUNT {
             return false;
@@ -357,6 +374,7 @@ impl PacketSequenceCtrl {
         true
     }
 
+    #[inline]
     pub fn seq_count(&self) -> u16 {
         self.seq_count
     }
@@ -398,6 +416,7 @@ pub trait CcsdsPacket {
     /// Retrieve data length field
     fn data_len(&self) -> u16;
     /// Retrieve the total packet size based on the data length field
+    #[inline]
     fn total_len(&self) -> usize {
         usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
     }
@@ -489,6 +508,7 @@ pub struct SpHeader {
 impl Default for SpHeader {
     /// The default function sets the sequence flag field to [SequenceFlags::Unsegmented]. The data
     /// length field is set to 1, which denotes an empty space packets.
+    #[inline]
     fn default() -> Self {
         SpHeader {
             version: 0,
@@ -503,6 +523,7 @@ impl Default for SpHeader {
 }
 
 impl SpHeader {
+    #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceCtrl, data_len: u16) -> Self {
         Self {
             version: 0,
@@ -516,6 +537,7 @@ impl SpHeader {
     /// length field is set to 1, which denotes an empty space packets.
     ///
     /// This constructor will panic if the APID exceeds [MAX_APID].
+    #[inline]
     pub const fn new_from_apid(apid: u16) -> Self {
         SpHeader {
             version: 0,
@@ -529,6 +551,7 @@ impl SpHeader {
     }
 
     /// Checked variant of [Self::new_from_apid].
+    #[inline]
     pub fn new_from_apid_checked(apid: u16) -> Option<Self> {
         Some(SpHeader {
             version: 0,
@@ -545,6 +568,7 @@ impl SpHeader {
     /// count exceeds [MAX_SEQ_COUNT].
     ///
     /// The checked constructor variants can be used to avoid panics.
+    #[inline]
     const fn new_from_fields(
         ptype: PacketType,
         sec_header: bool,
@@ -572,6 +596,7 @@ impl SpHeader {
     ///
     /// This will return [None] if the APID or sequence count argument
     /// exceed [MAX_APID] or [MAX_SEQ_COUNT] respectively. The version field is set to 0b000.
+    #[inline]
     pub fn new_from_fields_checked(
         ptype: PacketType,
         sec_header: bool,
@@ -590,6 +615,7 @@ impl SpHeader {
 
     /// Helper function for telemetry space packet headers. The packet type field will be
     /// set accordingly. The secondary header flag field is set to false.
+    #[inline]
     pub fn new_for_tm_checked(
         apid: u16,
         seq_flags: SequenceFlags,
@@ -601,6 +627,7 @@ impl SpHeader {
 
     /// Helper function for telemetry space packet headers. The packet type field will be
     /// set accordingly. The secondary header flag field is set to false.
+    #[inline]
     pub fn new_for_tc_checked(
         apid: u16,
         seq_flags: SequenceFlags,
@@ -611,6 +638,7 @@ impl SpHeader {
     }
 
     /// This is an unchecked constructor which can panic on invalid input.
+    #[inline]
     pub const fn new_for_tm(
         apid: u16,
         seq_flags: SequenceFlags,
@@ -621,6 +649,7 @@ impl SpHeader {
     }
 
     /// This is an unchecked constructor which can panic on invalid input.
+    #[inline]
     pub const fn new_for_tc(
         apid: u16,
         seq_flags: SequenceFlags,
@@ -631,11 +660,13 @@ impl SpHeader {
     }
 
     /// Variant of [SpHeader::new_for_tm_checked] which sets the sequence flag field to [SequenceFlags::Unsegmented]
+    #[inline]
     pub fn new_for_unseg_tm_checked(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
         Self::new_for_tm_checked(apid, SequenceFlags::Unsegmented, seq_count, data_len)
     }
 
     /// Variant of [SpHeader::new_for_tc_checked] which sets the sequence flag field to [SequenceFlags::Unsegmented]
+    #[inline]
     pub fn new_for_unseg_tc_checked(apid: u16, seq_count: u16, data_len: u16) -> Option<Self> {
         Self::new_for_tc_checked(apid, SequenceFlags::Unsegmented, seq_count, data_len)
     }
@@ -643,6 +674,7 @@ impl SpHeader {
     /// Variant of [SpHeader::new_for_tc] which sets the sequence flag field to [SequenceFlags::Unsegmented].
     ///
     /// This is an unchecked constructor which can panic on invalid input.
+    #[inline]
     pub const fn new_for_unseg_tc(apid: u16, seq_count: u16, data_len: u16) -> Self {
         Self::new_for_tc(apid, SequenceFlags::Unsegmented, seq_count, data_len)
     }
@@ -650,6 +682,7 @@ impl SpHeader {
     /// Variant of [SpHeader::new_for_tm] which sets the sequence flag field to [SequenceFlags::Unsegmented].
     ///
     /// This is an unchecked constructor which can panic on invalid input.
+    #[inline]
     pub const fn new_for_unseg_tm(apid: u16, seq_count: u16, data_len: u16) -> Self {
         Self::new_for_tm(apid, SequenceFlags::Unsegmented, seq_count, data_len)
     }
@@ -657,6 +690,7 @@ impl SpHeader {
     delegate! {
         to self.packet_id {
             /// Returns [false] and fails if the APID exceeds [MAX_APID]
+            #[inline]
             pub fn set_apid(&mut self, apid: u16) -> bool;
         }
     }
@@ -664,22 +698,27 @@ impl SpHeader {
     delegate! {
         to self.psc {
             /// Returns [false] and fails if the sequence count exceeds [MAX_SEQ_COUNT]
+            #[inline]
             pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
         }
     }
 
+    #[inline]
     pub fn set_seq_flags(&mut self, seq_flags: SequenceFlags) {
         self.psc.seq_flags = seq_flags;
     }
 
+    #[inline]
     pub fn set_sec_header_flag(&mut self) {
         self.packet_id.sec_header_flag = true;
     }
 
+    #[inline]
     pub fn clear_sec_header_flag(&mut self) {
         self.packet_id.sec_header_flag = false;
     }
 
+    #[inline]
     pub fn set_packet_type(&mut self, packet_type: PacketType) {
         self.packet_id.ptype = packet_type;
     }
@@ -742,6 +781,7 @@ impl CcsdsPacket for SpHeader {
 }
 
 impl CcsdsPrimaryHeader for SpHeader {
+    #[inline]
     fn from_composite_fields(
         packet_id: PacketId,
         psc: PacketSequenceCtrl,
@@ -809,9 +849,12 @@ pub mod zc {
             ((self.version_packet_id.get() >> 13) as u8) & 0b111
         }
 
+        #[inline]
         fn packet_id(&self) -> PacketId {
             PacketId::from(self.packet_id_raw())
         }
+
+        #[inline]
         fn psc(&self) -> PacketSequenceCtrl {
             PacketSequenceCtrl::from(self.psc_raw())
         }
@@ -821,10 +864,12 @@ pub mod zc {
             self.data_len.get()
         }
 
+        #[inline]
         fn packet_id_raw(&self) -> u16 {
             self.version_packet_id.get() & (!VERSION_MASK)
         }
 
+        #[inline]
         fn psc_raw(&self) -> u16 {
             self.psc.get()
         }

@@ -177,6 +177,7 @@ pub struct FractionalPart {
 }
 
 impl FractionalPart {
+    #[inline]
     pub const fn new(resolution: FractionalResolution, counter: u32) -> Self {
         let div = fractional_res_to_div(resolution);
         assert!(counter <= div, "invalid counter for resolution");
@@ -187,15 +188,18 @@ impl FractionalPart {
     }
 
     /// An empty fractional part for second resolution only.
+    #[inline]
     pub const fn new_with_seconds_resolution() -> Self {
         Self::new(FractionalResolution::Seconds, 0)
     }
 
     /// Helper method which simply calls [Self::new_with_seconds_resolution].
+    #[inline]
     pub const fn new_empty() -> Self {
         Self::new_with_seconds_resolution()
     }
 
+    #[inline]
     pub fn new_checked(resolution: FractionalResolution, counter: u32) -> Option<Self> {
         let div = fractional_res_to_div(resolution);
         if counter > div {
@@ -207,14 +211,17 @@ impl FractionalPart {
         })
     }
 
+    #[inline]
     pub fn resolution(&self) -> FractionalResolution {
         self.resolution
     }
 
+    #[inline]
     pub fn counter(&self) -> u32 {
         self.counter
     }
 
+    #[inline]
     pub fn no_fractional_part(&self) -> bool {
         self.resolution == FractionalResolution::Seconds
     }
@@ -285,6 +292,7 @@ pub struct CucTimeWithLeapSecs {
 }
 
 impl CucTimeWithLeapSecs {
+    #[inline]
     pub fn new(time: CucTime, leap_seconds: u32) -> Self {
         Self { time, leap_seconds }
     }
@@ -300,6 +308,7 @@ pub fn pfield_len(pfield: u8) -> usize {
 
 impl CucTime {
     /// Create a time provider with a four byte counter and no fractional part.
+    #[inline]
     pub fn new(counter: u32) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(
@@ -310,11 +319,13 @@ impl CucTime {
     }
 
     /// Like [CucTime::new] but allow to supply a fractional part as well.
+    #[inline]
     pub fn new_with_fractions(counter: u32, fractions: FractionalPart) -> Result<Self, CucError> {
         Self::new_generic(WidthCounterPair(4, counter), fractions)
     }
 
     /// Fractions with a resolution of ~ 4 ms
+    #[inline]
     pub fn new_with_coarse_fractions(counter: u32, subsec_fractions: u8) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(
@@ -328,6 +339,7 @@ impl CucTime {
     }
 
     /// Fractions with a resolution of ~ 16 us
+    #[inline]
     pub fn new_with_medium_fractions(counter: u32, subsec_fractions: u16) -> Self {
         // These values are definitely valid, so it is okay to unwrap here.
         Self::new_generic(
@@ -343,6 +355,7 @@ impl CucTime {
     /// Fractions with a resolution of ~ 60 ns. The fractional part value is limited by the
     /// 24 bits of the fractional field, so this function will fail with
     /// [CucError::InvalidFractions] if the fractional value exceeds the value.
+    #[inline]
     pub fn new_with_fine_fractions(counter: u32, subsec_fractions: u32) -> Result<Self, CucError> {
         Self::new_generic(
             WidthCounterPair(4, counter),
@@ -457,6 +470,7 @@ impl CucTime {
 
     /// Most generic constructor which allows full configurability for the counter and for the
     /// fractions.
+    #[inline]
     pub fn new_generic(
         width_and_counter: WidthCounterPair,
         fractions: FractionalPart,
@@ -476,31 +490,38 @@ impl CucTime {
         })
     }
 
+    #[inline]
     pub fn ccsds_time_code(&self) -> CcsdsTimeCode {
         CcsdsTimeCode::CucCcsdsEpoch
     }
 
+    #[inline]
     pub fn width_counter_pair(&self) -> WidthCounterPair {
         self.counter
     }
 
+    #[inline]
     pub fn counter_width(&self) -> u8 {
         self.counter.0
     }
 
+    #[inline]
     pub fn counter(&self) -> u32 {
         self.counter.1
     }
 
     /// Subsecond fractional part of the CUC time.
+    #[inline]
     pub fn fractions(&self) -> FractionalPart {
         self.fractions
     }
 
+    #[inline]
     pub fn to_leap_sec_helper(&self, leap_seconds: u32) -> CucTimeWithLeapSecs {
         CucTimeWithLeapSecs::new(*self, leap_seconds)
     }
 
+    #[inline]
     pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
         Self::verify_fractions_value(fractions)?;
         self.fractions = fractions;
@@ -510,6 +531,7 @@ impl CucTime {
 
     /// Set a fractional resolution. Please note that this function will reset the fractional value
     /// to 0 if the resolution changes.
+    #[inline]
     pub fn set_fractional_resolution(&mut self, res: FractionalResolution) {
         if res == FractionalResolution::Seconds {
             self.fractions = FractionalPart::new_with_seconds_resolution();
@@ -519,6 +541,7 @@ impl CucTime {
         }
     }
 
+    #[inline]
     fn build_p_field(counter_width: u8, resolution: FractionalResolution) -> u8 {
         let mut pfield = P_FIELD_BASE;
         if !(1..=4).contains(&counter_width) {
@@ -538,6 +561,7 @@ impl CucTime {
         pfield
     }
 
+    #[inline]
     fn update_p_field_fractions(&mut self) {
         self.pfield &= !(0b11);
         self.pfield |= self.fractions.resolution() as u8;
@@ -582,6 +606,7 @@ impl CucTime {
         )
     }
 
+    #[inline]
     pub fn len_packed_from_pfield(pfield: u8) -> usize {
         let mut base_len: usize = 1;
         base_len += Self::len_cntr_from_pfield(pfield) as usize;
@@ -590,6 +615,7 @@ impl CucTime {
     }
 
     /// Verifies the raw width parameter.
+    #[inline]
     fn verify_counter_width(width: u8) -> Result<(), CucError> {
         if width == 0 || width > 4 {
             return Err(CucError::InvalidCounterWidth(width));
@@ -597,6 +623,7 @@ impl CucTime {
         Ok(())
     }
 
+    #[inline]
     fn verify_fractions_value(val: FractionalPart) -> Result<(), CucError> {
         if val.counter > 2u32.pow((val.resolution as u32) * 8) - 1 {
             return Err(CucError::InvalidFractions {
@@ -607,10 +634,12 @@ impl CucTime {
         Ok(())
     }
 
+    #[inline]
     fn len_as_bytes(&self) -> usize {
         Self::len_packed_from_pfield(self.pfield)
     }
 
+    #[inline]
     fn subsec_nanos(&self) -> u32 {
         if self.fractions.resolution() == FractionalResolution::Seconds {
             return 0;
@@ -751,22 +780,27 @@ impl TimeWriter for CucTime {
 }
 
 impl CcsdsTimeProvider for CucTimeWithLeapSecs {
+    #[inline]
     fn len_as_bytes(&self) -> usize {
         self.time.len_as_bytes()
     }
 
+    #[inline]
     fn p_field(&self) -> (usize, [u8; 2]) {
         (1, [self.time.pfield, 0])
     }
 
+    #[inline]
     fn ccdsd_time_code(&self) -> CcsdsTimeCode {
         self.time.ccsds_time_code()
     }
 
+    #[inline]
     fn unix_secs(&self) -> i64 {
         self.time.unix_secs(self.leap_seconds)
     }
 
+    #[inline]
     fn subsec_nanos(&self) -> u32 {
         self.time.subsec_nanos()
     }
