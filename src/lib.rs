@@ -512,6 +512,35 @@ impl SpHeader {
         }
     }
 
+    /// This constructor sets the sequence flag field to [SequenceFlags::Unsegmented]. The data
+    /// length field is set to 1, which denotes an empty space packets.
+    ///
+    /// This constructor will panic if the APID exceeds [MAX_APID].
+    pub const fn new_from_apid(apid: u16) -> Self {
+        SpHeader {
+            version: 0,
+            packet_id: PacketId::new(PacketType::Tm, false, apid),
+            psc: PacketSequenceCtrl {
+                seq_flags: SequenceFlags::Unsegmented,
+                seq_count: 0,
+            },
+            data_len: 1,
+        }
+    }
+
+    /// Checked variant of [Self::new_from_apid].
+    pub fn new_from_apid_checked(apid: u16) -> Option<Self> {
+        Some(SpHeader {
+            version: 0,
+            packet_id: PacketId::new_checked(PacketType::Tm, false, apid)?,
+            psc: PacketSequenceCtrl {
+                seq_flags: SequenceFlags::Unsegmented,
+                seq_count: 0,
+            },
+            data_len: 1,
+        })
+    }
+
     /// This constructor panics if the passed APID exceeds [MAX_APID] or the passed packet sequence
     /// count exceeds [MAX_SEQ_COUNT].
     ///
@@ -1179,5 +1208,17 @@ pub(crate) mod tests {
     fn packet_id_hashable() {
         let mut id_set = HashSet::new();
         id_set.insert(PacketId::from(1_u16));
+    }
+
+    #[test]
+    fn sp_header_from_apid() {
+        let sp_header = SpHeader::new_from_apid(0x03);
+        assert_eq!(sp_header.apid(), 0x03);
+    }
+
+    #[test]
+    fn sp_header_from_apid_checked() {
+        let sp_header = SpHeader::new_from_apid_checked(0x03).unwrap();
+        assert_eq!(sp_header.apid(), 0x03);
     }
 }
