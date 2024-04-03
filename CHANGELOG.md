@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.0-rc.1] 2024-04-03
+
 Major API changes for the time API. If you are using the time API, it is strongly recommended
 to check all the API changes in the **Changed** chapter.
 
