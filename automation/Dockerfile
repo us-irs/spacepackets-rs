@@ -15,7 +15,10 @@ RUN rustup install nightly && \
     rustup target add thumbv7em-none-eabihf armv7-unknown-linux-gnueabihf && \
     rustup component add rustfmt clippy llvm-tools-preview
 
+# Get grcov
 RUN curl -sSL https://github.com/mozilla/grcov/releases/download/v0.8.19/grcov-x86_64-unknown-linux-gnu.tar.bz2 | tar -xj --directory /usr/local/bin
+# Get nextest
+RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
 
 # SSH stuff to allow deployment to doc server
 RUN adduser --uid 114 jenkins

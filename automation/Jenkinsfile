@@ -31,7 +31,8 @@ pipeline {
     }
     stage('Test') {
       steps {
-        sh 'cargo test --all-features'
+        sh 'cargo nextest r --all-features'
+        sh 'cargo test --doc'
       }
     }
     stage('Check with all features') {
