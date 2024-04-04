@@ -129,13 +129,13 @@ pub struct PusTmSecondaryHeader<'stamp> {
     pub subservice: u8,
     pub msg_counter: u16,
     pub dest_id: u16,
-    pub time_stamp: &'stamp [u8],
+    pub timestamp: &'stamp [u8],
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
     #[inline]
-    pub fn new_simple(service: u8, subservice: u8, time_stamp: &'stamp [u8]) -> Self {
-        Self::new(service, subservice, 0, 0, time_stamp)
+    pub fn new_simple(service: u8, subservice: u8, timestamp: &'stamp [u8]) -> Self {
+        Self::new(service, subservice, 0, 0, timestamp)
     }
 
     /// Like [Self::new_simple] but without a timestamp.
@@ -150,7 +150,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         subservice: u8,
         msg_counter: u16,
         dest_id: u16,
-        time_stamp: &'stamp [u8],
+        timestamp: &'stamp [u8],
     ) -> Self {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
@@ -159,7 +159,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             subservice,
             msg_counter,
             dest_id,
-            time_stamp,
+            timestamp,
         }
     }
 }
@@ -208,7 +208,7 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
             subservice: sec_header.zc_header.subservice(),
             msg_counter: sec_header.zc_header.msg_counter(),
             dest_id: sec_header.zc_header.dest_id(),
-            time_stamp: sec_header.timestamp,
+            timestamp: sec_header.timestamp,
         })
     }
 }
@@ -224,27 +224,28 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 ///
 /// # Lifetimes
 ///
-/// * `'raw_data` - This is the lifetime of the user provided time stamp and source data.
+/// * `'time` - This is the lifetime of the user provided timestamp.
+/// * `'src_data` - This is the lifetime of the user provided source data.
 #[derive(Eq, Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PusTmCreator<'time, 'raw_data> {
+pub struct PusTmCreator<'time, 'src_data> {
     pub sp_header: SpHeader,
     #[cfg_attr(feature = "serde", serde(borrow))]
     pub sec_header: PusTmSecondaryHeader<'time>,
-    source_data: &'raw_data [u8],
+    source_data: &'src_data [u8],
     /// If this is set to false, a manual call to [Self::calc_own_crc16] or
     /// [Self::update_packet_fields] is necessary for the serialized or cached CRC16 to be valid.
     pub calc_crc_on_serialization: bool,
 }
 
-impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
+impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
     ///
-    /// * `sp_header` - Space packet header information. The correct packet type will be set
-    ///     automatically
+    /// * `sp_header` - Space packet header information. The correct packet type and the secondary
+    ///     header flag are set correctly by the constructor.
     /// * `sec_header` - Information contained in the secondary header, including the service
     ///     and subservice type
     /// * `source_data` - Custom application data
@@ -255,7 +256,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTmSecondaryHeader<'time>,
-        source_data: &'raw_data [u8],
+        source_data: &'src_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tm);
@@ -279,18 +280,13 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         subservice: u8,
         time_provider: &impl TimeWriter,
         stamp_buf: &'time mut [u8],
-        source_data: Option<&'raw_data [u8]>,
+        source_data: &'src_data [u8],
         set_ccsds_len: bool,
     ) -> Result<Self, TimestampError> {
         let stamp_size = time_provider.write_to_bytes(stamp_buf)?;
         let sec_header =
             PusTmSecondaryHeader::new_simple(service, subservice, &stamp_buf[0..stamp_size]);
-        Ok(Self::new(
-            sp_header,
-            sec_header,
-            source_data.unwrap_or(&[]),
-            set_ccsds_len,
-        ))
+        Ok(Self::new(sp_header, sec_header, source_data, set_ccsds_len))
     }
 
     #[inline]
@@ -304,7 +300,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
 
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
-        self.sec_header.time_stamp
+        self.sec_header.timestamp
     }
 
     #[inline]
@@ -348,7 +344,7 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
         digest.update(sph_zc.as_bytes());
         let pus_tc_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         digest.update(pus_tc_header.as_bytes());
-        digest.update(self.sec_header.time_stamp);
+        digest.update(self.sec_header.timestamp);
         digest.update(self.source_data);
         digest.finalize()
     }
@@ -378,9 +374,9 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
             .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
             .ok_or(ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
-        slice[curr_idx..curr_idx + self.sec_header.time_stamp.len()]
-            .copy_from_slice(self.sec_header.time_stamp);
-        curr_idx += self.sec_header.time_stamp.len();
+        slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
+            .copy_from_slice(self.sec_header.timestamp);
+        curr_idx += self.sec_header.timestamp.len();
         slice[curr_idx..curr_idx + self.source_data.len()].copy_from_slice(self.source_data);
         curr_idx += self.source_data.len();
         let mut digest = CRC_CCITT_FALSE.digest();
@@ -394,15 +390,14 @@ impl<'time, 'raw_data> PusTmCreator<'time, 'raw_data> {
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> Result<usize, PusError> {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-        let mut appended_len =
-            PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.time_stamp.len();
+        let mut appended_len = PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA + self.sec_header.timestamp.len();
         appended_len += self.source_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(sec_header.as_bytes());
-        vec.extend_from_slice(self.sec_header.time_stamp);
+        vec.extend_from_slice(self.sec_header.timestamp);
         vec.extend_from_slice(self.source_data);
         let mut digest = CRC_CCITT_FALSE.digest();
         digest.update(&vec[start_idx..start_idx + appended_len - 2]);
@@ -415,7 +410,7 @@ impl WritablePusPacket for PusTmCreator<'_, '_> {
     #[inline]
     fn len_written(&self) -> usize {
         PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA
-            + self.sec_header.time_stamp.len()
+            + self.sec_header.timestamp.len()
             + self.source_data.len()
     }
     /// Write the raw PUS byte representation to a provided buffer.
@@ -568,7 +563,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
-        self.sec_header.time_stamp
+        self.sec_header.timestamp
     }
 
     /// This function will return the slice [Self] was constructed from.
@@ -877,7 +872,7 @@ mod tests {
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
         verify_ping_reply(&pus_tm, false, 22, &[64, 0, 0, 0, 0, 0, 0]);
     }
@@ -1204,7 +1199,7 @@ mod tests {
     #[test]
     fn test_sec_header_without_stamp() {
         let sec_header = PusTmSecondaryHeader::new_simple_no_timestamp(17, 1);
-        assert_eq!(sec_header.time_stamp, &[]);
+        assert_eq!(sec_header.timestamp, &[]);
     }
 
     #[test]
@@ -1268,7 +1263,7 @@ mod tests {
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
 
         let output = to_allocvec(&pus_tm).unwrap();
@@ -1283,7 +1278,7 @@ mod tests {
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, None, true)
+            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
         let pus_tm_vec = pus_tm.to_vec().unwrap();
         let (tm_reader, _) = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
