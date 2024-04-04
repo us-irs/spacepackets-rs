@@ -254,7 +254,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     ///     the correct value to this field manually
     #[inline]
     pub fn new(
-        sp_header: &mut SpHeader,
+        mut sp_header: SpHeader,
         sec_header: PusTmSecondaryHeader<'time>,
         source_data: &'src_data [u8],
         set_ccsds_len: bool,
@@ -262,7 +262,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         sp_header.set_packet_type(PacketType::Tm);
         sp_header.set_sec_header_flag();
         let mut pus_tm = Self {
-            sp_header: *sp_header,
+            sp_header,
             source_data,
             sec_header,
             calc_crc_on_serialization: true,
@@ -275,7 +275,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
 
     #[inline]
     pub fn new_simple(
-        sp_header: &mut SpHeader,
+        sp_header: SpHeader,
         service: u8,
         subservice: u8,
         time_provider: &impl TimeWriter,
@@ -291,7 +291,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
 
     #[inline]
     pub fn new_no_source_data(
-        sp_header: &mut SpHeader,
+        sp_header: SpHeader,
         sec_header: PusTmSecondaryHeader<'time>,
         set_ccsds_len: bool,
     ) -> Self {
@@ -840,20 +840,20 @@ mod tests {
     const DUMMY_DATA: &[u8] = &[0, 1, 2];
 
     fn base_ping_reply_full_ctor(timestamp: &[u8]) -> PusTmCreator {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
-        PusTmCreator::new_no_source_data(&mut sph, tm_header, true)
+        PusTmCreator::new_no_source_data(sph, tm_header, true)
     }
     fn ping_reply_with_data(timestamp: &[u8]) -> PusTmCreator {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
-        PusTmCreator::new(&mut sph, tm_header, DUMMY_DATA, true)
+        PusTmCreator::new(sph, tm_header, DUMMY_DATA, true)
     }
 
     fn base_hk_reply<'a, 'b>(timestamp: &'a [u8], src_data: &'b [u8]) -> PusTmCreator<'a, 'b> {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
-        PusTmCreator::new(&mut sph, tc_header, src_data, true)
+        PusTmCreator::new(sph, tc_header, src_data, true)
     }
 
     fn dummy_timestamp() -> &'static [u8] {
@@ -868,11 +868,11 @@ mod tests {
     }
     #[test]
     fn test_basic_simple_api() {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
         verify_ping_reply(&pus_tm, false, 22, &[64, 0, 0, 0, 0, 0, 0]);
     }
@@ -969,9 +969,9 @@ mod tests {
 
     #[test]
     fn test_manual_field_update() {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_timestamp());
-        let mut tm = PusTmCreator::new_no_source_data(&mut sph, tc_header, false);
+        let mut tm = PusTmCreator::new_no_source_data(sph, tc_header, false);
         tm.calc_crc_on_serialization = false;
         assert_eq!(tm.data_len(), 0x00);
         let mut buf: [u8; 32] = [0; 32];
@@ -1259,11 +1259,11 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization_creator_serde() {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
 
         let output = to_allocvec(&pus_tm).unwrap();
@@ -1274,11 +1274,11 @@ mod tests {
     #[test]
     #[cfg(feature = "serde")]
     fn test_serialization_reader_serde() {
-        let mut sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
         let time_provider = CdsTime::new_with_u16_days(0, 0);
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm =
-            PusTmCreator::new_simple(&mut sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
+            PusTmCreator::new_simple(sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
         let pus_tm_vec = pus_tm.to_vec().unwrap();
         let (tm_reader, _) = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
