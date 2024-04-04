@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Renamed `tc`, `tm`, `tc_unseg` and `tm_unseg` variants for `PacketId` and `SpHeader`
   to `new_for_tc_checked`, `new_for_tm_checked`, `new_for_unseg_tc_checked` and
   `new_for_unseg_tm_checked`.
+- `PusTmCreator` and `PusTcCreator` now expect a regular instance of `SpHeader` instead of
+  a mutable reference.
 
 ## Added
 

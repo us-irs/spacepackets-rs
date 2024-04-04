@@ -9,9 +9,11 @@
 //! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
 //!
 //! // Create a ping telecommand with no user application data
-//! let mut sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-//! let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-//! let pus_tc = PusTcCreator::new_no_app_data(&mut sph, tc_header, true);
+//! let pus_tc = PusTcCreator::new_no_app_data(
+//!     SpHeader::new_from_apid(0x02),
+//!     PusTcSecondaryHeader::new_simple(17, 1),
+//!     true
+//! );
 //! println!("{:?}", pus_tc);
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
@@ -256,7 +258,7 @@ impl<'app_data> PusTcCreator<'app_data> {
     ///     the correct value to this field manually
     #[inline]
     pub fn new(
-        sp_header: &mut SpHeader,
+        mut sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
         app_data: &'app_data [u8],
         set_ccsds_len: bool,
@@ -264,7 +266,7 @@ impl<'app_data> PusTcCreator<'app_data> {
         sp_header.set_packet_type(PacketType::Tc);
         sp_header.set_sec_header_flag();
         let mut pus_tc = Self {
-            sp_header: *sp_header,
+            sp_header,
             app_data,
             sec_header,
         };
@@ -278,7 +280,7 @@ impl<'app_data> PusTcCreator<'app_data> {
     /// and subservice instead of the full PUS TC secondary header.
     #[inline]
     pub fn new_simple(
-        sph: &mut SpHeader,
+        sph: SpHeader,
         service: u8,
         subservice: u8,
         app_data: &'app_data [u8],
@@ -294,7 +296,7 @@ impl<'app_data> PusTcCreator<'app_data> {
 
     #[inline]
     pub fn new_no_app_data(
-        sp_header: &mut SpHeader,
+        sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
         set_ccsds_len: bool,
     ) -> Self {
@@ -618,19 +620,19 @@ mod tests {
     use postcard::{from_bytes, to_allocvec};
 
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
-        let mut sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-        PusTcCreator::new_no_app_data(&mut sph, tc_header, true)
+        PusTcCreator::new_no_app_data(sph, tc_header, true)
     }
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
-        let mut sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(&mut sph, 17, 1, &[], true)
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        PusTcCreator::new_simple(sph, 17, 1, &[], true)
     }
 
     fn base_ping_tc_simple_ctor_with_app_data(app_data: &'static [u8]) -> PusTcCreator<'static> {
-        let mut sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(&mut sph, 17, 1, app_data, true)
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        PusTcCreator::new_simple(sph, 17, 1, app_data, true)
     }
 
     #[test]
@@ -686,8 +688,8 @@ mod tests {
 
     #[test]
     fn test_update_func() {
-        let mut sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        let mut tc = PusTcCreator::new_simple(&mut sph, 17, 1, &[], false);
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let mut tc = PusTcCreator::new_simple(sph, 17, 1, &[], false);
         assert_eq!(tc.data_len(), 0);
         tc.update_ccsds_data_len();
         assert_eq!(tc.data_len(), 6);
