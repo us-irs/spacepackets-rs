@@ -235,19 +235,19 @@ impl PusTcSecondaryHeader {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PusTcCreator<'raw_data> {
+pub struct PusTcCreator<'app_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
-    app_data: &'raw_data [u8],
+    app_data: &'app_data [u8],
 }
 
-impl<'raw_data> PusTcCreator<'raw_data> {
+impl<'app_data> PusTcCreator<'app_data> {
     /// Generates a new struct instance.
     ///
     /// # Arguments
     ///
-    /// * `sp_header` - Space packet header information. The correct packet type will be set
-    ///     automatically
+    /// * `sp_header` - Space packet header information. The correct packet type and the secondary
+    ///     header flag are set correctly by the constructor.
     /// * `sec_header` - Information contained in the data field header, including the service
     ///     and subservice type
     /// * `app_data` - Custom application data
@@ -258,7 +258,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     pub fn new(
         sp_header: &mut SpHeader,
         sec_header: PusTcSecondaryHeader,
-        app_data: &'raw_data [u8],
+        app_data: &'app_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tc);
@@ -281,7 +281,7 @@ impl<'raw_data> PusTcCreator<'raw_data> {
         sph: &mut SpHeader,
         service: u8,
         subservice: u8,
-        app_data: &'raw_data [u8],
+        app_data: &'app_data [u8],
         set_ccsds_len: bool,
     ) -> Self {
         Self::new(
@@ -304,6 +304,11 @@ impl<'raw_data> PusTcCreator<'raw_data> {
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
+    }
+
+    #[inline]
+    pub fn sp_header_mut(&mut self) -> &mut SpHeader {
+        &mut self.sp_header
     }
 
     #[inline]
