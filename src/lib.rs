@@ -893,6 +893,8 @@ pub mod zc {
 pub(crate) mod tests {
     use std::collections::HashSet;
 
+    #[allow(unused_imports)]
+    use crate::ByteConversionError;
     #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
     use crate::{
@@ -1265,5 +1267,17 @@ pub(crate) mod tests {
     fn sp_header_from_apid_checked() {
         let sp_header = SpHeader::new_from_apid_checked(0x03).unwrap();
         assert_eq!(sp_header.apid(), 0x03);
+    }
+
+    #[cfg(feature = "defmt")]
+    fn is_defmt_format<T: defmt::Format>(_t: T) {}
+
+    #[test]
+    #[cfg(feature = "defmt")]
+    fn test_defmt_format() {
+        is_defmt_format(ByteConversionError::ToSliceTooSmall {
+            found: 1,
+            expected: 2,
+        });
     }
 }
