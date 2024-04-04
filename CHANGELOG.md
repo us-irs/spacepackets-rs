@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.0-rc.2] 2024-04-04
+
 ## Changed
 
 - Renamed `PacketId` and `PacketSequenceCtrl` `new` method to `new_checked` and former
