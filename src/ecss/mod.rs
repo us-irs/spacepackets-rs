@@ -245,7 +245,7 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
     crc16: u16,
 ) -> Result<(), PusError> {
     verify_crc16_ccitt_false_from_raw(raw_data)
-        .then(|| ())
+        .then_some(())
         .ok_or(PusError::ChecksumFailure(crc16))
 }
 
