@@ -1,8 +1,8 @@
 //! Common definitions and helpers required to create PUS TMTC packets according to
 //! [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/)
 //!
-//! You can find the PUS telecommand definitions in the [tc] module and ithe PUS telemetry definitions
-//! inside the [tm] module.
+//! You can find the PUS telecommand types in the [tc] module and the the PUS telemetry
+//! types inside the [tm] module.
 use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
