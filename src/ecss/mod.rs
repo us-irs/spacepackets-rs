@@ -22,7 +22,6 @@ pub mod tm;
 pub mod verification;
 
 pub type CrcType = u16;
-pub const CCSDS_HEADER_LEN: usize = size_of::<crate::zc::SpHeader>();
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- Moved `CCSDS_HEADER_LEN` constant to the crate root.
+
 # [v0.11.0-rc.2] 2024-04-04
 
 ## Changed

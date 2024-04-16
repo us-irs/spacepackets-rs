@@ -65,7 +65,6 @@ extern crate alloc;
 #[cfg(any(feature = "std", test))]
 extern crate std;
 
-use crate::ecss::CCSDS_HEADER_LEN;
 use core::{
     fmt::{Debug, Display, Formatter},
     hash::Hash,
@@ -87,6 +86,8 @@ pub mod util;
 mod private {
     pub trait Sealed {}
 }
+
+pub const CCSDS_HEADER_LEN: usize = core::mem::size_of::<crate::zc::SpHeader>();
 
 /// CRC algorithm used by the PUS standard, the CCSDS TC standard and the CFDP standard.
 pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
