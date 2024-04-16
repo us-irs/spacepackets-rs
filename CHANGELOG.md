@@ -8,9 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.0] 2024-04-16
+
 ## Changed
 
 - Moved `CCSDS_HEADER_LEN` constant to the crate root.
+
+## Added
+
+- Added `SpacePacketHeader` type alias for `SpHeader` type.
 
 # [v0.11.0-rc.2] 2024-04-04
 

@@ -1,5 +1,47 @@
 //! This module contains all components required to create a ECSS PUS C telemetry packets according
 //! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
+//!
+//! # Examples
+//!
+//! ```rust
+//! use spacepackets::time::TimeWriter;
+//! use spacepackets::time::cds::CdsTime;
+//! use spacepackets::{CcsdsPacket, SpHeader};
+//! use spacepackets::ecss::{PusPacket, WritablePusPacket};
+//! use spacepackets::ecss::tm::{PusTmCreator, PusTmReader, PusTmSecondaryHeader};
+//!
+//! let mut time_buf: [u8; 7] = [0; 7];
+//! let time_now = CdsTime::now_with_u16_days().expect("creating CDS timestamp failed");
+//! // This can definitely hold the timestamp, so it is okay to unwrap.
+//! time_now.write_to_bytes(&mut time_buf).unwrap();
+//!
+//! // Create a ping telemetry with no user source data
+//! let ping_tm = PusTmCreator::new_no_source_data(
+//!     SpHeader::new_from_apid(0x02),
+//!     PusTmSecondaryHeader::new_simple(17, 2, &time_buf),
+//!     true
+//! );
+//! println!("{:?}", ping_tm);
+//! assert_eq!(ping_tm.service(), 17);
+//! assert_eq!(ping_tm.subservice(), 2);
+//! assert_eq!(ping_tm.apid(), 0x02);
+//!
+//! // Serialize TM into a raw buffer
+//! let mut test_buf: [u8; 32] = [0; 32];
+//! let written_size = ping_tm
+//!     .write_to_bytes(test_buf.as_mut_slice())
+//!     .expect("Error writing TC to buffer");
+//! assert_eq!(written_size, 22);
+//! println!("{:?}", &test_buf[0..written_size]);
+//!
+//! // Deserialize from the raw byte representation
+//! let (ping_tm_reader, read_size) = PusTmReader::new(&test_buf, 7).expect("Deserialization failed");
+//! assert_eq!(written_size, read_size);
+//! assert_eq!(ping_tm_reader.service(), 17);
+//! assert_eq!(ping_tm_reader.subservice(), 2);
+//! assert_eq!(ping_tm_reader.apid(), 0x02);
+//! assert_eq!(ping_tm_reader.timestamp(), &time_buf);
+//! ```
 use crate::ecss::{
     calc_pus_crc16, ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,

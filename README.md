@@ -29,10 +29,6 @@ Currently, this includes the following components:
 
 `spacepackets` supports various runtime environments and is also suitable for `no_std` environments.
 
-It also offers optional support for [`serde`](https://serde.rs/). This allows serializing and
-deserializing them with an appropriate `serde` provider like
-[`postcard`](https://github.com/jamesmunns/postcard).
-
 ## Default features
 
  - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
