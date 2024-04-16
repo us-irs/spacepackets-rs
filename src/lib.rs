@@ -22,10 +22,6 @@
 //!
 //! `spacepackets` supports various runtime environments and is also suitable for `no_std` environments.
 //!
-//! It also offers optional support for [`serde`](https://serde.rs/). This allows serializing and
-//! deserializing them with an appropriate `serde` provider like
-//! [`postcard`](https://github.com/jamesmunns/postcard).
-//!
 //! ### Default features
 //!
 //!  - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
@@ -505,6 +501,8 @@ pub struct SpHeader {
     pub psc: PacketSequenceCtrl,
     pub data_len: u16,
 }
+
+pub type SpacePacketHeader = SpHeader;
 
 impl Default for SpHeader {
     /// The default function sets the sequence flag field to [SequenceFlags::Unsegmented]. The data
