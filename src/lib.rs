@@ -505,8 +505,8 @@ pub struct SpHeader {
 pub type SpacePacketHeader = SpHeader;
 
 impl Default for SpHeader {
-    /// The default function sets the sequence flag field to [SequenceFlags::Unsegmented]. The data
-    /// length field is set to 1, which denotes an empty space packets.
+    /// The default function sets the sequence flag field to [SequenceFlags::Unsegmented] and the
+    /// data length to 0.
     #[inline]
     fn default() -> Self {
         SpHeader {
@@ -516,7 +516,7 @@ impl Default for SpHeader {
                 seq_flags: SequenceFlags::Unsegmented,
                 seq_count: 0,
             },
-            data_len: 1,
+            data_len: 0,
         }
     }
 }
@@ -532,8 +532,8 @@ impl SpHeader {
         }
     }
 
-    /// This constructor sets the sequence flag field to [SequenceFlags::Unsegmented]. The data
-    /// length field is set to 1, which denotes an empty space packets.
+    /// This constructor sets the sequence flag field to [SequenceFlags::Unsegmented] and the data
+    /// length to 0.
     ///
     /// This constructor will panic if the APID exceeds [MAX_APID].
     #[inline]
@@ -545,7 +545,7 @@ impl SpHeader {
                 seq_flags: SequenceFlags::Unsegmented,
                 seq_count: 0,
             },
-            data_len: 1,
+            data_len: 0,
         }
     }
 
@@ -559,7 +559,7 @@ impl SpHeader {
                 seq_flags: SequenceFlags::Unsegmented,
                 seq_count: 0,
             },
-            data_len: 1,
+            data_len: 0,
         })
     }
 
@@ -568,7 +568,7 @@ impl SpHeader {
     ///
     /// The checked constructor variants can be used to avoid panics.
     #[inline]
-    const fn new_from_fields(
+    pub const fn new_from_fields(
         ptype: PacketType,
         sec_header: bool,
         apid: u16,
@@ -754,6 +754,15 @@ impl SpHeader {
             .to_bytes(&mut buf[0..CCSDS_HEADER_LEN])
             .ok_or(ByteConversionError::ZeroCopyToError)?;
         Ok(&mut buf[CCSDS_HEADER_LEN..])
+    }
+
+    /// Create a vector containing the CCSDS header.
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        let mut vec = alloc::vec![0; CCSDS_HEADER_LEN];
+        // This can not fail.
+        self.write_to_be_bytes(&mut vec[..]).unwrap();
+        vec
     }
 }
 
@@ -1260,12 +1269,14 @@ pub(crate) mod tests {
     fn sp_header_from_apid() {
         let sp_header = SpHeader::new_from_apid(0x03);
         assert_eq!(sp_header.apid(), 0x03);
+        assert_eq!(sp_header.data_len(), 0);
     }
 
     #[test]
     fn sp_header_from_apid_checked() {
         let sp_header = SpHeader::new_from_apid_checked(0x03).unwrap();
         assert_eq!(sp_header.apid(), 0x03);
+        assert_eq!(sp_header.data_len(), 0);
     }
 
     #[cfg(feature = "defmt")]
@@ -1278,5 +1289,15 @@ pub(crate) mod tests {
             found: 1,
             expected: 2,
         });
+    }
+
+    #[test]
+    fn test_sp_header_as_vec() {
+        let sp_header = SpHeader::new_for_unseg_tc(0x42, 25, 1);
+        let sp_header_as_vec = sp_header.to_vec();
+        let sp_header_read_back = SpHeader::from_be_bytes(&sp_header_as_vec)
+            .expect("Error reading back SP header")
+            .0;
+        assert_eq!(sp_header, sp_header_read_back);
     }
 }

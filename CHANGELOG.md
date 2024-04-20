@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.1] 2024-04-20
+
+## Fixed
+
+- The default data length for for `SpHeader` constructors where the data field length is not
+  specified is now 0.
+- The `SpHeader::new_from_fields` is public now.
+
+## Added
+
+- `SpHeader::to_vec` method.
+
 # [v0.11.0] 2024-04-16
 
 ## Changed
