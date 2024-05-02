@@ -34,15 +34,12 @@ jobs:
   cross-check:
     name: Check Cross-Compilation
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - armv7-unknown-linux-gnueabihf
-          - thumbv7em-none-eabihf
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check --release --target=${{ matrix.target }} --no-default-features
+        with:
+          targets: "armv7-unknown-linux-gnueabihf, thumbv7em-none-eabihf"
+      - run: cargo check --release --no-default-features
 
   fmt:
     name: Check formatting
@@ -65,5 +62,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@latest
+      - uses: dtolnay/rust-toolchain@stable
       - run: cargo clippy -- -D warnings
