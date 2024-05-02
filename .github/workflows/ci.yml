@@ -22,6 +22,7 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
       - run: cargo nextest run --all-features
+      - run: cargo test --doc
 
   msrv:
     name: Check MSRV
