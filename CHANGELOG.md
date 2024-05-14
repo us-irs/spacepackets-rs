@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.11.2] 2024-05-14
+
+## Fixed
+
+- Removed `defmt::Format` impl for `MetadataPduCreator` which seems to be problematic.
+
 # [v0.11.1] 2024-04-22
 
 ## Fixed
