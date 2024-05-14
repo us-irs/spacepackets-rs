@@ -61,3 +61,13 @@ cargo install grcov --locked
 
 After that, you can simply run `coverage.py` to test the project with coverage. You can optionally
 supply the `--open` flag to open the coverage report in your webbrowser.
+
+# Miri
+
+You can run the [`miri`](https://github.com/rust-lang/miri) tool on this library to check for
+undefined behaviour (UB). This library does not use use any `unsafe` code blocks, but `miri` could
+still catch UB from used libraries.
+
+```sh
+cargo +nightly miri nextest run --all-features
+```
