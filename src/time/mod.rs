@@ -551,6 +551,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_get_current_time() {
         let sec_floats = seconds_since_epoch();
         assert!(sec_floats > 0.0);
@@ -565,6 +566,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_ccsds_epoch() {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -685,6 +687,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_from_now() {
         let stamp_now = UnixTime::now().unwrap();
         let dt_now = stamp_now.chrono_date_time().unwrap();

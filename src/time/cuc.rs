@@ -947,6 +947,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_datetime_now() {
         let now = chrono::Utc::now();
         let cuc_now = CucTime::now(FractionalResolution::SixtyNs, LEAP_SECONDS);
@@ -1278,6 +1279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn set_fract_resolution() {
         let mut stamp = CucTime::new(2000);
         stamp.set_fractional_resolution(FractionalResolution::SixtyNs);
