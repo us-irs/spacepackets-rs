@@ -1622,6 +1622,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_time_now() {
         let timestamp_now = CdsTime::now_with_u16_days().unwrap();
         let compare_stamp = chrono::Utc::now();
@@ -1629,6 +1630,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_time_now_us_prec() {
         let timestamp_now = CdsTime::now_with_u16_days_us_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
@@ -1636,6 +1638,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_time_now_ps_prec() {
         let timestamp_now = CdsTime::from_now_with_u16_days_ps_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
@@ -1643,6 +1646,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_time_now_ps_prec_u16_days() {
         let timestamp_now = CdsTime::from_now_with_u16_days_ps_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
@@ -1650,6 +1654,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_time_now_ps_prec_u24_days() {
         let timestamp_now = CdsTime::now_with_u24_days_ps_precision().unwrap();
         let compare_stamp = chrono::Utc::now();
@@ -2306,6 +2311,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn test_update_from_now() {
         let mut stamp = CdsTime::new_with_u16_days(0, 0);
         let _ = stamp.update_from_now();
@@ -2321,6 +2327,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "serde")]
+    #[cfg_attr(miri, ignore)]
     fn test_serialization() {
         let stamp_now = CdsTime::now_with_u16_days().expect("Error retrieving time");
         let val = to_allocvec(&stamp_now).expect("Serializing timestamp failed");

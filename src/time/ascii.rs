@@ -71,7 +71,19 @@ mod tests {
     use std::format;
 
     #[test]
-    fn test_ascii_timestamp_a_unterminated() {
+    fn test_ascii_timestamp_a_unterminated_epoch() {
+        let date = chrono::DateTime::UNIX_EPOCH;
+        let stamp_formatter = generate_time_code_a(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find('T');
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 10);
+        assert_eq!(stamp.len(), FMT_STR_CODE_A_WITH_SIZE.1);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_ascii_timestamp_a_unterminated_now() {
         let date = Utc::now();
         let stamp_formatter = generate_time_code_a(&date);
         let stamp = format!("{}", stamp_formatter);
@@ -82,7 +94,24 @@ mod tests {
     }
 
     #[test]
-    fn test_ascii_timestamp_a_terminated() {
+    fn test_ascii_timestamp_a_terminated_epoch() {
+        let date = chrono::DateTime::UNIX_EPOCH;
+        let stamp_formatter = generate_time_code_a_terminated(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find('T');
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 10);
+        let z_terminator = stamp.find('Z');
+        assert!(z_terminator.is_some());
+        assert_eq!(
+            z_terminator.unwrap(),
+            FMT_STR_CODE_A_TERMINATED_WITH_SIZE.1 - 1
+        );
+        assert_eq!(stamp.len(), FMT_STR_CODE_A_TERMINATED_WITH_SIZE.1);
+    }
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_ascii_timestamp_a_terminated_now() {
         let date = Utc::now();
         let stamp_formatter = generate_time_code_a_terminated(&date);
         let stamp = format!("{}", stamp_formatter);
@@ -99,7 +128,19 @@ mod tests {
     }
 
     #[test]
-    fn test_ascii_timestamp_b_unterminated() {
+    fn test_ascii_timestamp_b_unterminated_epoch() {
+        let date = chrono::DateTime::UNIX_EPOCH;
+        let stamp_formatter = generate_time_code_b(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find('T');
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 8);
+        assert_eq!(stamp.len(), FMT_STR_CODE_B_WITH_SIZE.1);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_ascii_timestamp_b_unterminated_now() {
         let date = Utc::now();
         let stamp_formatter = generate_time_code_b(&date);
         let stamp = format!("{}", stamp_formatter);
@@ -110,7 +151,25 @@ mod tests {
     }
 
     #[test]
-    fn test_ascii_timestamp_b_terminated() {
+    fn test_ascii_timestamp_b_terminated_epoch() {
+        let date = chrono::DateTime::UNIX_EPOCH;
+        let stamp_formatter = generate_time_code_b_terminated(&date);
+        let stamp = format!("{}", stamp_formatter);
+        let t_sep = stamp.find('T');
+        assert!(t_sep.is_some());
+        assert_eq!(t_sep.unwrap(), 8);
+        let z_terminator = stamp.find('Z');
+        assert!(z_terminator.is_some());
+        assert_eq!(
+            z_terminator.unwrap(),
+            FMT_STR_CODE_B_TERMINATED_WITH_SIZE.1 - 1
+        );
+        assert_eq!(stamp.len(), FMT_STR_CODE_B_TERMINATED_WITH_SIZE.1);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_ascii_timestamp_b_terminated_now() {
         let date = Utc::now();
         let stamp_formatter = generate_time_code_b_terminated(&date);
         let stamp = format!("{}", stamp_formatter);
