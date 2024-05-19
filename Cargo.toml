@@ -2,7 +2,7 @@
 name = "spacepackets"
 version = "0.11.2"
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.68.2"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
 description = "Generic implementations for various CCSDS and ECSS packet standards"
 homepage = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
