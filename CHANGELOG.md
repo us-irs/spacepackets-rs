@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.11.2] 2024-05-19
 
+- Bumped MSRV to 1.68.2
+
 ## Fixed
 
 - Removed `defmt::Format` impl for `MetadataPduCreator` which seems to be problematic.
