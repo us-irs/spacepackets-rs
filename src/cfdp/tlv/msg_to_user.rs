@@ -1,5 +1,5 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
-use super::{GenericTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
+use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::ByteConversionError;
 use delegate::delegate;
 

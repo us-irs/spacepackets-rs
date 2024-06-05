@@ -9,6 +9,8 @@ use crate::ByteConversionError;
 use alloc::vec;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+#[cfg(feature = "alloc")]
+pub use alloc_mod::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -36,6 +38,26 @@ pub trait GenericTlv {
         } else {
             None
         }
+    }
+}
+
+pub trait ReadableTlv {
+    fn value(&self) -> &[u8];
+
+    /// Checks whether the value field is empty.
+    fn is_empty(&self) -> bool {
+        self.value().is_empty()
+    }
+
+    /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
+    /// [Self::value]
+    fn len_value(&self) -> usize {
+        self.value().len()
+    }
+
+    /// Returns the full raw length, including the length byte.
+    fn len_full(&self) -> usize {
+        self.len_value() + 2
     }
 }
 
@@ -151,26 +173,6 @@ impl<'data> Tlv<'data> {
         }
     }
 
-    pub fn value(&self) -> &[u8] {
-        self.lv.value()
-    }
-
-    /// Checks whether the value field is empty.
-    pub fn is_empty(&self) -> bool {
-        self.value().is_empty()
-    }
-
-    /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
-    /// [Self::value]
-    pub fn len_value(&self) -> usize {
-        self.value().len()
-    }
-
-    /// Returns the full raw length, including the length byte.
-    pub fn len_full(&self) -> usize {
-        self.len_value() + 2
-    }
-
     /// Creates a TLV give a raw bytestream. Please note that is is not necessary to pass the
     /// bytestream with the exact size of the expected TLV. This function will take care
     /// of parsing the length byte, and the length of the parsed TLV can be retrieved using
@@ -192,6 +194,27 @@ impl<'data> Tlv<'data> {
     pub fn raw_data(&self) -> Option<&[u8]> {
         self.lv.raw_data()
     }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_owned(&self) -> TlvOwned {
+        TlvOwned {
+            tlv_type_field: self.tlv_type_field,
+            data: self.value().to_vec(),
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl PartialEq<TlvOwned> for Tlv<'_> {
+    fn eq(&self, other: &TlvOwned) -> bool {
+        self.tlv_type_field == other.tlv_type_field && self.value() == other.value()
+    }
+}
+
+impl ReadableTlv for Tlv<'_> {
+    fn value(&self) -> &[u8] {
+        self.lv.value()
+    }
 }
 
 impl WritableTlv for Tlv<'_> {
@@ -212,18 +235,81 @@ impl GenericTlv for Tlv<'_> {
     }
 }
 
-pub(crate) fn verify_tlv_type(raw_type: u8, expected_tlv_type: TlvType) -> Result<(), TlvLvError> {
-    let tlv_type = TlvType::try_from(raw_type).map_err(|_| TlvLvError::InvalidTlvTypeField {
-        found: raw_type,
-        expected: Some(expected_tlv_type.into()),
-    })?;
-    if tlv_type != expected_tlv_type {
-        return Err(TlvLvError::InvalidTlvTypeField {
-            found: tlv_type as u8,
-            expected: Some(expected_tlv_type as u8),
-        });
+#[cfg(feature = "alloc")]
+pub mod alloc_mod {
+    use super::*;
+
+    /// Owned variant of [Tlv] which is consequently [Clone]able and does not have a lifetime
+    /// associated to a data slice.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+    pub struct TlvOwned {
+        pub(crate) tlv_type_field: TlvTypeField,
+        pub(crate) data: Vec<u8>,
     }
-    Ok(())
+
+    impl TlvOwned {
+        pub fn new(tlv_type: TlvType, data: &[u8]) -> Self {
+            Self {
+                tlv_type_field: TlvTypeField::Standard(tlv_type),
+                data: data.to_vec(),
+            }
+        }
+
+        pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Self {
+            Self {
+                tlv_type_field: TlvTypeField::Custom(tlv_type),
+                data: data.to_vec(),
+            }
+        }
+
+        /// Creates a TLV with an empty value field.
+        pub fn new_empty(tlv_type: TlvType) -> Self {
+            Self {
+                tlv_type_field: TlvTypeField::Standard(tlv_type),
+                data: Vec::new(),
+            }
+        }
+    }
+
+    impl ReadableTlv for TlvOwned {
+        fn value(&self) -> &[u8] {
+            &self.data
+        }
+    }
+
+    impl WritableTlv for TlvOwned {
+        fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+            generic_len_check_data_serialization(buf, self.data.len(), MIN_TLV_LEN)?;
+            buf[0] = self.tlv_type_field.into();
+            buf[1] = self.data.len() as u8;
+            buf[2..2 + self.data.len()].copy_from_slice(&self.data);
+            Ok(self.len_written())
+        }
+
+        fn len_written(&self) -> usize {
+            self.data.len() + 2
+        }
+    }
+
+    impl GenericTlv for TlvOwned {
+        fn tlv_type_field(&self) -> TlvTypeField {
+            self.tlv_type_field
+        }
+    }
+
+    impl From<Tlv<'_>> for TlvOwned {
+        fn from(value: Tlv<'_>) -> Self {
+            value.to_owned()
+        }
+    }
+
+    impl PartialEq<Tlv<'_>> for TlvOwned {
+        fn eq(&self, other: &Tlv) -> bool {
+            self.tlv_type_field == other.tlv_type_field && self.data == other.value()
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -750,6 +836,20 @@ impl GenericTlv for FilestoreResponseTlv<'_, '_, '_> {
     fn tlv_type_field(&self) -> TlvTypeField {
         TlvTypeField::Standard(TlvType::FilestoreResponse)
     }
+}
+
+pub(crate) fn verify_tlv_type(raw_type: u8, expected_tlv_type: TlvType) -> Result<(), TlvLvError> {
+    let tlv_type = TlvType::try_from(raw_type).map_err(|_| TlvLvError::InvalidTlvTypeField {
+        found: raw_type,
+        expected: Some(expected_tlv_type.into()),
+    })?;
+    if tlv_type != expected_tlv_type {
+        return Err(TlvLvError::InvalidTlvTypeField {
+            found: tlv_type as u8,
+            expected: Some(expected_tlv_type as u8),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1299,5 +1399,72 @@ mod tests {
         assert_eq!(tlv_as_vec.len(), 2);
         assert_eq!(tlv_as_vec[0], 20);
         assert_eq!(tlv_as_vec[1], 0);
+    }
+
+    #[test]
+    fn test_tlv_to_owned() {
+        let entity_id = UbfU8::new(5);
+        let mut buf: [u8; 4] = [0; 4];
+        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
+        assert!(tlv_res.is_ok());
+        let tlv_res = tlv_res.unwrap();
+        let tlv_owned = tlv_res.to_owned();
+        assert_eq!(tlv_res, tlv_owned);
+        let tlv_owned_from_conversion: TlvOwned = tlv_res.into();
+        assert_eq!(tlv_owned_from_conversion, tlv_owned);
+        assert_eq!(tlv_owned_from_conversion, tlv_res);
+    }
+
+    #[test]
+    fn test_owned_tlv() {
+        let entity_id = UbfU8::new(5);
+        let mut buf: [u8; 4] = [0; 4];
+        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        let tlv_res = TlvOwned::new(TlvType::EntityId, &buf[0..1]);
+        assert_eq!(
+            tlv_res.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::EntityId)
+        );
+        assert_eq!(tlv_res.len_full(), 3);
+        assert_eq!(tlv_res.value().len(), 1);
+        assert_eq!(tlv_res.len_value(), 1);
+        assert!(!tlv_res.is_empty());
+        assert_eq!(tlv_res.value()[0], 5);
+    }
+
+    #[test]
+    fn test_owned_tlv_empty() {
+        let tlv_res = TlvOwned::new_empty(TlvType::FlowLabel);
+        assert_eq!(
+            tlv_res.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::FlowLabel)
+        );
+        assert_eq!(tlv_res.len_full(), 2);
+        assert_eq!(tlv_res.value().len(), 0);
+        assert_eq!(tlv_res.len_value(), 0);
+        assert!(tlv_res.is_empty());
+    }
+
+    #[test]
+    fn test_owned_tlv_custom_type() {
+        let tlv_res = TlvOwned::new_with_custom_type(32, &[]);
+        assert_eq!(tlv_res.tlv_type_field(), TlvTypeField::Custom(32));
+        assert_eq!(tlv_res.len_full(), 2);
+        assert_eq!(tlv_res.value().len(), 0);
+        assert_eq!(tlv_res.len_value(), 0);
+        assert!(tlv_res.is_empty());
+    }
+
+    #[test]
+    fn test_owned_tlv_conversion_to_bytes() {
+        let entity_id = UbfU8::new(5);
+        let mut buf: [u8; 4] = [0; 4];
+        assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
+        let tlv_res = Tlv::new(TlvType::EntityId, &buf[0..1]);
+        assert!(tlv_res.is_ok());
+        let tlv_res = tlv_res.unwrap();
+        let tlv_owned_from_conversion: TlvOwned = tlv_res.into();
+        assert_eq!(tlv_res.to_vec(), tlv_owned_from_conversion.to_vec());
     }
 }

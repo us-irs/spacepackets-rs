@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.12.0]
+
+## Added
+
+- Added new `cfdp::tlv::TlvOwned` type which erases the lifetime and is clonable.
+
+## Added and Changed
+
+- Added new `ReadableTlv` to avoid some boilerplate code and have a common abstraction implemented
+  for both `Tlv` and `TlvOwned` to read the raw TLV data field and its length.
+
 # [v0.11.2] 2024-05-19
 
 - Bumped MSRV to 1.68.2
