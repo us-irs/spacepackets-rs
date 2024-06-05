@@ -1,4 +1,6 @@
 //! Abstractions for the Message to User CFDP TLV subtype.
+#[cfg(feature = "alloc")]
+use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::ByteConversionError;
 use delegate::delegate;
@@ -74,6 +76,11 @@ impl<'data> MsgToUserTlv<'data> {
             }
         }
         Ok(msg_to_user)
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_owned(&self) -> TlvOwned {
+        self.tlv.to_owned()
     }
 }
 

@@ -358,7 +358,7 @@ impl EntityIdTlv {
         Ok(Self { entity_id })
     }
 
-    /// Convert to a generic [Tlv], which also erases the programmatic type information.
+    /// Convert to a generic [Tlv], which also erases the type information.
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
         Self::len_check(buf)?;
         self.entity_id
@@ -368,6 +368,11 @@ impl EntityIdTlv {
             // All other errors are impossible.
             _ => panic!("unexpected TLV error"),
         })
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_owned(&self) -> TlvOwned {
+        TlvOwned::new(TlvType::EntityId, &self.entity_id.to_vec())
     }
 }
 
@@ -612,6 +617,11 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
             },
         })
     }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_owned(&self) -> TlvOwned {
+        TlvOwned::new(TlvType::FilestoreRequest, &self.to_vec()[2..])
+    }
 }
 
 impl WritableTlv for FilestoreRequestTlv<'_, '_> {
@@ -796,6 +806,11 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
             status_code,
             filestore_message,
         })
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_owned(&self) -> TlvOwned {
+        TlvOwned::new(TlvType::FilestoreResponse, &self.to_vec()[2..])
     }
 }
 
