@@ -15,6 +15,8 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::TlvLvDataTooLarge;
+
 pub mod msg_to_user;
 
 pub const MIN_TLV_LEN: usize = 2;
@@ -151,14 +153,14 @@ pub struct Tlv<'data> {
 }
 
 impl<'data> Tlv<'data> {
-    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv, TlvLvError> {
+    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv, TlvLvDataTooLarge> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Standard(tlv_type),
             lv: Lv::new(data)?,
         })
     }
 
-    pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Result<Tlv, TlvLvError> {
+    pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Result<Tlv, TlvLvDataTooLarge> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Custom(tlv_type),
             lv: Lv::new(data)?,
@@ -237,6 +239,8 @@ impl GenericTlv for Tlv<'_> {
 
 #[cfg(feature = "alloc")]
 pub mod alloc_mod {
+    use crate::cfdp::TlvLvDataTooLarge;
+
     use super::*;
 
     /// Owned variant of [Tlv] which is consequently [Clone]able and does not have a lifetime
@@ -250,18 +254,24 @@ pub mod alloc_mod {
     }
 
     impl TlvOwned {
-        pub fn new(tlv_type: TlvType, data: &[u8]) -> Self {
-            Self {
+        pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Self, TlvLvDataTooLarge> {
+            if data.len() > u8::MAX as usize {
+                return Err(TlvLvDataTooLarge(data.len()));
+            }
+            Ok(Self {
                 tlv_type_field: TlvTypeField::Standard(tlv_type),
                 data: data.to_vec(),
-            }
+            })
         }
 
-        pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Self {
-            Self {
+        pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Result<Self, TlvLvDataTooLarge> {
+            if data.len() > u8::MAX as usize {
+                return Err(TlvLvDataTooLarge(data.len()));
+            }
+            Ok(Self {
                 tlv_type_field: TlvTypeField::Custom(tlv_type),
                 data: data.to_vec(),
-            }
+            })
         }
 
         /// Creates a TLV with an empty value field.
@@ -269,6 +279,15 @@ pub mod alloc_mod {
             Self {
                 tlv_type_field: TlvTypeField::Standard(tlv_type),
                 data: Vec::new(),
+            }
+        }
+
+        pub fn as_tlv(&self) -> Tlv<'_> {
+            Tlv {
+                tlv_type_field: self.tlv_type_field,
+                // The API should ensure that the data length is never to large, so the unwrap for the
+                // LV creation should never be an issue.
+                lv: Lv::new(&self.data).expect("lv creation failed unexpectedly"),
             }
         }
     }
@@ -324,7 +343,7 @@ impl EntityIdTlv {
         Self { entity_id }
     }
 
-    fn len_check(buf: &[u8]) -> Result<(), ByteConversionError> {
+    fn check_min_len(buf: &[u8]) -> Result<(), ByteConversionError> {
         if buf.len() < 2 {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -347,7 +366,7 @@ impl EntityIdTlv {
     }
 
     pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
-        Self::len_check(buf)?;
+        Self::check_min_len(buf)?;
         verify_tlv_type(buf[0], TlvType::EntityId)?;
         let len = buf[1];
         if len != 1 && len != 2 && len != 4 && len != 8 {
@@ -360,25 +379,29 @@ impl EntityIdTlv {
 
     /// Convert to a generic [Tlv], which also erases the type information.
     pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
-        Self::len_check(buf)?;
+        Self::check_min_len(buf)?;
         self.entity_id
             .write_to_be_bytes(&mut buf[2..2 + self.entity_id.size()])?;
-        Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).map_err(|e| match e {
-            TlvLvError::ByteConversion(e) => e,
-            // All other errors are impossible.
-            _ => panic!("unexpected TLV error"),
-        })
+        if buf.len() < self.len_value() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: self.len_value(),
+            });
+        }
+        // We performed all checks necessary to ensure this call never panics.
+        Ok(Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).unwrap())
     }
 
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
-        TlvOwned::new(TlvType::EntityId, &self.entity_id.to_vec())
+        // Unwrap is okay here, entity ID should never be larger than maximum allowed size.
+        TlvOwned::new(TlvType::EntityId, &self.entity_id.to_vec()).unwrap()
     }
 }
 
 impl WritableTlv for EntityIdTlv {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        Self::len_check(buf)?;
+        Self::check_min_len(buf)?;
         buf[0] = TlvType::EntityId as u8;
         buf[1] = self.entity_id.size() as u8;
         Ok(2 + self.entity_id.write_to_be_bytes(&mut buf[2..])?)
@@ -620,7 +643,8 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
 
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
-        TlvOwned::new(TlvType::FilestoreRequest, &self.to_vec()[2..])
+        // The API should ensure the data field is never too large, so unwrapping here is okay.
+        TlvOwned::new(TlvType::FilestoreRequest, &self.to_vec()[2..]).unwrap()
     }
 }
 
@@ -810,7 +834,8 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
 
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
-        TlvOwned::new(TlvType::FilestoreResponse, &self.to_vec()[2..])
+        // The API should ensure the data field is never too large, so unwrap is okay here.
+        TlvOwned::new(TlvType::FilestoreResponse, &self.to_vec()[2..]).unwrap()
     }
 }
 
@@ -1054,15 +1079,11 @@ mod tests {
         let tlv_res = Tlv::new(TlvType::MsgToUser, &buf_too_large);
         assert!(tlv_res.is_err());
         let error = tlv_res.unwrap_err();
-        if let TlvLvError::DataTooLarge(size) = error {
-            assert_eq!(size, u8::MAX as usize + 1);
-            assert_eq!(
-                error.to_string(),
-                "data with size 256 larger than allowed 255 bytes"
-            );
-        } else {
-            panic!("unexpected error {:?}", error);
-        }
+        assert_eq!(error.0, u8::MAX as usize + 1);
+        assert_eq!(
+            error.to_string(),
+            "data with size 256 larger than allowed 255 bytes"
+        );
     }
 
     #[test]
@@ -1436,7 +1457,7 @@ mod tests {
         let entity_id = UbfU8::new(5);
         let mut buf: [u8; 4] = [0; 4];
         assert!(entity_id.write_to_be_bytes(&mut buf).is_ok());
-        let tlv_res = TlvOwned::new(TlvType::EntityId, &buf[0..1]);
+        let tlv_res = TlvOwned::new(TlvType::EntityId, &buf[0..1]).expect("creating TLV failed");
         assert_eq!(
             tlv_res.tlv_type_field(),
             TlvTypeField::Standard(TlvType::EntityId)
@@ -1463,7 +1484,7 @@ mod tests {
 
     #[test]
     fn test_owned_tlv_custom_type() {
-        let tlv_res = TlvOwned::new_with_custom_type(32, &[]);
+        let tlv_res = TlvOwned::new_with_custom_type(32, &[]).unwrap();
         assert_eq!(tlv_res.tlv_type_field(), TlvTypeField::Custom(32));
         assert_eq!(tlv_res.len_full(), 2);
         assert_eq!(tlv_res.value().len(), 0);

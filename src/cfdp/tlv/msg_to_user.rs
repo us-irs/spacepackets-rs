@@ -2,7 +2,7 @@
 #[cfg(feature = "alloc")]
 use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
-use crate::ByteConversionError;
+use crate::{cfdp::TlvLvDataTooLarge, ByteConversionError};
 use delegate::delegate;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub struct MsgToUserTlv<'data> {
 
 impl<'data> MsgToUserTlv<'data> {
     /// Create a new message to user TLV where the type field is set correctly.
-    pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvError> {
+    pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvDataTooLarge> {
         Ok(Self {
             tlv: Tlv::new(TlvType::MsgToUser, value)?,
         })
