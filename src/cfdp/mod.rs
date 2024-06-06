@@ -179,8 +179,27 @@ pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct TlvLvDataTooLarge(pub usize);
+
+impl Display for TlvLvDataTooLarge {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "data with size {} larger than allowed {} bytes",
+            self.0,
+            u8::MAX
+        )
+    }
+}
+
+#[cfg(feature = "std")]
+impl Error for TlvLvDataTooLarge {}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvLvError {
-    DataTooLarge(usize),
+    DataTooLarge(TlvLvDataTooLarge),
     ByteConversion(ByteConversionError),
     /// First value: Found value. Second value: Expected value if there is one.
     InvalidTlvTypeField {
@@ -197,6 +216,12 @@ pub enum TlvLvError {
     InvalidFilestoreActionCode(u8),
 }
 
+impl From<TlvLvDataTooLarge> for TlvLvError {
+    fn from(value: TlvLvDataTooLarge) -> Self {
+        Self::DataTooLarge(value)
+    }
+}
+
 impl From<ByteConversionError> for TlvLvError {
     fn from(value: ByteConversionError) -> Self {
         Self::ByteConversion(value)
@@ -206,13 +231,8 @@ impl From<ByteConversionError> for TlvLvError {
 impl Display for TlvLvError {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
-            TlvLvError::DataTooLarge(data_len) => {
-                write!(
-                    f,
-                    "data with size {} larger than allowed {} bytes",
-                    data_len,
-                    u8::MAX
-                )
+            TlvLvError::DataTooLarge(e) => {
+                write!(f, "{}", e)
             }
             TlvLvError::ByteConversion(e) => {
                 write!(f, "tlv or lv byte conversion: {}", e)
@@ -240,6 +260,7 @@ impl Display for TlvLvError {
 impl Error for TlvLvError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            TlvLvError::DataTooLarge(e) => Some(e),
             TlvLvError::ByteConversion(e) => Some(e),
             _ => None,
         }

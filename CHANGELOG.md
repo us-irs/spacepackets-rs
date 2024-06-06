@@ -12,11 +12,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- Added new `cfdp::tlv::TlvOwned` type which erases the lifetime and is clonable.
+- Dedicated `cfdp::tlv::TlvLvDataTooLarge` error struct for APIs where this is the only possible
+  API error.
 - `Default` impl for `GenericUnsignedByteField<()>` (also called `UnsignedByteFieldEmpty`)
 
 ## Changed
 
 - Removed `Into<u64>` type constraint for `GenericUnsignedByteField`
+
+## Added and Changed
+
+- Added new `ReadableTlv` to avoid some boilerplate code and have a common abstraction implemented
+  for both `Tlv` and `TlvOwned` to read the raw TLV data field and its length.
+- Replaced `cfdp::tlv::TlvLvError` by `cfdp::tlv::TlvLvDataTooLarge` where applicable.
 
 # [v0.11.2] 2024-05-19
 

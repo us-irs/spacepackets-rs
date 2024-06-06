@@ -11,6 +11,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use super::tlv::ReadableTlv;
 use super::{CfdpPdu, WritablePduPacket};
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
@@ -354,7 +355,7 @@ pub mod tests {
     };
     use crate::cfdp::pdu::{CfdpPdu, PduError, WritablePduPacket};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::tlv::{Tlv, TlvType};
+    use crate::cfdp::tlv::{ReadableTlv, Tlv, TlvType};
     use crate::cfdp::{
         ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag,
         SegmentationControl, TransmissionMode,
