@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.12.0] 2024-06-06
+
+## Added
+
+- `Default` impl for `GenericUnsignedByteField<()>` (also called `UnsignedByteFieldEmpty`)
+
+## Changed
+
+- Removed `Into<u64>` type constraint for `GenericUnsignedByteField`
+
 # [v0.11.2] 2024-05-19
 
 - Bumped MSRV to 1.68.2

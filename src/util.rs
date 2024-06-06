@@ -242,7 +242,7 @@ impl UnsignedEnum for UnsignedByteField {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct GenericUnsignedByteField<TYPE: Copy + Into<u64>> {
+pub struct GenericUnsignedByteField<TYPE: Copy> {
     value: TYPE,
 }
 
@@ -289,6 +289,14 @@ pub type UbfU8 = UnsignedByteFieldU8;
 pub type UbfU16 = UnsignedByteFieldU16;
 pub type UbfU32 = UnsignedByteFieldU32;
 pub type UbfU64 = UnsignedByteFieldU64;
+
+impl Default for GenericUnsignedByteField<()> {
+    fn default() -> Self {
+        Self {
+            value: Default::default(),
+        }
+    }
+}
 
 impl From<UnsignedByteFieldU8> for UnsignedByteField {
     fn from(value: UnsignedByteFieldU8) -> Self {
