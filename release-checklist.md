@@ -4,7 +4,9 @@ Checklist for new releases
 # Pre-Release
 
 1. Make sure any new modules are documented sufficiently enough and check docs with
-   `cargo +nightly doc --all-features --config 'build.rustdocflags=["--cfg", "docs_rs"]' --open`.
+   `RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options" cargo +nightly doc --all-features --open`
+   or `cargo +nightly doc --all-features --config 'build.rustdocflags=["--cfg", "docsrs" --generate-link-to-definition"]' --open`
+   (was problematic on more recent nightly versions).
 2. Bump version specifier in `Cargo.toml`.
 3. Update `CHANGELOG.md`: Convert `unreleased` section into version section with date and add new
    `unreleased` section.
