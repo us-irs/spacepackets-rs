@@ -6,7 +6,6 @@ use core::cmp::Ordering;
 use core::fmt::{Display, Formatter};
 use core::ops::{Add, AddAssign, Sub};
 use core::time::Duration;
-use core::u8;
 
 #[allow(unused_imports)]
 #[cfg(not(feature = "std"))]

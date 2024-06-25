@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
-use core::u64;
 
 use crate::ByteConversionError;
 
