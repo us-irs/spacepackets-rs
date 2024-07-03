@@ -1,6 +1,6 @@
 [package]
 name = "spacepackets"
-version = "0.11.2"
+version = "0.11.3"
 edition = "2021"
 rust-version = "1.68.2"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
@@ -67,4 +67,4 @@ defmt = ["dep:defmt"]
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docs_rs", "--generate-link-to-definition"]
+rustdoc-args = ["--generate-link-to-definition"]

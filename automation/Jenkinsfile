@@ -21,7 +21,9 @@ pipeline {
     }
     stage('Docs') {
         steps {
-          sh 'cargo +nightly doc --all-features'
+          sh """
+            RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options" cargo +nightly doc --all-features
+          """
         }
     }
     stage('Rustfmt') {
