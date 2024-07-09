@@ -1,6 +1,6 @@
 [package]
 name = "spacepackets"
-version = "0.11.3"
+version = "0.12.0"
 edition = "2021"
 rust-version = "1.68.2"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
@@ -60,7 +60,7 @@ chrono = "0.4"
 default = ["std"]
 std = ["chrono/std", "chrono/clock", "alloc", "thiserror"]
 serde = ["dep:serde", "chrono/serde"]
-alloc = ["postcard/alloc", "chrono/alloc"]
+alloc = ["postcard/alloc", "chrono/alloc", "defmt/alloc", "serde/alloc"]
 chrono = ["dep:chrono"]
 timelib = ["dep:time"]
 defmt = ["dep:defmt"]

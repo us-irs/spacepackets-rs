@@ -8,9 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
-# [v0.11.3] 2024-06-25
+# [v0.12.0]
 
 - Minor documentation build updates.
+
+## Added
+
+- Added new `cfdp::tlv::TlvOwned` type which erases the lifetime and is clonable.
+- Dedicated `cfdp::tlv::TlvLvDataTooLarge` error struct for APIs where this is the only possible
+  API error.
+
+## Added and Changed
+
+- Added new `ReadableTlv` to avoid some boilerplate code and have a common abstraction implemented
+  for both `Tlv` and `TlvOwned` to read the raw TLV data field and its length.
+- Replaced `cfdp::tlv::TlvLvError` by `cfdp::tlv::TlvLvDataTooLarge` where applicable.
 
 # [v0.11.2] 2024-05-19
 
