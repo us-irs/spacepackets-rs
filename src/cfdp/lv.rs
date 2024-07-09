@@ -1,11 +1,12 @@
 //! Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
-use crate::cfdp::TlvLvError;
 use crate::ByteConversionError;
 use core::str::Utf8Error;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::string::String;
+
+use super::TlvLvDataTooLarge;
 
 pub const MIN_LV_LEN: usize = 1;
 
@@ -63,9 +64,9 @@ pub(crate) fn generic_len_check_deserialization(
 
 impl<'data> Lv<'data> {
     #[inline]
-    pub fn new(data: &[u8]) -> Result<Lv, TlvLvError> {
+    pub fn new(data: &[u8]) -> Result<Lv, TlvLvDataTooLarge> {
         if data.len() > u8::MAX as usize {
-            return Err(TlvLvError::DataTooLarge(data.len()));
+            return Err(TlvLvDataTooLarge(data.len()));
         }
         Ok(Lv {
             data,
@@ -85,7 +86,7 @@ impl<'data> Lv<'data> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[inline]
-    pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvError> {
+    pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvDataTooLarge> {
         Self::new(str_slice.as_bytes())
     }
 
@@ -93,7 +94,7 @@ impl<'data> Lv<'data> {
     /// path LVs
     #[cfg(feature = "std")]
     #[inline]
-    pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvError> {
+    pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvDataTooLarge> {
         Self::new(string.as_bytes())
     }
 
@@ -177,10 +178,10 @@ impl<'data> Lv<'data> {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
     use alloc::string::ToString;
 
-    use crate::cfdp::TlvLvError;
+    use super::*;
+
     use crate::ByteConversionError;
     use std::string::String;
 
@@ -271,15 +272,11 @@ pub mod tests {
         let lv = Lv::new(&data_big);
         assert!(lv.is_err());
         let error = lv.unwrap_err();
-        if let TlvLvError::DataTooLarge(size) = error {
-            assert_eq!(size, u8::MAX as usize + 1);
-            assert_eq!(
-                error.to_string(),
-                "data with size 256 larger than allowed 255 bytes"
-            );
-        } else {
-            panic!("invalid exception {:?}", error)
-        }
+        assert_eq!(error.0, u8::MAX as usize + 1);
+        assert_eq!(
+            error.to_string(),
+            "data with size 256 larger than allowed 255 bytes"
+        );
     }
 
     #[test]
