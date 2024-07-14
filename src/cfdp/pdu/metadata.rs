@@ -1,3 +1,5 @@
+#[cfg(feature = "alloc")]
+use super::tlv::TlvOwned;
 use crate::cfdp::lv::Lv;
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
@@ -52,6 +54,15 @@ pub fn build_metadata_opts_from_vec(
     build_metadata_opts_from_slice(buf, tlvs.as_slice())
 }
 
+#[cfg(feature = "alloc")]
+pub fn build_metadata_opts_from_owned_slice(tlvs: &[TlvOwned]) -> Vec<u8> {
+    let mut sum_vec = Vec::new();
+    for tlv in tlvs {
+        sum_vec.extend(tlv.to_vec());
+    }
+    sum_vec
+}
+
 /// Metadata PDU creator abstraction.
 ///
 /// This abstraction exposes a specialized API for creating metadata PDUs as specified in
@@ -62,7 +73,7 @@ pub struct MetadataPduCreator<'src_name, 'dest_name, 'opts> {
     metadata_params: MetadataGenericParams,
     src_file_name: Lv<'src_name>,
     dest_file_name: Lv<'dest_name>,
-    options: &'opts [Tlv<'opts>],
+    options: &'opts [u8],
 }
 
 impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'opts> {
@@ -86,7 +97,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         metadata_params: MetadataGenericParams,
         src_file_name: Lv<'src_name>,
         dest_file_name: Lv<'dest_name>,
-        options: &'opts [Tlv<'opts>],
+        options: &'opts [u8],
     ) -> Self {
         Self::new(
             pdu_header,
@@ -102,7 +113,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         metadata_params: MetadataGenericParams,
         src_file_name: Lv<'src_name>,
         dest_file_name: Lv<'dest_name>,
-        options: &'opts [Tlv<'opts>],
+        options: &'opts [u8],
     ) -> Self {
         pdu_header.pdu_type = PduType::FileDirective;
         pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
@@ -129,8 +140,17 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         self.dest_file_name
     }
 
-    pub fn options(&self) -> &'opts [Tlv<'opts>] {
+    pub fn options(&self) -> &'opts [u8] {
         self.options
+    }
+
+    /// Yield an iterator which can be used to loop through all options. Returns [None] if the
+    /// options field is empty.
+    pub fn options_iter(&self) -> OptionsIter<'_> {
+        OptionsIter {
+            opt_buf: self.options,
+            current_idx: 0,
+        }
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
@@ -143,9 +163,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         }
         len += self.src_file_name.len_full();
         len += self.dest_file_name.len_full();
-        for tlv in self.options() {
-            len += tlv.len_full()
-        }
+        len += self.options().len();
         if self.crc_flag() == CrcFlag::WithCrc {
             len += 2;
         }
@@ -191,10 +209,8 @@ impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
         current_idx += self
             .dest_file_name
             .write_to_be_bytes(&mut buf[current_idx..])?;
-        for opt in self.options() {
-            opt.write_to_bytes(&mut buf[current_idx..current_idx + opt.len_full()])?;
-            current_idx += opt.len_full();
-        }
+        buf[current_idx..current_idx + self.options.len()].copy_from_slice(self.options);
+        current_idx += self.options.len();
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
         }
@@ -355,7 +371,7 @@ pub mod tests {
     };
     use crate::cfdp::pdu::{CfdpPdu, PduError, WritablePduPacket};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
-    use crate::cfdp::tlv::{ReadableTlv, Tlv, TlvType};
+    use crate::cfdp::tlv::{ReadableTlv, Tlv, TlvOwned, TlvType, WritableTlv};
     use crate::cfdp::{
         ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag,
         SegmentationControl, TransmissionMode,
@@ -365,16 +381,16 @@ pub mod tests {
     const SRC_FILENAME: &str = "hello-world.txt";
     const DEST_FILENAME: &str = "hello-world2.txt";
 
-    fn generic_metadata_pdu<'opts>(
+    fn generic_metadata_pdu(
         crc_flag: CrcFlag,
         checksum_type: ChecksumType,
         closure_requested: bool,
         fss: LargeFileFlag,
-        opts: &'opts [Tlv],
+        opts: &[u8],
     ) -> (
         Lv<'static>,
         Lv<'static>,
-        MetadataPduCreator<'static, 'static, 'opts>,
+        MetadataPduCreator<'static, 'static, '_>,
     ) {
         let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
         let metadata_params = MetadataGenericParams::new(closure_requested, checksum_type, 0x1010);
@@ -544,9 +560,9 @@ pub mod tests {
         assert_eq!(written.metadata_params(), read.metadata_params());
         assert_eq!(written.src_file_name(), read.src_file_name());
         assert_eq!(written.dest_file_name(), read.dest_file_name());
-        let opts = written.options();
-        for (tlv_written, tlv_read) in opts.iter().zip(read.options_iter().unwrap()) {
-            assert_eq!(tlv_written, &tlv_read);
+        let opts = written.options_iter();
+        for (tlv_written, tlv_read) in opts.zip(read.options_iter().unwrap()) {
+            assert_eq!(&tlv_written, &tlv_read);
         }
     }
 
@@ -661,14 +677,14 @@ pub mod tests {
         let tlv1 = Tlv::new_empty(TlvType::FlowLabel);
         let msg_to_user: [u8; 4] = [1, 2, 3, 4];
         let tlv2 = Tlv::new(TlvType::MsgToUser, &msg_to_user).unwrap();
-        let tlv_vec = vec![tlv1, tlv2];
-        let opts_len = tlv1.len_full() + tlv2.len_full();
+        let mut tlv_buf: [u8; 64] = [0; 64];
+        let opts_len = build_metadata_opts_from_slice(&mut tlv_buf, &[tlv1, tlv2]).unwrap();
         let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
             CrcFlag::NoCrc,
             ChecksumType::Crc32,
             false,
             LargeFileFlag::Normal,
-            &tlv_vec,
+            &tlv_buf[0..opts_len],
         );
         let mut buf: [u8; 128] = [0; 128];
         let write_res = metadata_pdu.write_to_bytes(&mut buf);
@@ -691,7 +707,55 @@ pub mod tests {
         let opts_iter = opts_iter.unwrap();
         let mut accumulated_len = 0;
         for (idx, opt) in opts_iter.enumerate() {
-            assert_eq!(tlv_vec[idx], opt);
+            if idx == 0 {
+                assert_eq!(tlv1, opt);
+            } else if idx == 1 {
+                assert_eq!(tlv2, opt);
+            }
+            accumulated_len += opt.len_full();
+        }
+        assert_eq!(accumulated_len, pdu_read_back.options().len());
+    }
+    #[test]
+    fn test_with_owned_opts() {
+        let tlv1 = TlvOwned::new_empty(TlvType::FlowLabel);
+        let msg_to_user: [u8; 4] = [1, 2, 3, 4];
+        let tlv2 = TlvOwned::new(TlvType::MsgToUser, &msg_to_user).unwrap();
+        let mut all_tlvs = tlv1.to_vec();
+        all_tlvs.extend(tlv2.to_vec());
+        let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
+            CrcFlag::NoCrc,
+            ChecksumType::Crc32,
+            false,
+            LargeFileFlag::Normal,
+            &all_tlvs,
+        );
+        let mut buf: [u8; 128] = [0; 128];
+        let write_res = metadata_pdu.write_to_bytes(&mut buf);
+        assert!(write_res.is_ok());
+        let written = write_res.unwrap();
+        assert_eq!(
+            written,
+            metadata_pdu.pdu_header.header_len()
+                + 1
+                + 1
+                + 4
+                + src_filename.len_full()
+                + dest_filename.len_full()
+                + all_tlvs.len()
+        );
+        let pdu_read_back = MetadataPduReader::from_bytes(&buf).unwrap();
+        compare_read_pdu_to_written_pdu(&metadata_pdu, &pdu_read_back);
+        let opts_iter = pdu_read_back.options_iter();
+        assert!(opts_iter.is_some());
+        let opts_iter = opts_iter.unwrap();
+        let mut accumulated_len = 0;
+        for (idx, opt) in opts_iter.enumerate() {
+            if idx == 0 {
+                assert_eq!(tlv1, opt);
+            } else if idx == 1 {
+                assert_eq!(tlv2, opt);
+            }
             accumulated_len += opt.len_full();
         }
         assert_eq!(accumulated_len, pdu_read_back.options().len());
