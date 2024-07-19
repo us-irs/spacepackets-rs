@@ -398,13 +398,16 @@ impl FileDataPduCreatorWithUnwrittenData<'_> {
     }
 
     /// This functio needs to be called to add a CRC to the file data PDU where applicable.
-    pub fn finish(self) {
+    ///
+    /// It returns the full written size of the PDU.
+    pub fn finish(self) -> usize {
         if self.needs_crc {
             add_pdu_crc(
                 self.write_buf,
                 self.file_data_offset as usize + self.file_data_len as usize,
             );
         }
+        self.write_buf.len()
     }
 }
 
