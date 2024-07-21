@@ -15,12 +15,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added new `cfdp::tlv::TlvOwned` type which erases the lifetime and is clonable.
 - Dedicated `cfdp::tlv::TlvLvDataTooLarge` error struct for APIs where this is the only possible
   API error.
+- Added File Data PDU API which expects the expected file data size and then exposes the unwritten
+  file data field as a mutable slice. This allows to read data from the virtual file system
+  API to the file data buffer without an intermediate buffer.
+- Generic `EofPdu::new` constructor.
 
 ## Added and Changed
 
 - Added new `ReadableTlv` to avoid some boilerplate code and have a common abstraction implemented
   for both `Tlv` and `TlvOwned` to read the raw TLV data field and its length.
 - Replaced `cfdp::tlv::TlvLvError` by `cfdp::tlv::TlvLvDataTooLarge` where applicable.
+
+## Fixed
+
+- Fixed an error in the EOF writer which wrote the fault location to the wrong buffer position.
 
 ## Changed
 
