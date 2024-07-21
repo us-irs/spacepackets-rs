@@ -92,16 +92,67 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+struct FdPduBase<'seg_meta> {
+    pdu_header: PduHeader,
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    segment_metadata: Option<SegmentMetadata<'seg_meta>>,
+    offset: u64,
+}
+
+impl CfdpPdu for FdPduBase<'_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        None
+    }
+}
+
+impl FdPduBase<'_> {
+    fn calc_pdu_datafield_len(&self, file_data_len: u64) -> usize {
+        let mut len = core::mem::size_of::<u32>();
+        if self.pdu_header.pdu_conf.file_flag == LargeFileFlag::Large {
+            len += 4;
+        }
+        if self.segment_metadata.is_some() {
+            len += self.segment_metadata.as_ref().unwrap().written_len()
+        }
+        len += file_data_len as usize;
+        if self.crc_flag() == CrcFlag::WithCrc {
+            len += 2;
+        }
+        len
+    }
+
+    fn write_common_fields_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
+        if self.segment_metadata.is_some() {
+            current_idx += self
+                .segment_metadata
+                .as_ref()
+                .unwrap()
+                .write_to_bytes(&mut buf[current_idx..])?;
+        }
+        current_idx += write_fss_field(
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.offset,
+            &mut buf[current_idx..],
+        )?;
+        Ok(current_idx)
+    }
+}
+
 /// File Data PDU abstraction.
 ///
 /// For more information, refer to CFDP chapter 5.3.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FileDataPdu<'seg_meta, 'file_data> {
-    pdu_header: PduHeader,
     #[cfg_attr(feature = "serde", serde(borrow))]
-    segment_metadata: Option<SegmentMetadata<'seg_meta>>,
-    offset: u64,
+    common: FdPduBase<'seg_meta>,
     file_data: &'file_data [u8],
 }
 
@@ -134,40 +185,32 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             pdu_header.seg_metadata_flag = SegmentMetadataFlag::Present;
         }
         let mut pdu = Self {
-            pdu_header,
-            segment_metadata,
-            offset,
+            common: FdPduBase {
+                pdu_header,
+                segment_metadata,
+                offset,
+            },
             file_data,
         };
-        pdu.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
+        pdu.common.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
         pdu
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
-        let mut len = core::mem::size_of::<u32>();
-        if self.pdu_header.pdu_conf.file_flag == LargeFileFlag::Large {
-            len += 4;
-        }
-        if self.segment_metadata.is_some() {
-            len += self.segment_metadata.as_ref().unwrap().written_len()
-        }
-        len += self.file_data.len();
-        if self.crc_flag() == CrcFlag::WithCrc {
-            len += 2;
-        }
-        len
+        self.common
+            .calc_pdu_datafield_len(self.file_data.len() as u64)
+    }
+
+    pub fn segment_metadata(&self) -> Option<&SegmentMetadata> {
+        self.common.segment_metadata.as_ref()
     }
 
     pub fn offset(&self) -> u64 {
-        self.offset
+        self.common.offset
     }
 
     pub fn file_data(&self) -> &'file_data [u8] {
         self.file_data
-    }
-
-    pub fn segment_metadata(&self) -> Option<&SegmentMetadata> {
-        self.segment_metadata.as_ref()
     }
 
     pub fn from_bytes<'buf: 'seg_meta + 'file_data>(buf: &'buf [u8]) -> Result<Self, PduError> {
@@ -190,16 +233,18 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             .into());
         }
         Ok(Self {
-            pdu_header,
-            segment_metadata,
-            offset,
+            common: FdPduBase {
+                pdu_header,
+                segment_metadata,
+                offset,
+            },
             file_data: &buf[current_idx..full_len_without_crc],
         })
     }
 }
 impl CfdpPdu for FileDataPdu<'_, '_> {
     fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
+        &self.common.pdu_header
     }
 
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
@@ -216,19 +261,8 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
             }
             .into());
         }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        if self.segment_metadata.is_some() {
-            current_idx += self
-                .segment_metadata
-                .as_ref()
-                .unwrap()
-                .write_to_bytes(&mut buf[current_idx..])?;
-        }
-        current_idx += write_fss_field(
-            self.pdu_header.common_pdu_conf().file_flag,
-            self.offset,
-            &mut buf[current_idx..],
-        )?;
+
+        let mut current_idx = self.common.write_common_fields_to_bytes(buf)?;
         buf[current_idx..current_idx + self.file_data.len()].copy_from_slice(self.file_data);
         current_idx += self.file_data.len();
         if self.crc_flag() == CrcFlag::WithCrc {
@@ -238,7 +272,142 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
     }
 
     fn len_written(&self) -> usize {
-        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+        self.common.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+/// File Data PDU creator abstraction.
+///
+/// This special creator object allows to read into the file data buffer directly. This avoids
+/// the need of an additional buffer to create a file data PDU. This structure therefore
+/// does not implement the regular [WritablePduPacket] trait.
+///
+/// For more information, refer to CFDP chapter 5.3.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FileDataPduCreatorWithReservedDatafield<'seg_meta> {
+    #[cfg_attr(feature = "serde", serde(borrow))]
+    common: FdPduBase<'seg_meta>,
+    file_data_len: u64,
+}
+
+impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
+    pub fn new_with_seg_metadata(
+        pdu_header: PduHeader,
+        segment_metadata: SegmentMetadata<'seg_meta>,
+        offset: u64,
+        file_data_len: u64,
+    ) -> Self {
+        Self::new_generic(pdu_header, Some(segment_metadata), offset, file_data_len)
+    }
+
+    pub fn new_no_seg_metadata(pdu_header: PduHeader, offset: u64, file_data_len: u64) -> Self {
+        Self::new_generic(pdu_header, None, offset, file_data_len)
+    }
+
+    pub fn new_generic(
+        mut pdu_header: PduHeader,
+        segment_metadata: Option<SegmentMetadata<'seg_meta>>,
+        offset: u64,
+        file_data_len: u64,
+    ) -> Self {
+        pdu_header.pdu_type = PduType::FileData;
+        if segment_metadata.is_some() {
+            pdu_header.seg_metadata_flag = SegmentMetadataFlag::Present;
+        }
+        let mut pdu = Self {
+            common: FdPduBase {
+                pdu_header,
+                segment_metadata,
+                offset,
+            },
+            file_data_len,
+        };
+        pdu.common.pdu_header.pdu_datafield_len = pdu.calc_pdu_datafield_len() as u16;
+        pdu
+    }
+
+    fn calc_pdu_datafield_len(&self) -> usize {
+        self.common.calc_pdu_datafield_len(self.file_data_len)
+    }
+
+    pub fn len_written(&self) -> usize {
+        self.common.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+
+    /// This function performs a partial write by writing all data except the file data
+    /// and the CRC.
+    ///
+    /// It returns a [FileDataPduCreatorWithUnwrittenData] which provides a mutable slice to
+    /// the reserved file data field. The user can read file data into this field directly and
+    /// then finish the PDU creation using the [FileDataPduCreatorWithUnwrittenData::finish] call.
+    pub fn write_to_bytes_partially<'buf>(
+        &self,
+        buf: &'buf mut [u8],
+    ) -> Result<FileDataPduCreatorWithUnwrittenData<'buf>, PduError> {
+        if buf.len() < self.len_written() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: self.len_written(),
+            }
+            .into());
+        }
+        let mut current_idx = self.common.write_common_fields_to_bytes(buf)?;
+        let file_data_offset = current_idx as u64;
+        current_idx += self.file_data_len as usize;
+        if self.crc_flag() == CrcFlag::WithCrc {
+            current_idx += 2;
+        }
+        Ok(FileDataPduCreatorWithUnwrittenData {
+            write_buf: &mut buf[0..current_idx],
+            file_data_offset,
+            file_data_len: self.file_data_len,
+            needs_crc: self.crc_flag() == CrcFlag::WithCrc,
+        })
+    }
+}
+
+impl CfdpPdu for FileDataPduCreatorWithReservedDatafield<'_> {
+    fn pdu_header(&self) -> &PduHeader {
+        &self.common.pdu_header
+    }
+
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        None
+    }
+}
+
+/// This structure is created with [FileDataPduCreatorReservedDatafield::write_to_bytes_partially]
+/// and provides an API to read file data from the virtual filesystem into the file data PDU buffer
+/// directly.
+///
+/// This structure provides a mutable slice to the reserved file data field. The user can read
+/// file data into this field directly and then finish the PDU creation using the
+/// [FileDataPduCreatorWithUnwrittenData::finish] call.
+pub struct FileDataPduCreatorWithUnwrittenData<'buf> {
+    write_buf: &'buf mut [u8],
+    file_data_offset: u64,
+    file_data_len: u64,
+    needs_crc: bool,
+}
+
+impl FileDataPduCreatorWithUnwrittenData<'_> {
+    pub fn file_data_field_mut(&mut self) -> &mut [u8] {
+        &mut self.write_buf[self.file_data_offset as usize
+            ..self.file_data_offset as usize + self.file_data_len as usize]
+    }
+
+    /// This functio needs to be called to add a CRC to the file data PDU where applicable.
+    ///
+    /// It returns the full written size of the PDU.
+    pub fn finish(self) -> usize {
+        if self.needs_crc {
+            add_pdu_crc(
+                self.write_buf,
+                self.file_data_offset as usize + self.file_data_len as usize,
+            );
+        }
+        self.write_buf.len()
     }
 }
 
@@ -263,7 +432,7 @@ mod tests {
         assert!(fd_pdu.segment_metadata().is_none());
         assert_eq!(
             fd_pdu.len_written(),
-            fd_pdu.pdu_header.header_len() + core::mem::size_of::<u32>() + 4
+            fd_pdu.pdu_header().header_len() + core::mem::size_of::<u32>() + 4
         );
 
         assert_eq!(fd_pdu.crc_flag(), CrcFlag::NoCrc);
@@ -290,11 +459,11 @@ mod tests {
         let written = res.unwrap();
         assert_eq!(
             written,
-            fd_pdu.pdu_header.header_len() + core::mem::size_of::<u32>() + 4
+            fd_pdu.pdu_header().header_len() + core::mem::size_of::<u32>() + 4
         );
-        let mut current_idx = fd_pdu.pdu_header.header_len();
+        let mut current_idx = fd_pdu.pdu_header().header_len();
         let file_size = u32::from_be_bytes(
-            buf[fd_pdu.pdu_header.header_len()..fd_pdu.pdu_header.header_len() + 4]
+            buf[fd_pdu.pdu_header().header_len()..fd_pdu.pdu_header().header_len() + 4]
                 .try_into()
                 .unwrap(),
         );
@@ -380,7 +549,7 @@ mod tests {
         assert_eq!(*fd_pdu.segment_metadata().unwrap(), segment_meta);
         assert_eq!(
             fd_pdu.len_written(),
-            fd_pdu.pdu_header.header_len()
+            fd_pdu.pdu_header().header_len()
                 + 1
                 + seg_metadata.len()
                 + core::mem::size_of::<u32>()
@@ -390,7 +559,7 @@ mod tests {
         fd_pdu
             .write_to_bytes(&mut buf)
             .expect("writing FD PDU failed");
-        let mut current_idx = fd_pdu.pdu_header.header_len();
+        let mut current_idx = fd_pdu.pdu_header().header_len();
         assert_eq!(
             RecordContinuationState::try_from((buf[current_idx] >> 6) & 0b11).unwrap(),
             RecordContinuationState::StartAndEnd
@@ -481,5 +650,91 @@ mod tests {
         let output = to_allocvec(&fd_pdu).unwrap();
         let output_converted_back: FileDataPdu = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, fd_pdu);
+    }
+
+    #[test]
+    fn test_fd_pdu_creator_with_reserved_field_no_crc() {
+        let common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let test_str = "hello world!";
+        let fd_pdu = FileDataPduCreatorWithReservedDatafield::new_no_seg_metadata(
+            pdu_header,
+            10,
+            test_str.len() as u64,
+        );
+        let mut write_buf: [u8; 64] = [0; 64];
+        let mut pdu_unwritten = fd_pdu
+            .write_to_bytes_partially(&mut write_buf)
+            .expect("partial write failed");
+        pdu_unwritten
+            .file_data_field_mut()
+            .copy_from_slice(test_str.as_bytes());
+        pdu_unwritten.finish();
+
+        let pdu_reader = FileDataPdu::from_bytes(&write_buf).expect("reading file data PDU failed");
+        assert_eq!(
+            core::str::from_utf8(pdu_reader.file_data()).expect("reading utf8 string failed"),
+            "hello world!"
+        );
+    }
+
+    #[test]
+    fn test_fd_pdu_creator_with_reserved_field_with_crc() {
+        let mut common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
+        common_conf.crc_flag = true.into();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let test_str = "hello world!";
+        let fd_pdu = FileDataPduCreatorWithReservedDatafield::new_no_seg_metadata(
+            pdu_header,
+            10,
+            test_str.len() as u64,
+        );
+        let mut write_buf: [u8; 64] = [0; 64];
+        let mut pdu_unwritten = fd_pdu
+            .write_to_bytes_partially(&mut write_buf)
+            .expect("partial write failed");
+        pdu_unwritten
+            .file_data_field_mut()
+            .copy_from_slice(test_str.as_bytes());
+        pdu_unwritten.finish();
+
+        let pdu_reader = FileDataPdu::from_bytes(&write_buf).expect("reading file data PDU failed");
+        assert_eq!(
+            core::str::from_utf8(pdu_reader.file_data()).expect("reading utf8 string failed"),
+            "hello world!"
+        );
+    }
+
+    #[test]
+    fn test_fd_pdu_creator_with_reserved_field_with_crc_without_finish_fails() {
+        let mut common_conf =
+            CommonPduConfig::new_with_byte_fields(TEST_SRC_ID, TEST_DEST_ID, TEST_SEQ_NUM).unwrap();
+        common_conf.crc_flag = true.into();
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        let test_str = "hello world!";
+        let fd_pdu = FileDataPduCreatorWithReservedDatafield::new_no_seg_metadata(
+            pdu_header,
+            10,
+            test_str.len() as u64,
+        );
+        let mut write_buf: [u8; 64] = [0; 64];
+        let mut pdu_unwritten = fd_pdu
+            .write_to_bytes_partially(&mut write_buf)
+            .expect("partial write failed");
+        pdu_unwritten
+            .file_data_field_mut()
+            .copy_from_slice(test_str.as_bytes());
+
+        let pdu_reader_error = FileDataPdu::from_bytes(&write_buf);
+        assert!(pdu_reader_error.is_err());
+        let error = pdu_reader_error.unwrap_err();
+        match error {
+            PduError::ChecksumError(_) => (),
+            _ => {
+                panic!("unexpected PDU error {}", error)
+            }
+        }
     }
 }
