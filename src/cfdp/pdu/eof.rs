@@ -25,18 +25,34 @@ pub struct EofPdu {
 }
 
 impl EofPdu {
-    pub fn new_no_error(mut pdu_header: PduHeader, file_checksum: u32, file_size: u64) -> Self {
+    pub fn new(
+        mut pdu_header: PduHeader,
+        condition_code: ConditionCode,
+        file_checksum: u32,
+        file_size: u64,
+        fault_location: Option<EntityIdTlv>,
+    ) -> Self {
         // Force correct direction flag.
         pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
         let mut eof_pdu = Self {
             pdu_header,
-            condition_code: ConditionCode::NoError,
+            condition_code,
             file_checksum,
             file_size,
-            fault_location: None,
+            fault_location,
         };
         eof_pdu.pdu_header.pdu_datafield_len = eof_pdu.calc_pdu_datafield_len() as u16;
         eof_pdu
+    }
+
+    pub fn new_no_error(pdu_header: PduHeader, file_checksum: u32, file_size: u64) -> Self {
+        Self::new(
+            pdu_header,
+            ConditionCode::NoError,
+            file_checksum,
+            file_size,
+            None,
+        )
     }
 
     pub fn pdu_header(&self) -> &PduHeader {
@@ -148,7 +164,7 @@ impl WritablePduPacket for EofPdu {
             &mut buf[current_idx..],
         )?;
         if let Some(fault_location) = self.fault_location {
-            current_idx += fault_location.write_to_bytes(buf)?;
+            current_idx += fault_location.write_to_bytes(&mut buf[current_idx..])?;
         }
         if self.crc_flag() == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(buf, current_idx);
@@ -171,13 +187,23 @@ mod tests {
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
     #[cfg(feature = "serde")]
     use crate::tests::generic_serde_test;
+    use crate::util::{UnsignedByteFieldU16, UnsignedEnum};
 
-    fn verify_state(&eof_pdu: &EofPdu, file_flag: LargeFileFlag) {
+    fn verify_state_no_error_no_crc(eof_pdu: &EofPdu, file_flag: LargeFileFlag) {
+        verify_state(eof_pdu, CrcFlag::NoCrc, file_flag, ConditionCode::NoError);
+    }
+
+    fn verify_state(
+        eof_pdu: &EofPdu,
+        crc_flag: CrcFlag,
+        file_flag: LargeFileFlag,
+        cond_code: ConditionCode,
+    ) {
         assert_eq!(eof_pdu.file_checksum(), 0x01020304);
         assert_eq!(eof_pdu.file_size(), 12);
-        assert_eq!(eof_pdu.condition_code(), ConditionCode::NoError);
+        assert_eq!(eof_pdu.condition_code(), cond_code);
 
-        assert_eq!(eof_pdu.crc_flag(), CrcFlag::NoCrc);
+        assert_eq!(eof_pdu.crc_flag(), crc_flag);
         assert_eq!(eof_pdu.file_flag(), file_flag);
         assert_eq!(eof_pdu.pdu_type(), PduType::FileDirective);
         assert_eq!(
@@ -197,7 +223,7 @@ mod tests {
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 4 + 4);
-        verify_state(&eof_pdu, LargeFileFlag::Normal);
+        verify_state_no_error_no_crc(&eof_pdu, LargeFileFlag::Normal);
     }
 
     #[test]
@@ -283,7 +309,7 @@ mod tests {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
-        verify_state(&eof_pdu, LargeFileFlag::Large);
+        verify_state_no_error_no_crc(&eof_pdu, LargeFileFlag::Large);
         assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 8 + 4);
     }
 
@@ -294,5 +320,49 @@ mod tests {
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         generic_serde_test(eof_pdu);
+    }
+
+    fn generic_test_with_fault_location_and_error(crc: CrcFlag) {
+        let pdu_conf = common_pdu_conf(crc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let eof_pdu = EofPdu::new(
+            pdu_header,
+            ConditionCode::FileChecksumFailure,
+            0x01020304,
+            12,
+            Some(EntityIdTlv::new(UnsignedByteFieldU16::new(5).into())),
+        );
+        let mut expected_len = pdu_header.header_len() + 2 + 4 + 4 + 4;
+        if crc == CrcFlag::WithCrc {
+            expected_len += 2;
+        }
+        // Entity ID TLV increaes length by 4.
+        assert_eq!(eof_pdu.len_written(), expected_len);
+        verify_state(
+            &eof_pdu,
+            crc,
+            LargeFileFlag::Normal,
+            ConditionCode::FileChecksumFailure,
+        );
+        let eof_vec = eof_pdu.to_vec().unwrap();
+        let eof_read_back = EofPdu::from_bytes(&eof_vec);
+        if let Err(e) = eof_read_back {
+            panic!("deserialization failed with: {e}")
+        }
+        let eof_read_back = eof_read_back.unwrap();
+        assert_eq!(eof_read_back, eof_pdu);
+        assert!(eof_read_back.fault_location.is_some());
+        assert_eq!(eof_read_back.fault_location.unwrap().entity_id().value(), 5);
+        assert_eq!(eof_read_back.fault_location.unwrap().entity_id().size(), 2);
+    }
+
+    #[test]
+    fn test_with_fault_location_and_error() {
+        generic_test_with_fault_location_and_error(CrcFlag::NoCrc);
+    }
+
+    #[test]
+    fn test_with_fault_location_and_error_and_crc() {
+        generic_test_with_fault_location_and_error(CrcFlag::WithCrc);
     }
 }
