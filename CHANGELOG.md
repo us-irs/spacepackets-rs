@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.12.0]
 
+- Bumped MSRV to 1.70.0
+
 ## Added
 
 - Added new `cfdp::tlv::TlvOwned` type which erases the lifetime and is clonable.
@@ -33,6 +35,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - Minor documentation build updates.
+- Increased delegate version range to v0.12
 
 # [v0.11.2] 2024-05-19
 
