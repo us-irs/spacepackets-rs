@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   file data field as a mutable slice. This allows to read data from the virtual file system
   API to the file data buffer without an intermediate buffer.
 - Generic `EofPdu::new` constructor.
+- Added generic sequence counter module.
 
 ## Added and Changed
 
