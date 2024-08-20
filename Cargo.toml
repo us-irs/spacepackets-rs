@@ -15,6 +15,7 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 [dependencies]
 crc = "3"
 delegate = ">=0.8, <0.13"
+paste = "1"
 
 [dependencies.zerocopy]
 version = "0.7"
