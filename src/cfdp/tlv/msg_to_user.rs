@@ -78,6 +78,10 @@ impl<'data> MsgToUserTlv<'data> {
         Ok(msg_to_user)
     }
 
+    pub fn to_tlv(&self) -> Tlv<'data> {
+        self.tlv
+    }
+
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
         self.tlv.to_owned()
@@ -144,6 +148,32 @@ mod tests {
                 4
             ]
         );
+    }
+
+    #[test]
+    fn test_msg_to_user_type_reduction() {
+        let custom_value: [u8; 4] = [1, 2, 3, 4];
+        let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
+        let tlv = msg_to_user.to_tlv();
+        assert_eq!(
+            tlv.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::MsgToUser)
+        );
+
+        assert_eq!(tlv.value(), custom_value);
+    }
+
+    #[test]
+    fn test_msg_to_user_owner_converter() {
+        let custom_value: [u8; 4] = [1, 2, 3, 4];
+        let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
+        let tlv = msg_to_user.to_owned();
+        assert_eq!(
+            tlv.tlv_type_field(),
+            TlvTypeField::Standard(TlvType::MsgToUser)
+        );
+
+        assert_eq!(tlv.value(), custom_value);
     }
 
     #[test]
