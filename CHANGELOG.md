@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   API to the file data buffer without an intermediate buffer.
 - Generic `EofPdu::new` constructor.
 - Added generic sequence counter module.
+- Added `MsgToUserTlv::to_tlv` converter which reduced the type and converts
+  it to a generic `Tlv`.
 
 ## Added and Changed
 
