@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added generic sequence counter module.
 - Added `MsgToUserTlv::to_tlv` converter which reduced the type and converts
   it to a generic `Tlv`.
+- Implemented `From<MsgToUserTlv> for Tlv` converter trait.
 
 ## Added and Changed
 

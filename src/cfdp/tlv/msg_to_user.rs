@@ -88,6 +88,12 @@ impl<'data> MsgToUserTlv<'data> {
     }
 }
 
+impl<'a> From<MsgToUserTlv<'a>> for Tlv<'a> {
+    fn from(value: MsgToUserTlv<'a>) -> Tlv<'a> {
+        value.to_tlv()
+    }
+}
+
 impl WritableTlv for MsgToUserTlv<'_> {
     fn len_written(&self) -> usize {
         self.len_full()
@@ -161,6 +167,14 @@ mod tests {
         );
 
         assert_eq!(tlv.value(), custom_value);
+    }
+
+    #[test]
+    fn test_msg_to_user_to_tlv() {
+        let custom_value: [u8; 4] = [1, 2, 3, 4];
+        let msg_to_user = MsgToUserTlv::new(&custom_value).unwrap();
+        let tlv: Tlv = msg_to_user.into();
+        assert_eq!(msg_to_user.to_tlv(), tlv);
     }
 
     #[test]
