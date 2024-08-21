@@ -411,6 +411,28 @@ impl FileDataPduCreatorWithUnwrittenData<'_> {
     }
 }
 
+/// This function can be used to calculate the maximum allowed file segment size for
+/// a given maximum packet length and the segment metadata if there is any.
+pub fn calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(
+    pdu_header: &PduHeader,
+    max_packet_len: usize,
+    segment_metadata: Option<&SegmentMetadata>,
+) -> usize {
+    let mut subtract = pdu_header.header_len();
+    if segment_metadata.is_some() {
+        subtract += 1 + segment_metadata.as_ref().unwrap().metadata().unwrap().len();
+    }
+    if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
+        subtract += 8;
+    } else {
+        subtract += 4;
+    }
+    if pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
+        subtract += 2;
+    }
+    max_packet_len.saturating_sub(subtract)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -736,5 +758,57 @@ mod tests {
                 panic!("unexpected PDU error {}", error)
             }
         }
+    }
+
+    #[test]
+    fn test_max_file_seg_calculator_0() {
+        let pdu_header = PduHeader::new_for_file_data_default(CommonPduConfig::default(), 0);
+        assert_eq!(
+            calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(&pdu_header, 64, None),
+            53
+        );
+    }
+
+    #[test]
+    fn test_max_file_seg_calculator_1() {
+        let common_conf = CommonPduConfig {
+            crc_flag: CrcFlag::WithCrc,
+            ..Default::default()
+        };
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        assert_eq!(
+            calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(&pdu_header, 64, None),
+            51
+        );
+    }
+
+    #[test]
+    fn test_max_file_seg_calculator_2() {
+        let common_conf = CommonPduConfig {
+            file_flag: LargeFileFlag::Large,
+            ..Default::default()
+        };
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        assert_eq!(
+            calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(&pdu_header, 64, None),
+            49
+        );
+    }
+
+    #[test]
+    fn test_max_file_seg_calculator_saturating_sub() {
+        let common_conf = CommonPduConfig {
+            file_flag: LargeFileFlag::Large,
+            ..Default::default()
+        };
+        let pdu_header = PduHeader::new_for_file_data_default(common_conf, 0);
+        assert_eq!(
+            calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(&pdu_header, 15, None),
+            0
+        );
+        assert_eq!(
+            calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(&pdu_header, 14, None),
+            0
+        );
     }
 }
