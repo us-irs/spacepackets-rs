@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added `MsgToUserTlv::to_tlv` converter which reduced the type and converts
   it to a generic `Tlv`.
 - Implemented `From<MsgToUserTlv> for Tlv` converter trait.
+- Added CFDP maximum file segment length calculator method `calculate_max_file_seg_len_for_max_packet_len_and_pdu_header`
 
 ## Added and Changed
 
