@@ -116,7 +116,7 @@ pub enum ConditionCode {
     FileSizeError = 0b0110,
     NakLimitReached = 0b0111,
     InactivityDetected = 0b1000,
-    CheckLimitReached = 0b1001,
+    CheckLimitReached = 0b1010,
     UnsupportedChecksumType = 0b1011,
     /// Not an actual fault condition for which fault handler overrides can be specified
     SuspendRequestReceived = 0b1110,
