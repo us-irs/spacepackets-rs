@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Fixed
 
 - Fixed an error in the EOF writer which wrote the fault location to the wrong buffer position.
+- cfdp `ConditionCode::CheckLimitReached` previous had the wrong numerical value of `0b1001` (9)
+  and now has the correct value of `0b1010` (10).
 
 ## Changed
 
