@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
-# [v0.12.0]
+# [v0.12.0] 2024-09-10
 
 - Bumped MSRV to 1.70.0
 
@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - Minor documentation build updates.
-- Increased delegate version range to v0.12
+- Increased delegate version range to v0.13
 
 # [v0.11.2] 2024-05-19
 
