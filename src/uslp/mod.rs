@@ -140,5 +140,122 @@ impl PrimaryHeader {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[repr(u8)]
+#[non_exhaustive]
+pub enum UslpProtocolId {
+    SpacePacketsOrEncapsulation = 0b00000,
+    /// COP-1 control commands within the TFDZ.
+    Cop1ControlCommands = 0b00001,
+    /// COP-P control commands within the TFDZ.
+    CopPControlCommands = 0b00010,
+    /// SDLS control commands within the TFDZ.
+    Sdls = 0b00011,
+    UserDefinedOctetStream = 0b00100,
+    /// Proximity-1 Supervisory Protocol Data Units (SPDUs) within the TFDZ.
+    Spdu = 0b00111,
+    /// Entire fixed-length TFDZ contains idle data.
+    Idle = 0b11111,
+}
+
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
+)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[repr(u8)]
+pub enum ConstructionRule {
+    /// Indicated fixed-length TFDZ whose contents are CCSDS packets concatenated together, which
+    /// span transfer frame boundaries. The First Header Pointer (FHP) is required for packet
+    /// extraction.
+    PacketSpanningMultipleFrames = 0b000,
+    StartOfMapaSduOrVcaSdu = 0b001,
+    ContinuingPortionOfMapaSdu = 0b010,
+    OctetStream = 0b011,
+    StartingSegment = 0b100,
+    ContinuingSegment = 0b101,
+    LastSegment = 0b110,
+    NoSegmentation = 0b111,
+}
+
+impl ConstructionRule {
+    pub const fn applicable_to_fixed_len_tfdz(&self) -> bool {
+        match self {
+            ConstructionRule::PacketSpanningMultipleFrames => true,
+            ConstructionRule::StartOfMapaSduOrVcaSdu => true,
+            ConstructionRule::ContinuingPortionOfMapaSdu => true,
+            ConstructionRule::OctetStream => false,
+            ConstructionRule::StartingSegment => false,
+            ConstructionRule::ContinuingSegment => false,
+            ConstructionRule::LastSegment => false,
+            ConstructionRule::NoSegmentation => false,
+        }
+    }
+}
+
+pub struct TransferFrameDataFieldHeader {
+    /// Construction rule for the TFDZ.
+    construction_rule: ConstructionRule,
+    uslp_protocol_id: UslpProtocolId,
+    /// First header or last valid octet pointer
+    fhp_or_lvo: Option<u16>,
+}
+
+impl TransferFrameDataFieldHeader {
+
+    pub fn construction_rule(&self) -> ConstructionRule {
+        self.construction_rule
+    }
+
+    pub fn uslp_protocol_id(&self) -> UslpProtocolId {
+        self.uslp_protocol_id
+    }
+
+    pub fn fhp_or_lvo(&self) -> Option<u16> {
+        self.fhp_or_lvo
+    }
+
+    pub fn from_bytes(buf: &[u8]) -> Option<Self> {
+        if buf.len() < 1 {
+            return None;
+        }
+        let construction_rule = ConstructionRule::try_from((buf[0] >> 5) & 0b111).ok()?;
+        let mut fhp_or_lvo = None;
+        if construction_rule.applicable_to_fixed_len_tfdz() {
+            if buf.len() < 3 {
+                return None;
+            }
+            fhp_or_lvo = Some(u16::from_be_bytes(buf[1..3].try_into().unwrap()));
+        }
+        Some(Self {
+            construction_rule,
+            uslp_protocol_id: (buf[0] & 0b11111).try_into().ok()?,
+            fhp_or_lvo,
+        })
+    }
+}
+
+pub struct TransferFrameReader<'buf> {
+    header: PrimaryHeader,
+    data_field_header: TransferFrameDataFieldHeader,
+    data: &'buf [u8],
+    operational_control_field: u32,
+}
+
+impl<'buf> TransferFrameReader<'buf> {
+    /// This function assumes an insert zone length of 0
+    pub fn from_bytes(buf: &[u8], has_fecf: bool) -> Result<Self, UslpError> {
+        let primary_header = PrimaryHeader::from_bytes(buf)?;
+        Ok(Self {
+            header: primary_header,
+            data_field_header: todo!(),
+            data: todo!(),
+            operational_control_field: todo!(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {}
