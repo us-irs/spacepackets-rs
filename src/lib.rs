@@ -73,6 +73,7 @@ pub mod crc;
 pub mod ecss;
 pub mod seq_count;
 pub mod time;
+pub mod uslp;
 pub mod util;
 
 mod private {
