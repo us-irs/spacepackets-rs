@@ -77,7 +77,7 @@ pub struct PrimaryHeader {
     pub source_or_dest_field: SourceOrDestField,
     pub vc_id: u8,
     pub map_id: u8,
-    pub frame_len: u16,
+    frame_len_field: u16,
     pub sequence_control_flag: BypassSequenceControlFlag,
     pub protocol_control_command_flag: ProtocolControlCommandFlag,
     pub ocf_flag: bool,
@@ -104,7 +104,7 @@ impl PrimaryHeader {
             source_or_dest_field,
             vc_id,
             map_id,
-            frame_len,
+            frame_len_field: frame_len.saturating_sub(1),
             sequence_control_flag: BypassSequenceControlFlag::SequenceControlledQoS,
             protocol_control_command_flag: ProtocolControlCommandFlag::TfdfContainsUserData,
             ocf_flag: false,
@@ -129,10 +129,12 @@ impl PrimaryHeader {
         Ok(())
     }
 
+    #[inline(always)]
     pub fn vc_frame_count(&self) -> u64 {
         self.vc_frame_count
     }
 
+    #[inline(always)]
     pub fn vc_frame_count_len(&self) -> u8 {
         self.vc_frame_count_len
     }
@@ -196,7 +198,7 @@ impl PrimaryHeader {
             source_or_dest_field,
             vc_id: ((buf[2] & 0b111) << 3) | (buf[3] >> 5) & 0b111,
             map_id: (buf[3] >> 1) & 0b1111,
-            frame_len: ((buf[4] as u16) << 8) | buf[5] as u16,
+            frame_len_field: ((buf[4] as u16) << 8) | buf[5] as u16,
             sequence_control_flag: ((buf[6] >> 7) & 0b1).try_into().unwrap(),
             protocol_control_command_flag: ((buf[6] >> 6) & 0b1).try_into().unwrap(),
             ocf_flag: ((buf[6] >> 3) & 0b1) != 0,
@@ -218,7 +220,7 @@ impl PrimaryHeader {
             | ((self.source_or_dest_field as u8) << 3)
             | (self.vc_id >> 3) & 0b111;
         buf[3] = ((self.vc_id & 0b111) << 5) | (self.map_id << 1);
-        buf[4..6].copy_from_slice(&self.frame_len.to_be_bytes());
+        buf[4..6].copy_from_slice(&self.frame_len_field.to_be_bytes());
         buf[6] = ((self.sequence_control_flag as u8) << 7)
             | ((self.protocol_control_command_flag as u8) << 6)
             | ((self.ocf_flag as u8) << 3)
@@ -232,6 +234,14 @@ impl PrimaryHeader {
     }
 
     #[inline(always)]
+    pub fn set_frame_len(&mut self, frame_len: usize) {
+        // 4.1.2.7.2
+        // The field contains a length count C that equals one fewer than the total octets
+        // in the transfer frame.
+        self.frame_len_field = frame_len.saturating_sub(1) as u16;
+    }
+
+    #[inline(always)]
     pub fn len_header(&self) -> usize {
         7 + self.vc_frame_count_len as usize
     }
@@ -241,7 +251,7 @@ impl PrimaryHeader {
         // 4.1.2.7.2
         // The field contains a length count C that equals one fewer than the total octets
         // in the transfer frame.
-        self.frame_len as usize + 1
+        self.frame_len_field as usize + 1
     }
 }
 
@@ -253,7 +263,7 @@ impl PartialEq for PrimaryHeader {
             && self.source_or_dest_field == other.source_or_dest_field
             && self.vc_id == other.vc_id
             && self.map_id == other.map_id
-            && self.frame_len == other.frame_len
+            && self.frame_len_field == other.frame_len_field
             && self.sequence_control_flag == other.sequence_control_flag
             && self.protocol_control_command_flag == other.protocol_control_command_flag
             && self.ocf_flag == other.ocf_flag
@@ -322,7 +332,8 @@ pub struct TransferFrameDataFieldHeader {
     /// Construction rule for the TFDZ.
     construction_rule: ConstructionRule,
     uslp_protocol_id: UslpProtocolId,
-    /// First header or last valid octet pointer
+    /// First header or last valid octet pointer. Only present if the constuction rule indicated
+    /// a fixed-length TFDZ.
     fhp_or_lvo: Option<u16>,
 }
 
@@ -394,14 +405,15 @@ impl<'buf> TransferFrameReader<'buf> {
         has_fecf: bool,
     ) -> Result<TransferFrameReader<'buf>, UslpError> {
         let primary_header = PrimaryHeader::from_bytes(buf)?;
-        if primary_header.len_frame() < buf.len() {
+        if primary_header.len_frame() > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall {
-                found: buf.len(),
                 expected: primary_header.len_frame(),
+                found: buf.len(),
             }
             .into());
         }
-        let data_field_header = TransferFrameDataFieldHeader::from_bytes(buf)?;
+        let data_field_header =
+            TransferFrameDataFieldHeader::from_bytes(&buf[primary_header.len_header()..])?;
         let data_idx = primary_header.len_header() + data_field_header.len_header();
         let frame_len = primary_header.len_frame();
         let mut operational_control_field = None;
@@ -433,6 +445,10 @@ impl<'buf> TransferFrameReader<'buf> {
         })
     }
 
+    pub fn len_frame(&self) -> usize {
+        self.primary_header.len_frame()
+    }
+
     pub fn primary_header(&self) -> &PrimaryHeader {
         &self.primary_header
     }
@@ -452,6 +468,8 @@ impl<'buf> TransferFrameReader<'buf> {
 
 #[cfg(test)]
 mod tests {
+    use std::println;
+
     use super::*;
 
     fn common_basic_check(buf: &[u8]) {
@@ -632,5 +650,36 @@ mod tests {
     }
 
     #[test]
-    fn test_frame_parsing() {}
+    fn test_frame_parser() {
+        let mut buf: [u8; 32] = [0; 32];
+        // Build a variable frame manually.
+        let mut primary_header =
+            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let header_len = primary_header.len_header();
+        buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
+            | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
+        buf[header_len + 1] = 0x42;
+        // 1 byte TFDH, 1 byte data, 2 bytes CRC.
+        primary_header.set_frame_len(header_len + 4);
+        primary_header.write_to_be_bytes(&mut buf).unwrap();
+        // Calculate and write CRC16.
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(&buf[0..header_len + 2]);
+        buf[header_len + 2..header_len + 4].copy_from_slice(&digest.finalize().to_be_bytes());
+        println!("Buffer: {:x?}", buf);
+        // Now parse the frame.
+        let frame = TransferFrameReader::from_bytes(&buf, true).unwrap();
+        assert_eq!(frame.data().len(), 1);
+        assert_eq!(frame.data()[0], 0x42);
+        assert_eq!(
+            frame.data_field_header().uslp_protocol_id,
+            UslpProtocolId::UserDefinedOctetStream
+        );
+        assert_eq!(
+            frame.data_field_header().construction_rule,
+            ConstructionRule::NoSegmentation
+        );
+        assert!(frame.data_field_header().fhp_or_lvo().is_none());
+        assert_eq!(frame.len_frame(), 11);
+    }
 }
