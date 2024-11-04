@@ -377,7 +377,7 @@ impl CfdpPdu for FileDataPduCreatorWithReservedDatafield<'_> {
     }
 }
 
-/// This structure is created with [FileDataPduCreatorReservedDatafield::write_to_bytes_partially]
+/// This structure is created with [FileDataPduCreatorWithReservedDatafield::write_to_bytes_partially]
 /// and provides an API to read file data from the virtual filesystem into the file data PDU buffer
 /// directly.
 ///
