@@ -54,7 +54,7 @@ use crate::{
 use core::mem::size_of;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zerocopy::AsBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -83,9 +83,9 @@ pub trait GenericPusTmSecondaryHeader {
 pub mod zc {
     use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
-    use zerocopy::{AsBytes, FromBytes, FromZeroes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
-    #[derive(FromBytes, FromZeroes, AsBytes, Unaligned)]
+    #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
     #[repr(C)]
     pub struct PusTmSecHeaderWithoutTimestamp {
         pus_version_and_sc_time_ref_status: u8,
@@ -114,16 +114,6 @@ pub mod zc {
                 msg_counter: U16::from(header.msg_counter),
                 dest_id: U16::from(header.dest_id),
             })
-        }
-    }
-
-    impl PusTmSecHeaderWithoutTimestamp {
-        pub fn write_to_bytes(&self, slice: &mut [u8]) -> Option<()> {
-            self.write_to(slice)
-        }
-
-        pub fn from_bytes(slice: &[u8]) -> Option<Self> {
-            Self::read_from(slice)
         }
     }
 
@@ -413,8 +403,8 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         let sec_header_len = size_of::<zc::PusTmSecHeaderWithoutTimestamp>();
         let sec_header = zc::PusTmSecHeaderWithoutTimestamp::try_from(self.sec_header).unwrap();
         sec_header
-            .write_to_bytes(&mut slice[curr_idx..curr_idx + sec_header_len])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
+            .write_to(&mut slice[curr_idx..curr_idx + sec_header_len])
+            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
         curr_idx += sec_header_len;
         slice[curr_idx..curr_idx + self.sec_header.timestamp.len()]
             .copy_from_slice(self.sec_header.timestamp);
@@ -571,10 +561,10 @@ impl<'raw_data> PusTmReader<'raw_data> {
             }
             .into());
         }
-        let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::from_bytes(
+        let sec_header_zc = zc::PusTmSecHeaderWithoutTimestamp::read_from_bytes(
             &slice[current_idx..current_idx + PUS_TM_MIN_SEC_HEADER_LEN],
         )
-        .ok_or(ByteConversionError::ZeroCopyFromError)?;
+        .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUS_TM_MIN_SEC_HEADER_LEN;
         let zc_sec_header_wrapper = zc::PusTmSecHeader {
             zc_header: sec_header_zc,
@@ -710,7 +700,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         if raw_tm_len < CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN + timestamp_len {
             return None;
         }
-        let sp_header = crate::zc::SpHeader::from_bytes(&raw_tm[0..CCSDS_HEADER_LEN]).unwrap();
+        let sp_header = crate::zc::SpHeader::read_from_bytes(&raw_tm[0..CCSDS_HEADER_LEN]).unwrap();
         if raw_tm_len < sp_header.total_len() {
             return None;
         }
@@ -751,7 +741,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
     #[inline]
     pub fn sp_header(&self) -> crate::zc::SpHeader {
         // Valid minimum length of packet was checked before.
-        crate::zc::SpHeader::from_bytes(&self.raw_tm[0..CCSDS_HEADER_LEN]).unwrap()
+        crate::zc::SpHeader::read_from_bytes(&self.raw_tm[0..CCSDS_HEADER_LEN]).unwrap()
     }
 
     /// Helper API to generate the portion of the secondary header without a timestamp from the
@@ -759,7 +749,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
     #[inline]
     pub fn sec_header_without_timestamp(&self) -> PusTmSecHeaderWithoutTimestamp {
         // Valid minimum length of packet was checked before.
-        PusTmSecHeaderWithoutTimestamp::from_bytes(
+        PusTmSecHeaderWithoutTimestamp::read_from_bytes(
             &self.raw_tm[CCSDS_HEADER_LEN..CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN],
         )
         .unwrap()

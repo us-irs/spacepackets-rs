@@ -45,7 +45,7 @@ use delegate::delegate;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zerocopy::AsBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -86,9 +86,9 @@ pub trait GenericPusTcSecondaryHeader {
 pub mod zc {
     use crate::ecss::tc::GenericPusTcSecondaryHeader;
     use crate::ecss::{PusError, PusVersion};
-    use zerocopy::{AsBytes, FromBytes, FromZeroes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
-    #[derive(FromZeroes, FromBytes, AsBytes, Unaligned)]
+    #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
     #[repr(C)]
     pub struct PusTcSecondaryHeader {
         version_ack: u8,
@@ -136,16 +136,6 @@ pub mod zc {
         #[inline]
         fn source_id(&self) -> u16 {
             self.source_id.get()
-        }
-    }
-
-    impl PusTcSecondaryHeader {
-        pub fn write_to_bytes(&self, slice: &mut [u8]) -> Option<()> {
-            self.write_to(slice)
-        }
-
-        pub fn from_bytes(slice: &[u8]) -> Option<Self> {
-            Self::read_from(slice)
         }
     }
 }
@@ -392,8 +382,8 @@ impl WritablePusPacket for PusTcCreator<'_> {
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         sec_header
-            .write_to_bytes(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
+            .write_to(&mut slice[curr_idx..curr_idx + tc_header_len])
+            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
 
         curr_idx += tc_header_len;
         slice[curr_idx..curr_idx + self.app_data.len()].copy_from_slice(self.app_data);
@@ -502,10 +492,10 @@ impl<'raw_data> PusTcReader<'raw_data> {
             }
             .into());
         }
-        let sec_header = zc::PusTcSecondaryHeader::from_bytes(
+        let sec_header = zc::PusTcSecondaryHeader::read_from_bytes(
             &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
         )
-        .ok_or(ByteConversionError::ZeroCopyFromError)?;
+        .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let pus_tc = Self {

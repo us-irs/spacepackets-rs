@@ -67,6 +67,7 @@ use core::{
 };
 use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
+use zerocopy::{FromBytes, IntoBytes};
 
 #[cfg(feature = "std")]
 use std::error::Error;
@@ -733,8 +734,8 @@ impl SpHeader {
                 expected: CCSDS_HEADER_LEN,
             });
         }
-        let zc_header = zc::SpHeader::from_bytes(&buf[0..CCSDS_HEADER_LEN])
-            .ok_or(ByteConversionError::ZeroCopyFromError)?;
+        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..CCSDS_HEADER_LEN])
+            .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
         Ok((Self::from(zc_header), &buf[CCSDS_HEADER_LEN..]))
     }
 
@@ -752,8 +753,8 @@ impl SpHeader {
         }
         let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
         zc_header
-            .to_bytes(&mut buf[0..CCSDS_HEADER_LEN])
-            .ok_or(ByteConversionError::ZeroCopyToError)?;
+            .write_to(&mut buf[0..CCSDS_HEADER_LEN])
+            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
         Ok(&mut buf[CCSDS_HEADER_LEN..])
     }
 
@@ -815,9 +816,9 @@ sph_from_other!(SpHeader, crate::zc::SpHeader);
 pub mod zc {
     use crate::{CcsdsPacket, CcsdsPrimaryHeader, PacketId, PacketSequenceCtrl, VERSION_MASK};
     use zerocopy::byteorder::NetworkEndian;
-    use zerocopy::{AsBytes, FromBytes, FromZeroes, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned, U16};
 
-    #[derive(FromBytes, FromZeroes, AsBytes, Unaligned, Debug)]
+    #[derive(FromBytes, IntoBytes, Immutable, Unaligned, Debug)]
     #[repr(C)]
     pub struct SpHeader {
         version_packet_id: U16<NetworkEndian>,
@@ -841,14 +842,6 @@ pub mod zc {
                 psc: U16::from(psc.raw()),
                 data_len: U16::from(data_len),
             }
-        }
-
-        pub fn from_bytes(slice: &[u8]) -> Option<Self> {
-            SpHeader::read_from(slice)
-        }
-
-        pub fn to_bytes(&self, slice: &mut [u8]) -> Option<()> {
-            self.write_to(slice)
         }
     }
 
@@ -918,6 +911,7 @@ pub(crate) mod tests {
     use postcard::{from_bytes, to_allocvec};
     #[cfg(feature = "serde")]
     use serde::{de::DeserializeOwned, Serialize};
+    use zerocopy::FromBytes;
 
     const CONST_SP: SpHeader = SpHeader::new(
         PacketId::new_for_tc(true, 0x36),
@@ -1197,7 +1191,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_zc_sph() {
-        use zerocopy::AsBytes;
+        use zerocopy::IntoBytes;
 
         let sp_header = SpHeader::new_for_unseg_tc_checked(0x7FF, pow(2, 14) - 1, 0)
             .expect("Error creating SP header");
@@ -1217,7 +1211,7 @@ pub(crate) mod tests {
         assert_eq!(slice[5], 0x00);
 
         let mut slice = [0; 6];
-        sp_header_zc.write_to(slice.as_mut_slice());
+        sp_header_zc.write_to(slice.as_mut_slice()).unwrap();
         assert_eq!(slice.len(), 6);
         assert_eq!(slice[0], 0x17);
         assert_eq!(slice[1], 0xFF);
@@ -1228,7 +1222,7 @@ pub(crate) mod tests {
 
         let mut test_vec = vec![0_u8; 6];
         let slice = test_vec.as_mut_slice();
-        sp_header_zc.write_to(slice);
+        sp_header_zc.write_to(slice).unwrap();
         let slice = test_vec.as_slice();
         assert_eq!(slice.len(), 6);
         assert_eq!(slice[0], 0x17);
@@ -1238,8 +1232,8 @@ pub(crate) mod tests {
         assert_eq!(slice[4], 0x00);
         assert_eq!(slice[5], 0x00);
 
-        let sp_header = zc::SpHeader::from_bytes(slice);
-        assert!(sp_header.is_some());
+        let sp_header = zc::SpHeader::read_from_bytes(slice);
+        assert!(sp_header.is_ok());
         let sp_header = sp_header.unwrap();
         assert_eq!(sp_header.ccsds_version(), 0b000);
         assert_eq!(sp_header.packet_id_raw(), 0x17FF);
