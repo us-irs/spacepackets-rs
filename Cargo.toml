@@ -2,7 +2,7 @@
 name = "spacepackets"
 version = "0.12.0"
 edition = "2021"
-rust-version = "1.70.0"
+rust-version = "1.81.0"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
 description = "Generic implementations for various CCSDS and ECSS packet standards"
 homepage = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
@@ -18,12 +18,12 @@ delegate = ">=0.8, <=0.13"
 paste = "1"
 
 [dependencies.zerocopy]
-version = "0.7"
+version = "0.8"
 features = ["derive"]
 
 [dependencies.thiserror]
-version = "1"
-optional = true
+version = "2"
+default-features = false
 
 [dependencies.num_enum]
 version = ">0.5, <=0.7"
@@ -53,18 +53,16 @@ default-features = false
 version = "0.3"
 optional = true
 
-[dev-dependencies]
-postcard = "1"
-chrono = "0.4"
-
 [features]
 default = ["std"]
-std = ["chrono/std", "chrono/clock", "alloc", "thiserror"]
-serde = ["dep:serde", "chrono/serde"]
-alloc = ["postcard/alloc", "chrono/alloc", "defmt/alloc", "serde/alloc"]
-chrono = ["dep:chrono"]
+std = ["alloc", "chrono/std", "chrono/clock", "thiserror/std"]
+serde = ["dep:serde", "chrono?/serde"]
+alloc = ["chrono?/alloc", "defmt?/alloc", "serde?/alloc"]
 timelib = ["dep:time"]
-defmt = ["dep:defmt"]
+
+[dev-dependencies]
+postcard = { version = "1", features = ["alloc"] }
+chrono = "0.4"
 
 [package.metadata.docs.rs]
 all-features = true

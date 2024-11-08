@@ -11,8 +11,6 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
 
-use delegate::delegate;
-
 #[cfg(feature = "std")]
 use super::StdTimestampError;
 #[cfg(feature = "std")]
@@ -300,20 +298,23 @@ impl CdsConverter for ConversionFromUnix {
         self.unix_days_seconds
     }
 }
+
 /// Helper struct which generates fields for the CDS time provider from a datetime.
+#[cfg(feature = "chrono")]
 struct ConversionFromChronoDatetime {
     unix_conversion: ConversionFromUnix,
     submillis_prec: SubmillisPrecision,
     submillis: u32,
 }
 
+#[cfg(feature = "chrono")]
 impl CdsCommon for ConversionFromChronoDatetime {
     #[inline]
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
 
-    delegate! {
+    delegate::delegate! {
         to self.unix_conversion {
             #[inline]
             fn ms_of_day(&self) -> u32;
@@ -328,8 +329,9 @@ impl CdsCommon for ConversionFromChronoDatetime {
     }
 }
 
+#[cfg(feature = "chrono")]
 impl CdsConverter for ConversionFromChronoDatetime {
-    delegate! {to self.unix_conversion {
+    delegate::delegate! {to self.unix_conversion {
         #[inline]
         fn unix_days_seconds(&self) -> i64;
     }}
@@ -366,7 +368,6 @@ impl ConversionFromChronoDatetime {
         Self::new_generic(dt, SubmillisPrecision::Picoseconds)
     }
 
-    #[cfg(feature = "chrono")]
     fn new_generic(
         dt: &chrono::DateTime<chrono::Utc>,
         prec: SubmillisPrecision,
@@ -448,7 +449,7 @@ impl CdsCommon for ConversionFromNow {
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
-    delegate! {
+    delegate::delegate! {
         to self.unix_conversion {
             fn ms_of_day(&self) -> u32;
             fn ccsds_days_as_u32(&self) -> u32;
@@ -462,7 +463,7 @@ impl CdsCommon for ConversionFromNow {
 
 #[cfg(feature = "std")]
 impl CdsConverter for ConversionFromNow {
-    delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
+    delegate::delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
 }
 
 #[cfg(feature = "alloc")]

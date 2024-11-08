@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+- Bumped MSRV to 1.81.0
+- Bump `zerocopy` to v0.8.0
+- Bump `thiserror` to v2.0.0
+
 # [v0.12.0] 2024-09-10
 
 - Bumped MSRV to 1.70.0
