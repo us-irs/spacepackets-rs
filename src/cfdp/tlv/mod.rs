@@ -273,6 +273,15 @@ pub mod alloc_mod {
                 data: Vec::new(),
             }
         }
+
+        pub fn as_tlv(&self) -> Tlv<'_> {
+            Tlv {
+                tlv_type_field: self.tlv_type_field,
+                // The API should ensure that the data length is never to large, so the unwrap for the
+                // LV creation should never be an issue.
+                lv: Lv::new(&self.data).expect("lv creation failed unexpectedly"),
+            }
+        }
     }
 
     impl ReadableTlv for TlvOwned {
