@@ -42,7 +42,9 @@ pub enum PduError {
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
     #[error("invalid transaction ID length {0}")]
     InvalidTransactionSeqNumLen(u8),
-    #[error("missmatch of PDU source ID length {src_id_len} and destination ID length {dest_id_len}")]
+    #[error(
+        "missmatch of PDU source ID length {src_id_len} and destination ID length {dest_id_len}"
+    )]
     SourceDestIdLenMissmatch {
         src_id_len: usize,
         dest_id_len: usize,
