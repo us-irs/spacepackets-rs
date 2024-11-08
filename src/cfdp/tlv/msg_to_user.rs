@@ -2,7 +2,7 @@
 #[cfg(feature = "alloc")]
 use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
-use crate::{cfdp::TlvLvDataTooLarge, ByteConversionError};
+use crate::{cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError}, ByteConversionError};
 use delegate::delegate;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -12,7 +12,7 @@ pub struct MsgToUserTlv<'data> {
 
 impl<'data> MsgToUserTlv<'data> {
     /// Create a new message to user TLV where the type field is set correctly.
-    pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvDataTooLarge> {
+    pub fn new(value: &'data [u8]) -> Result<MsgToUserTlv<'data>, TlvLvDataTooLargeError> {
         Ok(Self {
             tlv: Tlv::new(TlvType::MsgToUser, value)?,
         })
@@ -62,17 +62,17 @@ impl<'data> MsgToUserTlv<'data> {
         match msg_to_user.tlv.tlv_type_field() {
             TlvTypeField::Standard(tlv_type) => {
                 if tlv_type != TlvType::MsgToUser {
-                    return Err(TlvLvError::InvalidTlvTypeField {
+                    return Err(InvalidTlvTypeFieldError {
                         found: tlv_type as u8,
                         expected: Some(TlvType::MsgToUser as u8),
-                    });
+                    }.into());
                 }
             }
             TlvTypeField::Custom(raw) => {
-                return Err(TlvLvError::InvalidTlvTypeField {
+                return Err(InvalidTlvTypeFieldError {
                     found: raw,
                     expected: Some(TlvType::MsgToUser as u8),
-                });
+                }.into());
             }
         }
         Ok(msg_to_user)
@@ -205,9 +205,9 @@ mod tests {
     fn test_reserved_msg_deserialization_invalid_type() {
         let trash: [u8; 5] = [TlvType::FlowLabel as u8, 3, 1, 2, 3];
         let error = MsgToUserTlv::from_bytes(&trash).unwrap_err();
-        if let TlvLvError::InvalidTlvTypeField { found, expected } = error {
-            assert_eq!(found, TlvType::FlowLabel as u8);
-            assert_eq!(expected, Some(TlvType::MsgToUser as u8));
+        if let TlvLvError::InvalidTlvTypeField(inner) = error {
+            assert_eq!(inner.found, TlvType::FlowLabel as u8);
+            assert_eq!(inner.expected, Some(TlvType::MsgToUser as u8));
         } else {
             panic!("Wrong error type returned: {:?}", error);
         }

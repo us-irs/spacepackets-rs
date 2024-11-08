@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use std::string::String;
 
-use super::TlvLvDataTooLarge;
+use super::TlvLvDataTooLargeError;
 
 pub const MIN_LV_LEN: usize = 1;
 
@@ -64,9 +64,9 @@ pub(crate) fn generic_len_check_deserialization(
 
 impl<'data> Lv<'data> {
     #[inline]
-    pub fn new(data: &[u8]) -> Result<Lv, TlvLvDataTooLarge> {
+    pub fn new(data: &[u8]) -> Result<Lv, TlvLvDataTooLargeError> {
         if data.len() > u8::MAX as usize {
-            return Err(TlvLvDataTooLarge(data.len()));
+            return Err(TlvLvDataTooLargeError(data.len()));
         }
         Ok(Lv {
             data,
@@ -86,7 +86,7 @@ impl<'data> Lv<'data> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[inline]
-    pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvDataTooLarge> {
+    pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvDataTooLargeError> {
         Self::new(str_slice.as_bytes())
     }
 
@@ -94,7 +94,7 @@ impl<'data> Lv<'data> {
     /// path LVs
     #[cfg(feature = "std")]
     #[inline]
-    pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvDataTooLarge> {
+    pub fn new_from_string(string: &'data String) -> Result<Lv<'data>, TlvLvDataTooLargeError> {
         Self::new(string.as_bytes())
     }
 

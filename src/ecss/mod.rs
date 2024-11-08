@@ -6,13 +6,11 @@
 use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::Debug;
 use core::mem::size_of;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::error::Error;
 
 pub mod event;
 pub mod hk;
@@ -148,50 +146,19 @@ pub enum PfcReal {
     DoubleMilStd = 4,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
+    #[error("PUS version {0:?} not supported")]
     VersionNotSupported(PusVersion),
+    #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
-    CrcCalculationMissing,
-    ByteConversion(ByteConversionError),
-}
-
-impl Display for PusError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            PusError::VersionNotSupported(v) => {
-                write!(f, "PUS version {v:?} not supported")
-            }
-            PusError::ChecksumFailure(crc) => {
-                write!(f, "checksum verification for crc16 {crc:#06x} failed")
-            }
-            PusError::CrcCalculationMissing => {
-                write!(f, "crc16 was not calculated")
-            }
-            PusError::ByteConversion(e) => {
-                write!(f, "pus error: {e}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for PusError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        if let PusError::ByteConversion(e) = self {
-            return Some(e);
-        }
-        None
-    }
-}
-
-impl From<ByteConversionError> for PusError {
-    fn from(e: ByteConversionError) -> Self {
-        PusError::ByteConversion(e)
-    }
+    //#[error("crc16 was not calculated")]
+    //CrcCalculationMissing,
+    #[error("pus error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
 }
 
 /// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry

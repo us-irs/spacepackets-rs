@@ -7,14 +7,12 @@
 use crate::private::Sealed;
 use crate::ByteConversionError;
 use core::cmp::Ordering;
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
 
 #[cfg(feature = "std")]
 use super::StdTimestampError;
-#[cfg(feature = "std")]
-use std::error::Error;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, SystemTimeError};
 
@@ -91,49 +89,19 @@ pub enum SubmillisPrecision {
     Reserved = 0b11,
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CdsError {
     /// CCSDS days value exceeds maximum allowed size or is negative
+    #[error("invalid ccsds days {0}")]
     InvalidCcsdsDays(i64),
     /// There are distinct constructors depending on the days field width detected in the preamble
     /// field. This error will be returned if there is a missmatch.
+    #[error("wrong constructor for length of day {0:?} detected in preamble")]
     InvalidCtorForDaysOfLenInPreamble(LengthOfDaySegment),
-    DateBeforeCcsdsEpoch(DateBeforeCcsdsEpochError),
-}
-
-impl Display for CdsError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            CdsError::InvalidCcsdsDays(days) => {
-                write!(f, "invalid ccsds days {days}")
-            }
-            CdsError::InvalidCtorForDaysOfLenInPreamble(length_of_day) => {
-                write!(
-                    f,
-                    "wrong constructor for length of day {length_of_day:?} detected in preamble",
-                )
-            }
-            CdsError::DateBeforeCcsdsEpoch(e) => write!(f, "date before CCSDS epoch: {e}"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for CdsError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            CdsError::DateBeforeCcsdsEpoch(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<DateBeforeCcsdsEpochError> for CdsError {
-    fn from(value: DateBeforeCcsdsEpochError) -> Self {
-        Self::DateBeforeCcsdsEpoch(value)
-    }
+    #[error("date before CCSDS epoch: {0}")]
+    DateBeforeCcsdsEpoch(#[from] DateBeforeCcsdsEpochError),
 }
 
 pub fn length_of_day_segment_from_pfield(pfield: u8) -> LengthOfDaySegment {
