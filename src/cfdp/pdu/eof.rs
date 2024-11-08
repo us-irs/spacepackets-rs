@@ -297,7 +297,7 @@ mod tests {
         buf[written - 1] -= 1;
         let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
         let error = EofPdu::from_bytes(&buf).unwrap_err();
-        if let PduError::ChecksumError(e) = error {
+        if let PduError::Checksum(e) = error {
             assert_eq!(e, crc);
         } else {
             panic!("expected crc error");

@@ -4,14 +4,14 @@ use crate::cfdp::pdu::{
 use crate::cfdp::tlv::{
     EntityIdTlv, FilestoreResponseTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv,
 };
-use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType, TlvLvError};
+use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType};
 use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use super::tlv::ReadableTlv;
-use super::{CfdpPdu, WritablePduPacket};
+use super::{CfdpPdu, InvalidTlvTypeFieldError, WritablePduPacket};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -332,22 +332,26 @@ impl<'buf> FinishedPduReader<'buf> {
                         // last TLV, everything else would break the whole handling of the packet
                         // TLVs.
                         if current_idx != full_len_without_crc {
-                            return Err(PduError::FormatError);
+                            return Err(PduError::Format);
                         }
                     } else {
-                        return Err(TlvLvError::InvalidTlvTypeField {
-                            found: tlv_type.into(),
-                            expected: Some(TlvType::FilestoreResponse.into()),
-                        }
-                        .into());
+                        return Err(PduError::TlvLv(
+                            InvalidTlvTypeFieldError {
+                                found: tlv_type.into(),
+                                expected: Some(TlvType::FilestoreResponse.into()),
+                            }
+                            .into(),
+                        ));
                     }
                 }
                 TlvTypeField::Custom(raw) => {
-                    return Err(TlvLvError::InvalidTlvTypeField {
-                        found: raw,
-                        expected: None,
-                    }
-                    .into());
+                    return Err(PduError::TlvLv(
+                        InvalidTlvTypeFieldError {
+                            found: raw,
+                            expected: None,
+                        }
+                        .into(),
+                    ));
                 }
             }
         }
@@ -564,7 +568,7 @@ mod tests {
         buf[written - 1] -= 1;
         let crc: u16 = ((buf[written - 2] as u16) << 8) as u16 | buf[written - 1] as u16;
         let error = FinishedPduReader::new(&buf).unwrap_err();
-        if let PduError::ChecksumError(e) = error {
+        if let PduError::Checksum(e) = error {
             assert_eq!(e, crc);
         } else {
             panic!("expected crc error");

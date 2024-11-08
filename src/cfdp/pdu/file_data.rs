@@ -544,7 +544,7 @@ mod tests {
         buf[written - 1] -= 1;
         let crc: u16 = ((buf[written - 2] as u16) << 8) | buf[written - 1] as u16;
         let error = FileDataPdu::from_bytes(&buf).unwrap_err();
-        if let PduError::ChecksumError(e) = error {
+        if let PduError::Checksum(e) = error {
             assert_eq!(e, crc);
         } else {
             panic!("expected crc error");
@@ -753,7 +753,7 @@ mod tests {
         assert!(pdu_reader_error.is_err());
         let error = pdu_reader_error.unwrap_err();
         match error {
-            PduError::ChecksumError(_) => (),
+            PduError::Checksum(_) => (),
             _ => {
                 panic!("unexpected PDU error {}", error)
             }

@@ -720,7 +720,7 @@ pub mod tests {
     fn test_with_owned_opts() {
         let tlv1 = TlvOwned::new_empty(TlvType::FlowLabel);
         let msg_to_user: [u8; 4] = [1, 2, 3, 4];
-        let tlv2 = TlvOwned::new(TlvType::MsgToUser, &msg_to_user).unwrap();
+        let tlv2 = TlvOwned::new(TlvType::MsgToUser, &msg_to_user);
         let mut all_tlvs = tlv1.to_vec();
         all_tlvs.extend(tlv2.to_vec());
         let (src_filename, dest_filename, metadata_pdu) = generic_metadata_pdu(
@@ -780,7 +780,7 @@ pub mod tests {
             assert_eq!(expected, Some(FileDirectiveType::MetadataPdu));
             assert_eq!(
                 error.to_string(),
-                "invalid directive type value 255, expected Some(MetadataPdu)"
+                "invalid directive type, found 255, expected Some(MetadataPdu)"
             );
         } else {
             panic!("Expected InvalidDirectiveType error, got {:?}", error);
@@ -806,7 +806,7 @@ pub mod tests {
             assert_eq!(expected, FileDirectiveType::MetadataPdu);
             assert_eq!(
                 error.to_string(),
-                "found directive type EofPdu, expected MetadataPdu"
+                "wrong directive type, found EofPdu, expected MetadataPdu"
             );
         } else {
             panic!("Expected InvalidDirectiveType error, got {:?}", error);

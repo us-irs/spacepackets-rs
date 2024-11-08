@@ -63,19 +63,11 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCode, u8> {
     CcsdsTimeCode::try_from(raw_bits).map_err(|_| raw_bits)
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[error("date before ccsds epoch: {0:?}")]
 pub struct DateBeforeCcsdsEpochError(UnixTime);
-
-impl Display for DateBeforeCcsdsEpochError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "date before ccsds epoch: {:?}", self.0)
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for DateBeforeCcsdsEpochError {}
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

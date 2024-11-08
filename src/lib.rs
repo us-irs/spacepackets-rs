@@ -61,16 +61,10 @@ extern crate alloc;
 #[cfg(any(feature = "std", test))]
 extern crate std;
 
-use core::{
-    fmt::{Debug, Display, Formatter},
-    hash::Hash,
-};
+use core::{fmt::Debug, hash::Hash};
 use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
 use zerocopy::{FromBytes, IntoBytes};
-
-#[cfg(feature = "std")]
-use std::error::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -94,54 +88,23 @@ pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
 
 /// Generic error type when converting to and from raw byte slices.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the passed slice length and expected minimum size
-    ToSliceTooSmall {
-        found: usize,
-        expected: usize,
-    },
+    #[error("target slice with size {found} is too small, expected size of at least {expected}")]
+    ToSliceTooSmall { found: usize, expected: usize },
     /// The provider buffer is too small. Returns the passed slice length and expected minimum size
-    FromSliceTooSmall {
-        found: usize,
-        expected: usize,
-    },
+    #[error("source slice with size {found} too small, expected at least {expected} bytes")]
+    FromSliceTooSmall { found: usize, expected: usize },
     /// The [zerocopy] library failed to write to bytes
+    #[error("zerocopy serialization error")]
     ZeroCopyToError,
+    /// The [zerocopy] library failed to read from bytes
+    #[error("zerocopy deserialization error")]
     ZeroCopyFromError,
 }
-
-impl Display for ByteConversionError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            ByteConversionError::ToSliceTooSmall { found, expected } => {
-                write!(
-                    f,
-                    "target slice with size {} is too small, expected size of at least {}",
-                    found, expected
-                )
-            }
-            ByteConversionError::FromSliceTooSmall { found, expected } => {
-                write!(
-                    f,
-                    "source slice with size {} too small, expected at least {} bytes",
-                    found, expected
-                )
-            }
-            ByteConversionError::ZeroCopyToError => {
-                write!(f, "zerocopy serialization error")
-            }
-            ByteConversionError::ZeroCopyFromError => {
-                write!(f, "zerocopy deserialization error")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for ByteConversionError {}
 
 /// CCSDS packet type enumeration.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

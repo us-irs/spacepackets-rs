@@ -1,11 +1,8 @@
 //! Low-level CCSDS File Delivery Protocol (CFDP) support according to [CCSDS 727.0-B-5](https://public.ccsds.org/Pubs/727x0b5.pdf).
 use crate::ByteConversionError;
-use core::fmt::{Display, Formatter};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::error::Error;
 
 pub mod lv;
 pub mod pdu;
@@ -176,95 +173,41 @@ impl Default for ChecksumType {
 
 pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct TlvLvDataTooLarge(pub usize);
+#[error("data with size {0} larger than allowed {max} bytes", max = u8::MAX)]
+pub struct TlvLvDataTooLargeError(pub usize);
 
-impl Display for TlvLvDataTooLarge {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "data with size {} larger than allowed {} bytes",
-            self.0,
-            u8::MAX
-        )
-    }
+/// First value: Found value. Second value: Expected value if there is one.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[error("invalid TLV type field, found {found}, expected {expected:?}")]
+pub struct InvalidTlvTypeFieldError {
+    found: u8,
+    expected: Option<u8>,
 }
 
-#[cfg(feature = "std")]
-impl Error for TlvLvDataTooLarge {}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvLvError {
-    DataTooLarge(TlvLvDataTooLarge),
-    ByteConversion(ByteConversionError),
-    /// First value: Found value. Second value: Expected value if there is one.
-    InvalidTlvTypeField {
-        found: u8,
-        expected: Option<u8>,
-    },
-    /// Logically invalid value length detected. The value length may not exceed 255 bytes.
-    /// Depending on the concrete TLV type, the value length may also be logically invalid.
+    #[error("{0}")]
+    DataTooLarge(#[from] TlvLvDataTooLargeError),
+    #[error("byte conversion error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    #[error("{0}")]
+    InvalidTlvTypeField(#[from] InvalidTlvTypeFieldError),
+    #[error("invalid value length {0}")]
     InvalidValueLength(usize),
     /// Only applies to filestore requests and responses. Second name was missing where one is
     /// expected.
+    #[error("second name missing for filestore request or response")]
     SecondNameMissing,
     /// Invalid action code for filestore requests or responses.
+    #[error("invalid action code {0}")]
     InvalidFilestoreActionCode(u8),
-}
-
-impl From<TlvLvDataTooLarge> for TlvLvError {
-    fn from(value: TlvLvDataTooLarge) -> Self {
-        Self::DataTooLarge(value)
-    }
-}
-
-impl From<ByteConversionError> for TlvLvError {
-    fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversion(value)
-    }
-}
-
-impl Display for TlvLvError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            TlvLvError::DataTooLarge(e) => {
-                write!(f, "{}", e)
-            }
-            TlvLvError::ByteConversion(e) => {
-                write!(f, "tlv or lv byte conversion: {}", e)
-            }
-            TlvLvError::InvalidTlvTypeField { found, expected } => {
-                write!(
-                    f,
-                    "invalid TLV type field, found {found}, expected {expected:?}"
-                )
-            }
-            TlvLvError::InvalidValueLength(len) => {
-                write!(f, "invalid value length {len}")
-            }
-            TlvLvError::SecondNameMissing => {
-                write!(f, "second name missing for filestore request or response")
-            }
-            TlvLvError::InvalidFilestoreActionCode(raw) => {
-                write!(f, "invalid filestore action code with raw value {raw}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for TlvLvError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            TlvLvError::DataTooLarge(e) => Some(e),
-            TlvLvError::ByteConversion(e) => Some(e),
-            _ => None,
-        }
-    }
 }
 
 #[cfg(test)]

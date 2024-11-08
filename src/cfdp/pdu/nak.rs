@@ -751,7 +751,7 @@ mod tests {
         if let PduError::InvalidStartOrEndOfScopeValue = error {
             assert_eq!(
                 error.to_string(),
-                "invalid start or end of scope for NAK PDU"
+                "invalid start or end of scope value for NAK PDU"
             );
         } else {
             panic!("unexpected error {error}");
@@ -796,7 +796,7 @@ mod tests {
         nak_vec[nak_pdu.len_written() - 1] -= 1;
         let nak_pdu_deser = NakPduReader::new(&nak_vec);
         assert!(nak_pdu_deser.is_err());
-        if let Err(PduError::ChecksumError(raw)) = nak_pdu_deser {
+        if let Err(PduError::Checksum(raw)) = nak_pdu_deser {
             assert_eq!(
                 raw,
                 u16::from_be_bytes(nak_vec[nak_pdu.len_written() - 2..].try_into().unwrap())

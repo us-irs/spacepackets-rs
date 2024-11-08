@@ -5,9 +5,6 @@ use crate::ByteConversionError;
 use crate::CRC_CCITT_FALSE;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-use core::fmt::{Display, Formatter};
-#[cfg(feature = "std")]
-use std::error::Error;
 
 pub mod ack;
 pub mod eof;
@@ -30,137 +27,60 @@ pub enum FileDirectiveType {
     KeepAlivePdu = 0x0c,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduError {
-    ByteConversion(ByteConversionError),
-    /// Found version ID invalid, not equal to [CFDP_VERSION_2].
+    #[error("byte conversion error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    /// Found version ID invalid, not equal to [super::CFDP_VERSION_2].
+    #[error("CFDP version missmatch, found {0}, expected {ver}", ver = super::CFDP_VERSION_2)]
     CfdpVersionMissmatch(u8),
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
+    #[error("invalid PDU entity ID length {0}, only [1, 2, 4, 8] are allowed")]
     InvalidEntityLen(u8),
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
+    #[error("invalid transaction ID length {0}")]
     InvalidTransactionSeqNumLen(u8),
+    #[error("missmatch of PDU source ID length {src_id_len} and destination ID length {dest_id_len}")]
     SourceDestIdLenMissmatch {
         src_id_len: usize,
         dest_id_len: usize,
     },
     /// Wrong directive type, for example when parsing the directive field for a file directive
     /// PDU.
+    #[error("wrong directive type, found {found:?}, expected {expected:?}")]
     WrongDirectiveType {
         found: FileDirectiveType,
         expected: FileDirectiveType,
     },
     /// The directive type field contained a value not in the range of permitted values. This can
     /// also happen if an invalid value is passed to the ACK PDU constructor.
+    #[error("invalid directive type, found {found:?}, expected {expected:?}")]
     InvalidDirectiveType {
         found: u8,
         expected: Option<FileDirectiveType>,
     },
+    #[error("invalid start or end of scope value for NAK PDU")]
     InvalidStartOrEndOfScopeValue,
     /// Invalid condition code. Contains the raw detected value.
+    #[error("invalid condition code {0}")]
     InvalidConditionCode(u8),
     /// Invalid checksum type which is not part of the checksums listed in the
     /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/).
+    #[error("invalid checksum type {0}")]
     InvalidChecksumType(u8),
+    #[error("file size {0} too large")]
     FileSizeTooLarge(u64),
     /// If the CRC flag for a PDU is enabled and the checksum check fails. Contains raw 16-bit CRC.
-    ChecksumError(u16),
+    #[error("checksum error for checksum {0}")]
+    Checksum(u16),
     /// Generic error for invalid PDU formats.
-    FormatError,
+    #[error("generic PDU format error")]
+    Format,
     /// Error handling a TLV field.
-    TlvLvError(TlvLvError),
-}
-
-impl Display for PduError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            PduError::InvalidEntityLen(raw_id) => {
-                write!(
-                    f,
-                    "invalid PDU entity ID length {raw_id}, only [1, 2, 4, 8] are allowed"
-                )
-            }
-            PduError::InvalidStartOrEndOfScopeValue => {
-                write!(f, "invalid start or end of scope for NAK PDU")
-            }
-            PduError::InvalidTransactionSeqNumLen(raw_id) => {
-                write!(
-                    f,
-                    "invalid PDUtransaction seq num length {raw_id}, only [1, 2, 4, 8] are allowed"
-                )
-            }
-            PduError::CfdpVersionMissmatch(raw) => {
-                write!(
-                    f,
-                    "cfdp version missmatch, found {raw}, expected {CFDP_VERSION_2}"
-                )
-            }
-            PduError::SourceDestIdLenMissmatch {
-                src_id_len,
-                dest_id_len,
-            } => {
-                write!(
-                    f,
-                    "missmatch of PDU source length {src_id_len} and destination length {dest_id_len}"
-                )
-            }
-            PduError::ByteConversion(e) => {
-                write!(f, "{}", e)
-            }
-            PduError::FileSizeTooLarge(value) => {
-                write!(f, "file size value {value} exceeds allowed 32 bit width")
-            }
-            PduError::WrongDirectiveType { found, expected } => {
-                write!(f, "found directive type {found:?}, expected {expected:?}")
-            }
-            PduError::InvalidConditionCode(raw_code) => {
-                write!(f, "found invalid condition code with raw value {raw_code}")
-            }
-            PduError::InvalidDirectiveType { found, expected } => {
-                write!(
-                    f,
-                    "invalid directive type value {found}, expected {expected:?}"
-                )
-            }
-            PduError::InvalidChecksumType(checksum_type) => {
-                write!(f, "invalid checksum type {checksum_type}")
-            }
-            PduError::ChecksumError(checksum) => {
-                write!(f, "checksum error for CRC {checksum:#04x}")
-            }
-            PduError::TlvLvError(error) => {
-                write!(f, "pdu tlv error: {error}")
-            }
-            PduError::FormatError => {
-                write!(f, "generic PDU format error")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for PduError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            PduError::ByteConversion(e) => Some(e),
-            PduError::TlvLvError(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<ByteConversionError> for PduError {
-    #[inline]
-    fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversion(value)
-    }
-}
-
-impl From<TlvLvError> for PduError {
-    #[inline]
-    fn from(e: TlvLvError) -> Self {
-        Self::TlvLvError(e)
-    }
+    #[error("PDU error: {0}")]
+    TlvLv(#[from] TlvLvError),
 }
 
 pub trait WritablePduPacket {
@@ -532,7 +452,7 @@ impl PduHeader {
             let mut digest = CRC_CCITT_FALSE.digest();
             digest.update(&buf[..self.pdu_len()]);
             if digest.finalize() != 0 {
-                return Err(PduError::ChecksumError(u16::from_be_bytes(
+                return Err(PduError::Checksum(u16::from_be_bytes(
                     buf[self.pdu_len() - 2..self.pdu_len()].try_into().unwrap(),
                 )));
             }
@@ -981,7 +901,7 @@ mod tests {
             assert_eq!(raw_version, CFDP_VERSION_2 + 1);
             assert_eq!(
                 error.to_string(),
-                "cfdp version missmatch, found 2, expected 1"
+                "CFDP version missmatch, found 2, expected 1"
             );
         } else {
             panic!("invalid exception: {}", error);
@@ -1029,7 +949,7 @@ mod tests {
             assert_eq!(expected, 7);
             assert_eq!(
                 error.to_string(),
-                "source slice with size 6 too small, expected at least 7 bytes"
+                "byte conversion error: source slice with size 6 too small, expected at least 7 bytes"
             );
         }
     }
@@ -1084,7 +1004,7 @@ mod tests {
             assert_eq!(dest_id_len, 2);
             assert_eq!(
                 error.to_string(),
-                "missmatch of PDU source length 1 and destination length 2"
+                "missmatch of PDU source ID length 1 and destination ID length 2"
             );
         }
     }
