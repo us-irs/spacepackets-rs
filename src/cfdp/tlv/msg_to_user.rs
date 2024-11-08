@@ -2,7 +2,10 @@
 #[cfg(feature = "alloc")]
 use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
-use crate::{cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError}, ByteConversionError};
+use crate::{
+    cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError},
+    ByteConversionError,
+};
 use delegate::delegate;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -65,14 +68,16 @@ impl<'data> MsgToUserTlv<'data> {
                     return Err(InvalidTlvTypeFieldError {
                         found: tlv_type as u8,
                         expected: Some(TlvType::MsgToUser as u8),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             TlvTypeField::Custom(raw) => {
                 return Err(InvalidTlvTypeFieldError {
                     found: raw,
                     expected: Some(TlvType::MsgToUser as u8),
-                }.into());
+                }
+                .into());
             }
         }
         Ok(msg_to_user)
