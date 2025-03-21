@@ -120,7 +120,7 @@ pub mod zc {
     impl GenericPusTmSecondaryHeader for PusTmSecHeaderWithoutTimestamp {
         #[inline]
         fn pus_version(&self) -> PusVersion {
-            PusVersion::try_from(self.pus_version_and_sc_time_ref_status >> 4 & 0b1111)
+            PusVersion::try_from((self.pus_version_and_sc_time_ref_status >> 4) & 0b1111)
                 .unwrap_or(PusVersion::Invalid)
         }
 
@@ -1111,7 +1111,7 @@ mod tests {
     }
 
     fn verify_ping_reply_generic(
-        tm: &(impl CcsdsPacket + GenericPusTmSecondaryHeader + PusPacket),
+        tm: &(impl GenericPusTmSecondaryHeader + PusPacket),
         has_user_data: bool,
         exp_full_len: usize,
     ) {

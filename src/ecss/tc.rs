@@ -115,7 +115,7 @@ pub mod zc {
     impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
         #[inline]
         fn pus_version(&self) -> PusVersion {
-            PusVersion::try_from(self.version_ack >> 4 & 0b1111).unwrap_or(PusVersion::Invalid)
+            PusVersion::try_from((self.version_ack >> 4) & 0b1111).unwrap_or(PusVersion::Invalid)
         }
 
         #[inline]

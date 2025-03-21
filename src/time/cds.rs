@@ -569,7 +569,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
             ));
         }
         let pfield = buf[0];
-        match CcsdsTimeCode::try_from(pfield >> 4 & 0b111) {
+        match CcsdsTimeCode::try_from((pfield >> 4) & 0b111) {
             Ok(cds_type) => match cds_type {
                 CcsdsTimeCode::Cds => (),
                 _ => {
@@ -582,7 +582,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
             _ => {
                 return Err(TimestampError::InvalidTimeCode {
                     expected: CcsdsTimeCode::Cds,
-                    found: pfield >> 4 & 0b111,
+                    found: (pfield >> 4) & 0b111,
                 });
             }
         };
