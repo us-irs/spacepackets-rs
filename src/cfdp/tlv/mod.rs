@@ -398,7 +398,7 @@ impl GenericTlv for EntityIdTlv {
     }
 }
 
-impl<'data> TryFrom<Tlv<'data>> for EntityIdTlv {
+impl TryFrom<Tlv<'_>> for EntityIdTlv {
     type Error = TlvLvError;
 
     fn try_from(value: Tlv) -> Result<Self, TlvLvError> {

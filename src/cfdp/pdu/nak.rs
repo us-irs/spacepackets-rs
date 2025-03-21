@@ -61,7 +61,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         start_of_scope: u32,
         end_of_scope: u32,
         segment_requests: &'seg_reqs [(u32, u32)],
-    ) -> Result<NakPduCreator, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
         let mut passed_segment_requests = None;
         if !segment_requests.is_empty() {
             passed_segment_requests = Some(SegmentRequests::U32Pairs(segment_requests));
@@ -79,7 +79,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         start_of_scope: u64,
         end_of_scope: u64,
         segment_requests: &'seg_reqs [(u64, u64)],
-    ) -> Result<NakPduCreator, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
         let mut passed_segment_requests = None;
         if !segment_requests.is_empty() {
             passed_segment_requests = Some(SegmentRequests::U64Pairs(segment_requests));
@@ -97,7 +97,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         start_of_scope: u64,
         end_of_scope: u64,
         segment_requests: Option<SegmentRequests<'seg_reqs>>,
-    ) -> Result<NakPduCreator, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
         // Force correct direction flag.
         pdu_header.pdu_conf.direction = Direction::TowardsSender;
         if let Some(ref segment_requests) = segment_requests {
@@ -269,7 +269,7 @@ impl SegReqFromBytes for u64 {
     }
 }
 
-impl<'a, T> Iterator for SegmentRequestIter<'a, T>
+impl<T> Iterator for SegmentRequestIter<'_, T>
 where
     T: SegReqFromBytes,
 {
@@ -282,8 +282,8 @@ where
     }
 }
 
-impl<'a, 'b> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'b, u32> {
-    fn eq(&self, other: &SegmentRequests) -> bool {
+impl<'a> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'_, u32> {
+    fn eq(&self, other: &SegmentRequests<'a>) -> bool {
         match other {
             SegmentRequests::U32Pairs(pairs) => self.compare_pairs(pairs),
             SegmentRequests::U64Pairs(pairs) => {
@@ -296,8 +296,8 @@ impl<'a, 'b> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'b, u32> {
     }
 }
 
-impl<'a, 'b> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'b, u64> {
-    fn eq(&self, other: &SegmentRequests) -> bool {
+impl<'a> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'_, u64> {
+    fn eq(&self, other: &SegmentRequests<'a>) -> bool {
         match other {
             SegmentRequests::U32Pairs(pairs) => {
                 if pairs.is_empty() && self.seq_req_raw.is_empty() {
@@ -310,7 +310,7 @@ impl<'a, 'b> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'b, u64> {
     }
 }
 
-impl<'a, T> SegmentRequestIter<'a, T>
+impl<T> SegmentRequestIter<'_, T>
 where
     T: SegReqFromBytes + PartialEq,
 {
@@ -374,11 +374,11 @@ impl CfdpPdu for NakPduReader<'_> {
 }
 
 impl<'seg_reqs> NakPduReader<'seg_reqs> {
-    pub fn new(buf: &'seg_reqs [u8]) -> Result<NakPduReader, PduError> {
+    pub fn new(buf: &'seg_reqs [u8]) -> Result<NakPduReader<'seg_reqs>, PduError> {
         Self::from_bytes(buf)
     }
 
-    pub fn from_bytes(buf: &'seg_reqs [u8]) -> Result<NakPduReader, PduError> {
+    pub fn from_bytes(buf: &'seg_reqs [u8]) -> Result<NakPduReader<'seg_reqs>, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
         // Minimum length of 9: 1 byte directive field and start and end of scope for normal file
@@ -474,7 +474,7 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
     }
 }
 
-impl<'a, 'b> PartialEq<NakPduCreator<'a>> for NakPduReader<'b> {
+impl<'a> PartialEq<NakPduCreator<'a>> for NakPduReader<'_> {
     fn eq(&self, other: &NakPduCreator<'a>) -> bool {
         if self.pdu_header() != other.pdu_header()
             || self.end_of_scope() != other.end_of_scope()
