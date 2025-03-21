@@ -1,6 +1,6 @@
 [package]
 name = "spacepackets"
-version = "0.13.0"
+version = "0.13.1"
 edition = "2021"
 rust-version = "1.81.0"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
