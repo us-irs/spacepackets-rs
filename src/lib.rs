@@ -26,8 +26,8 @@
 //!
 //!  - [`std`](https://doc.rust-lang.org/std/): Enables functionality relying on the standard library.
 //!  - [`alloc`](https://doc.rust-lang.org/alloc/): Enables features which operate on containers
-//!     like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
-//!     Enabled by the `std` feature.
+//!    like [`alloc::vec::Vec`](https://doc.rust-lang.org/beta/alloc/vec/struct.Vec.html).
+//!    Enabled by the `std` feature.
 //!
 //! ### Optional features
 //!
@@ -62,7 +62,6 @@ extern crate alloc;
 extern crate std;
 
 use core::{fmt::Debug, hash::Hash};
-use crc::{Crc, CRC_16_IBM_3740};
 use delegate::delegate;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -70,6 +69,7 @@ use zerocopy::{FromBytes, IntoBytes};
 use serde::{Deserialize, Serialize};
 
 pub mod cfdp;
+pub mod crc;
 pub mod ecss;
 pub mod seq_count;
 pub mod time;
@@ -80,9 +80,6 @@ mod private {
 }
 
 pub const CCSDS_HEADER_LEN: usize = core::mem::size_of::<crate::zc::SpHeader>();
-
-/// CRC algorithm used by the PUS standard, the CCSDS TC standard and the CFDP standard.
-pub const CRC_CCITT_FALSE: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_3740);
 
 pub const MAX_APID: u16 = 2u16.pow(11) - 1;
 pub const MAX_SEQ_COUNT: u16 = 2u16.pow(14) - 1;
@@ -452,9 +449,9 @@ pub trait CcsdsPrimaryHeader {
 /// # Arguments
 ///
 /// * `version` - CCSDS version field, occupies the first 3 bits of the raw header. Will generally
-///    be set to 0b000 in all constructors provided by this crate.
+///   be set to 0b000 in all constructors provided by this crate.
 /// * `packet_id` - Packet Identifier, which can also be used as a start marker. Occupies the last
-///    13 bits of the first two bytes of the raw header
+///   13 bits of the first two bytes of the raw header
 /// * `psc` - Packet Sequence Control, occupies the third and fourth byte of the raw header
 /// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]

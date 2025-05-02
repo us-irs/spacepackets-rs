@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- Moved CRC constants/implementations to dedicated `crc` module.
+- `crc::CRC_CCITT_FALSE_NO_TABLE` and `crc::CRC_CCITT_FALSE_BIG_TABLE` variants.
+- Renamed `PusPacket::crc16` to `PusPacket::opt_crc16`.
+
+## Added
+
+- `WritablePusPacket::write_to_bytes_crc_no_table` and `WritablePusPacket::write_to_bytes_no_crc`
+  variants.
+- `PusTmReader::new_crc_no_table` and `PusTcReader::new_crc_no_table` variants.
+- `crc16` methods for PUS TM and PUS TC reader.
+- PUS TM and PUS TC reader now return the reader instance directly instead of a tuple of the reader
+  and the read size. The instance `total_len` method can be used to retrieve the read lenght.
+
 # [v0.13.1] 2025-03-21
 
 - Bugfix due to operator precendence for `PusTcSecondaryHeader::pus_version`, 

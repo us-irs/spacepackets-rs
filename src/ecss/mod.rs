@@ -3,7 +3,10 @@
 //!
 //! You can find the PUS telecommand types in the [tc] module and the the PUS telemetry
 //! types inside the [tm] module.
-use crate::{ByteConversionError, CcsdsPacket, CRC_CCITT_FALSE};
+use crate::{
+    crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE},
+    ByteConversionError, CcsdsPacket,
+};
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 use core::fmt::Debug;
@@ -170,7 +173,7 @@ pub trait PusPacket: CcsdsPacket {
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
     fn user_data(&self) -> &[u8];
-    fn crc16(&self) -> Option<u16>;
+    fn opt_crc16(&self) -> Option<u16>;
 }
 
 pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, ByteConversionError> {
@@ -207,7 +210,7 @@ pub(crate) fn user_data_from_raw(
     }
 }
 
-pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
+pub fn verify_crc16_ccitt_false_from_raw_to_pus_error(
     raw_data: &[u8],
     crc16: u16,
 ) -> Result<(), PusError> {
@@ -216,8 +219,26 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw_to_pus_error(
         .ok_or(PusError::ChecksumFailure(crc16))
 }
 
+pub fn verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
+    raw_data: &[u8],
+    crc16: u16,
+) -> Result<(), PusError> {
+    verify_crc16_ccitt_false_from_raw_no_table(raw_data)
+        .then_some(())
+        .ok_or(PusError::ChecksumFailure(crc16))
+}
+
 pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
     let mut digest = CRC_CCITT_FALSE.digest();
+    digest.update(raw_data);
+    if digest.finalize() == 0 {
+        return true;
+    }
+    false
+}
+
+pub(crate) fn verify_crc16_ccitt_false_from_raw_no_table(raw_data: &[u8]) -> bool {
+    let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
     digest.update(raw_data);
     if digest.finalize() == 0 {
         return true;
@@ -349,7 +370,34 @@ generic_ecss_enum_typedefs_and_from_impls! {
 /// on the serialization of those packets.
 pub trait WritablePusPacket {
     fn len_written(&self) -> usize;
-    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+
+    /// Writes the packet to the given slice without writing the CRC.
+    ///
+    /// The returned size is the written size WITHOUT the CRC.
+    fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+
+    /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
+    /// uses the [CRC_CCITT_FALS] to calculate the CRC and write it to the slice.
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = self.write_to_bytes_no_crc(slice)?;
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(&slice[0..curr_idx]);
+        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+        curr_idx += 2;
+        Ok(curr_idx)
+    }
+
+    /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
+    /// uses the [CRC_CCITT_FALSE_NO_TABLE] to calculate the CRC and write it to the slice.
+    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = self.write_to_bytes_no_crc(slice)?;
+        let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
+        digest.update(&slice[0..curr_idx]);
+        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+        curr_idx += 2;
+        Ok(curr_idx)
+    }
+
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, PusError> {
         // This is the correct way to do this. See
