@@ -1400,7 +1400,7 @@ mod tests {
             PusTmCreator::new_simple(sph, 17, 2, &time_provider, &mut stamp_buf, &[], true)
                 .unwrap();
         let pus_tm_vec = pus_tm.to_vec().unwrap();
-        let (tm_reader, _) = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
+        let tm_reader = PusTmReader::new(&pus_tm_vec, time_provider.len_as_bytes()).unwrap();
         let output = to_allocvec(&tm_reader).unwrap();
         let output_converted_back: PusTmReader = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, tm_reader);
