@@ -1,8 +1,8 @@
 [package]
 name = "spacepackets"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
-rust-version = "1.81.0"
+rust-version = "1.70.0"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
 description = "Generic implementations for various CCSDS and ECSS packet standards"
 homepage = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
@@ -16,42 +16,15 @@ categories = ["aerospace", "aerospace::space-protocols", "no-std", "hardware-sup
 crc = "3.3"
 delegate = ">=0.8, <=0.13"
 paste = "1"
+zerocopy = { version = "0.8", features = ["derive"] }
+thiserror = { version = "2", default-features = false }
+num_enum = { version = ">0.5, <=0.7", default-features = false }
+num-traits = { version = "0.2", default-features = false }
+serde = { version = "1", optional = true, default-features = false, features = ["derive"] }
 
-[dependencies.zerocopy]
-version = "0.8"
-features = ["derive"]
-
-[dependencies.thiserror]
-version = "2"
-default-features = false
-
-[dependencies.num_enum]
-version = ">0.5, <=0.7"
-default-features = false
-
-[dependencies.serde]
-version = "1"
-optional = true
-default-features = false
-features = ["derive"]
-
-[dependencies.time]
-version = "0.3"
-default-features = false
-optional = true
-
-[dependencies.chrono]
-version = "0.4"
-default-features = false
-optional = true
-
-[dependencies.num-traits]
-version = "0.2"
-default-features = false
-
-[dependencies.defmt]
-version = "1"
-optional = true
+time = { version = "0.3", default-features = false, optional = true }
+chrono = { version = "0.4", default-features = false, optional = true }
+defmt = { version = "1", default-features = false, optional = true }
 
 [features]
 default = ["std"]
