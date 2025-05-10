@@ -716,7 +716,6 @@ mod tests {
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
-
     }
 
     #[test]
@@ -727,8 +726,8 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
-        let tc_from_raw =
-            PusTcReader::new_crc_no_table(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
+        let tc_from_raw = PusTcReader::new_crc_no_table(&test_buf)
+            .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(tc_from_raw.total_len(), 13);
         verify_test_tc_with_reader(&tc_from_raw, false, 13);
         assert!(tc_from_raw.user_data().is_empty());
