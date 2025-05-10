@@ -1,8 +1,8 @@
 //! CFDP Packet Data Unit (PDU) support.
 use crate::cfdp::*;
+use crate::crc::CRC_CCITT_FALSE;
 use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
 use crate::ByteConversionError;
-use crate::CRC_CCITT_FALSE;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
