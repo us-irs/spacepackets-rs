@@ -372,6 +372,49 @@ impl<'app_data> PusTcCreator<'app_data> {
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
         appended_len
     }
+
+    /// Write the raw PUS byte representation to a provided buffer.
+    pub fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let writer_unfinalized = self.common_write(slice)?;
+        Ok(writer_unfinalized.finalize())
+    }
+
+    /// Write the raw PUS byte representation to a provided buffer.
+    pub fn write_to_bytes_crc_no_table(
+        &self,
+        slice: &mut [u8],
+    ) -> Result<usize, ByteConversionError> {
+        let writer_unfinalized = self.common_write(slice)?;
+        Ok(writer_unfinalized.finalize_crc_no_table())
+    }
+
+    /// Write the raw PUS byte representation to a provided buffer.
+    pub fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let writer_unfinalized = self.common_write(slice)?;
+        Ok(writer_unfinalized.finalize_no_crc())
+    }
+
+    fn common_write<'a>(
+        &self,
+        slice: &'a mut [u8],
+    ) -> Result<PusTcCreatorWithReservedAppData<'a>, ByteConversionError> {
+        if self.len_written() > slice.len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: slice.len(),
+                expected: self.len_written(),
+            });
+        }
+        let mut writer_unfinalized = PusTcCreatorWithReservedAppData::write_to_bytes_partially(
+            slice,
+            self.sp_header,
+            self.sec_header,
+            self.app_data.len(),
+        )?;
+        writer_unfinalized
+            .app_data_mut()
+            .copy_from_slice(self.app_data);
+        Ok(writer_unfinalized)
+    }
 }
 
 impl WritablePusPacket for PusTcCreator<'_> {
@@ -380,31 +423,17 @@ impl WritablePusPacket for PusTcCreator<'_> {
         PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
     }
 
-    /// Writes the packet to the given slice without writing the CRC.
-    ///
-    /// The returned size is the written size WITHOUT the CRC.
+    /// Write the raw PUS byte representation to a provided buffer.
     fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = 0;
-        let tc_header_len = size_of::<zc::PusTcSecondaryHeader>();
-        let total_size = self.len_written();
-        if total_size > slice.len() {
-            return Err(ByteConversionError::ToSliceTooSmall {
-                found: slice.len(),
-                expected: total_size,
-            }
-            .into());
-        }
-        self.sp_header.write_to_be_bytes(slice)?;
-        curr_idx += CCSDS_HEADER_LEN;
-        let sec_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-        sec_header
-            .write_to(&mut slice[curr_idx..curr_idx + tc_header_len])
-            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
+        Ok(Self::write_to_bytes_no_crc(self, slice)?)
+    }
 
-        curr_idx += tc_header_len;
-        slice[curr_idx..curr_idx + self.app_data.len()].copy_from_slice(self.app_data);
-        curr_idx += self.app_data.len();
-        Ok(curr_idx)
+    fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        Ok(Self::write_to_bytes(self, slice)?)
+    }
+
+    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        Ok(Self::write_to_bytes_crc_no_table(self, slice)?)
     }
 }
 
@@ -449,6 +478,133 @@ impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
 }
 
 impl IsPusTelecommand for PusTcCreator<'_> {}
+
+/// A specialized variant of [PusTcCreator] designed for efficiency when handling large source
+/// data.
+///
+/// Unlike [PusTcCreator], this type does not require the user to provide the application data
+/// as a separate slice. Instead, it allows writing the application data directly into the provided
+/// serialization buffer. This eliminates the need for an intermediate buffer and the associated
+/// memory copy, improving performance, particularly when working with large payloads.
+///
+/// **Important:** The total length of the source data must be known and specified in advance
+/// to ensure correct serialization behavior.
+///
+/// Note that this abstraction intentionally omits certain trait implementations that are available
+/// on [PusTcCreator], as they are not applicable in this optimized usage pattern.
+pub struct PusTcCreatorWithReservedAppData<'buf> {
+    buf: &'buf mut [u8],
+    app_data_offset: usize,
+    full_len: usize,
+}
+
+impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
+    /// Generates a new instance with reserved space for the user application data.
+    ///
+    /// # Arguments
+    ///
+    /// * `sp_header` - Space packet header information. The correct packet type and the secondary
+    ///   header flag are set correctly by the constructor.
+    /// * `sec_header` - Information contained in the secondary header, including the service
+    ///   and subservice type
+    /// * `app_data_len` - Custom application data length
+    #[inline]
+    pub fn new(
+        buf: &'buf mut [u8],
+        mut sp_header: SpHeader,
+        sec_header: PusTcSecondaryHeader,
+        app_data_len: usize,
+    ) -> Result<Self, ByteConversionError> {
+        sp_header.set_packet_type(PacketType::Tc);
+        sp_header.set_sec_header_flag();
+        let len_written = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + app_data_len;
+        if len_written > buf.len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: len_written,
+            });
+        }
+        sp_header.data_len = len_written as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
+        Self::write_to_bytes_partially(buf, sp_header, sec_header, app_data_len)
+    }
+
+    fn write_to_bytes_partially(
+        buf: &'buf mut [u8],
+        sp_header: SpHeader,
+        sec_header: PusTcSecondaryHeader,
+        app_data_len: usize,
+    ) -> Result<Self, ByteConversionError> {
+        let mut curr_idx = 0;
+        sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+        curr_idx += CCSDS_HEADER_LEN;
+        let sec_header_len = size_of::<zc::PusTcSecondaryHeader>();
+        let sec_header_zc = zc::PusTcSecondaryHeader::try_from(sec_header).unwrap();
+        sec_header_zc
+            .write_to(&mut buf[curr_idx..curr_idx + sec_header_len])
+            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
+        curr_idx += sec_header_len;
+        let app_data_offset = curr_idx;
+        curr_idx += app_data_len;
+        Ok(Self {
+            buf,
+            app_data_offset,
+            full_len: curr_idx + 2,
+        })
+    }
+
+    #[inline]
+    pub const fn len_written(&self) -> usize {
+        self.full_len
+    }
+
+    /// Mutable access to the application data buffer.
+    #[inline]
+    pub fn app_data_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[self.app_data_offset..self.full_len - 2]
+    }
+
+    /// Access to the source data buffer.
+    #[inline]
+    pub fn app_data(&self) -> &[u8] {
+        &self.buf[self.app_data_offset..self.full_len - 2]
+    }
+
+    #[inline]
+    pub fn app_data_len(&self) -> usize {
+        self.full_len - 2 - self.app_data_offset
+    }
+
+    /// Finalize the TC packet by calculating and writing the CRC16.
+    ///
+    /// Returns the full packet length.
+    pub fn finalize(self) -> usize {
+        let mut digest = CRC_CCITT_FALSE.digest();
+        digest.update(&self.buf[0..self.full_len - 2]);
+        self.buf[self.full_len - 2..self.full_len]
+            .copy_from_slice(&digest.finalize().to_be_bytes());
+        self.full_len
+    }
+
+    /// Finalize the TC packet by calculating and writing the CRC16 using a table-less
+    /// implementation.
+    ///
+    /// Returns the full packet length.
+    pub fn finalize_crc_no_table(self) -> usize {
+        let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
+        digest.update(&self.buf[0..self.full_len - 2]);
+        self.buf[self.full_len - 2..self.full_len]
+            .copy_from_slice(&digest.finalize().to_be_bytes());
+        self.full_len
+    }
+
+    /// Finalize the TC packet without writing the CRC16.
+    ///
+    /// Returns the length WITHOUT the CRC16.
+    #[inline]
+    pub fn finalize_no_crc(self) -> usize {
+        self.full_len - 2
+    }
+}
 
 /// This class can be used to read a PUS TC telecommand from raw memory.
 ///
@@ -627,8 +783,6 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
-    use std::error::Error;
-
     use super::*;
     use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket, WritablePusPacket};
@@ -676,6 +830,32 @@ mod tests {
     }
 
     #[test]
+    fn test_serialization_with_trait_1() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = WritablePusPacket::write_to_bytes(&pus_tc, test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 13);
+        assert_eq!(
+            pus_tc.opt_crc16().unwrap(),
+            u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
+        );
+    }
+
+    #[test]
+    fn test_serialization_with_trait_2() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = WritablePusPacket::write_to_bytes_crc_no_table(&pus_tc, test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 13);
+        assert_eq!(
+            pus_tc.opt_crc16().unwrap(),
+            u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
+        );
+    }
+
+    #[test]
     fn test_serialization_crc_no_table() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
@@ -702,12 +882,45 @@ mod tests {
     }
 
     #[test]
+    fn test_serialization_no_crc_with_trait() {
+        let pus_tc = base_ping_tc_simple_ctor();
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = WritablePusPacket::write_to_bytes_no_crc(&pus_tc, test_buf.as_mut_slice())
+            .expect("error writing tc to buffer");
+        assert_eq!(size, 11);
+        assert_eq!(test_buf[11], 0);
+        assert_eq!(test_buf[12], 0);
+    }
+
+    #[test]
     fn test_deserialization() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
+        assert_eq!(size, 13);
+        let tc_from_raw =
+            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_from_raw.total_len(), 13);
+        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert!(tc_from_raw.user_data().is_empty());
+        verify_test_tc_raw(&test_buf);
+        verify_crc_no_app_data(&test_buf);
+    }
+
+    #[test]
+    fn test_deserialization_alt_ctor() {
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+        let mut test_buf: [u8; 32] = [0; 32];
+        let mut pus_tc =
+            PusTcCreatorWithReservedAppData::new(&mut test_buf, sph, tc_header, 0).unwrap();
+        assert_eq!(pus_tc.len_written(), 13);
+        assert_eq!(pus_tc.app_data_len(), 0);
+        assert_eq!(pus_tc.app_data(), &[]);
+        assert_eq!(pus_tc.app_data_mut(), &[]);
+        let size = pus_tc.finalize();
         assert_eq!(size, 13);
         let tc_from_raw =
             PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
@@ -757,6 +970,7 @@ mod tests {
         tc.update_ccsds_data_len();
         assert_eq!(tc.data_len(), 6);
     }
+
     #[test]
     fn test_deserialization_with_app_data() {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
@@ -859,22 +1073,17 @@ mod tests {
         let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());
         assert!(res.is_err());
         let err = res.unwrap_err();
-        if let PusError::ByteConversion(e) = err {
-            assert_eq!(
-                e,
-                ByteConversionError::ToSliceTooSmall {
-                    found: 12,
-                    expected: 13
-                }
-            );
-            assert_eq!(
-                err.to_string(),
-                "pus error: target slice with size 12 is too small, expected size of at least 13"
-            );
-            assert_eq!(err.source().unwrap().to_string(), e.to_string());
-        } else {
-            panic!("unexpected error {err}");
-        }
+        assert_eq!(
+            err,
+            ByteConversionError::ToSliceTooSmall {
+                found: 12,
+                expected: 13
+            }
+        );
+        assert_eq!(
+            err.to_string(),
+            "target slice with size 12 is too small, expected size of at least 13"
+        );
     }
 
     #[test]
