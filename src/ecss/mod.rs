@@ -377,7 +377,7 @@ pub trait WritablePusPacket {
     fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError>;
 
     /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
-    /// uses the [CRC_CCITT_FALS] to calculate the CRC and write it to the slice.
+    /// uses the [CRC_CCITT_FALSE] to calculate the CRC and write it to the slice.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         let mut curr_idx = self.write_to_bytes_no_crc(slice)?;
         let mut digest = CRC_CCITT_FALSE.digest();

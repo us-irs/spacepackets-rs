@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Added
+
+- `PusTcCreatorWithReservedAppData` and `PusTmCreatorWithReservedSourceData` constructor variants
+  which allow writing source/app data into the serialization buffer directly without
+  requiring an extra buffer.
+
 # [v0.14.0] 2025-05-10
 
 ## Changed
