@@ -1,5 +1,5 @@
 /// # Support of the CCSDS Unified Space Data Link Protocol (USLP)
-use crate::{ByteConversionError, CRC_CCITT_FALSE};
+use crate::{ByteConversionError, crc::CRC_CCITT_FALSE};
 
 /// Only this version is supported by the library
 pub const USLP_VERSION_NUMBER: u8 = 0b1100;
