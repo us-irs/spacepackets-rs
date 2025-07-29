@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- `PusVersion::VersionNotSupported` contains raw version number instead of `PusVersion` enum now
+  to make it more flexible.
+- `pus_version` API now returns a `Result<PusVersion, u8>` instead of a `PusVersion` to allow
+  modelling invalid version numbers properly.
+
+## Removed
+
+- `PusVersion::Invalid`, which will be modelled with `Result<PusVersion, u8>` now.
+
+## Added
+
+- Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
+
 # [v0.15.0] 2025-07-18
 
 ## Added
@@ -35,7 +50,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.13.1] 2025-03-21
 
-- Bugfix due to operator precendence for `PusTcSecondaryHeader::pus_version`, 
+- Bugfix due to operator precendence for `PusTcSecondaryHeader::pus_version`,
   `PusTcSecondaryHeaderWithoutTimestamp::pus_version`, `CdsTime::from_bytes_with_u16_days` and
   `CdsTime::from_bytes_with_u24_days`
 

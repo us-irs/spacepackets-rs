@@ -1,12 +1,11 @@
-//! This module contains all components required to create a ECSS PUS C telecommand packets according
-//! to [ECSS-E-ST-70-41C](https://ecss.nl/standard/ecss-e-st-70-41c-space-engineering-telemetry-and-telecommand-packet-utilization-15-april-2016/).
+//! This module contains all components required to create ECSS PUS A legacy telecommands.
 //!
 //! # Examples
 //!
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::ecss::{PusPacket, WritablePusPacket};
-//! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
+//! use spacepackets::ecss::tc_pus_a::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
 //!
 //! // Create a ping telecommand with no user application data
 //! let pus_tc = PusTcCreator::new_no_app_data(
@@ -24,11 +23,11 @@
 //! let size = pus_tc
 //!     .write_to_bytes(test_buf.as_mut_slice())
 //!     .expect("Error writing TC to buffer");
-//! assert_eq!(size, 13);
+//! assert_eq!(size, 11);
 //! println!("{:?}", &test_buf[0..size]);
 //!
-//! // Deserialize from the raw byte representation
-//! let pus_tc_deserialized = PusTcReader::new(&test_buf).expect("Deserialization failed");
+//! // Deserialize from the raw byte representation. No source ID, 0 spare bytes.
+//! let pus_tc_deserialized = PusTcReader::new(&test_buf, None, 0).expect("Deserialization failed");
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
 //! assert_eq!(pus_tc.apid(), 0x02);
@@ -36,9 +35,10 @@
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
+    verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
+use crate::util::{UnsignedByteField, UnsignedEnum};
 use crate::SpHeader;
 use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
 use core::mem::size_of;
@@ -46,18 +46,14 @@ use delegate::delegate;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::IntoBytes;
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 use super::verify_crc16_ccitt_false_from_raw_to_pus_error_no_table;
 
-/// PUS C secondary header length is fixed
-pub const PUC_TC_SECONDARY_HEADER_LEN: usize = size_of::<zc::PusTcSecondaryHeader>();
-pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize =
-    CCSDS_HEADER_LEN + PUC_TC_SECONDARY_HEADER_LEN + size_of::<CrcType>();
-const PUS_VERSION: PusVersion = PusVersion::PusC;
+const PUS_VERSION: PusVersion = PusVersion::PusA;
 
 /// Marker trait for PUS telecommand structures.
 pub trait IsPusTelecommand {}
@@ -73,6 +69,18 @@ enum AckOpts {
     Completion = 0b0001,
 }
 
+/// Assuming 8 bytes of source ID and 7 bytes of spare.
+pub const MAX_SEC_HEADER_LEN: usize = 18;
+pub const MAX_SPARE_BYTES: usize = 7;
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, thiserror::Error)]
+#[error("invalid number of spare bytes, must be between 0 and 7")]
+pub struct InvalidNumberOfSpareBytesError;
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone, thiserror::Error)]
+#[error("invalid version, expected PUS A (1), got {0}")]
+pub struct VersionError(pub u8);
+
 pub const ACK_ALL: u8 = AckOpts::Acceptance as u8
     | AckOpts::Start as u8
     | AckOpts::Progress as u8
@@ -83,64 +91,8 @@ pub trait GenericPusTcSecondaryHeader {
     fn ack_flags(&self) -> u8;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
-    fn source_id(&self) -> u16;
-}
-
-pub mod zc {
-    use crate::ecss::tc::GenericPusTcSecondaryHeader;
-    use crate::ecss::{PusError, PusVersion};
-    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
-
-    #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
-    #[repr(C)]
-    pub struct PusTcSecondaryHeader {
-        version_ack: u8,
-        service: u8,
-        subservice: u8,
-        source_id: U16<NetworkEndian>,
-    }
-
-    impl TryFrom<crate::ecss::tc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
-        type Error = PusError;
-        fn try_from(value: crate::ecss::tc::PusTcSecondaryHeader) -> Result<Self, Self::Error> {
-            if value.version != PusVersion::PusC {
-                return Err(PusError::VersionNotSupported(value.version as u8));
-            }
-            Ok(PusTcSecondaryHeader {
-                version_ack: ((value.version as u8) << 4) | value.ack,
-                service: value.service,
-                subservice: value.subservice,
-                source_id: U16::from(value.source_id),
-            })
-        }
-    }
-
-    impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
-        #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8> {
-            PusVersion::try_from((self.version_ack >> 4) & 0b1111)
-        }
-
-        #[inline]
-        fn ack_flags(&self) -> u8 {
-            self.version_ack & 0b1111
-        }
-
-        #[inline]
-        fn service(&self) -> u8 {
-            self.service
-        }
-
-        #[inline]
-        fn subservice(&self) -> u8 {
-            self.subservice
-        }
-
-        #[inline]
-        fn source_id(&self) -> u16 {
-            self.source_id.get()
-        }
-    }
+    fn source_id(&self) -> Option<UnsignedByteField>;
+    fn spare_bytes(&self) -> usize;
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -149,9 +101,10 @@ pub mod zc {
 pub struct PusTcSecondaryHeader {
     pub service: u8,
     pub subservice: u8,
-    pub source_id: u16,
+    pub source_id: Option<UnsignedByteField>,
     pub ack: u8,
     pub version: PusVersion,
+    spare_bytes: usize,
 }
 
 impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
@@ -176,22 +129,13 @@ impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
     }
 
     #[inline]
-    fn source_id(&self) -> u16 {
+    fn source_id(&self) -> Option<UnsignedByteField> {
         self.source_id
     }
-}
 
-impl TryFrom<zc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
-    type Error = ();
-
-    fn try_from(value: zc::PusTcSecondaryHeader) -> Result<Self, Self::Error> {
-        Ok(PusTcSecondaryHeader {
-            service: value.service(),
-            subservice: value.subservice(),
-            source_id: value.source_id(),
-            ack: value.ack_flags(),
-            version: PUS_VERSION,
-        })
+    #[inline]
+    fn spare_bytes(&self) -> usize {
+        self.spare_bytes
     }
 }
 
@@ -202,20 +146,114 @@ impl PusTcSecondaryHeader {
             service,
             subservice,
             ack: ACK_ALL,
-            source_id: 0,
-            version: PusVersion::PusC,
+            source_id: None,
+            version: PUS_VERSION,
+            spare_bytes: 0,
         }
     }
 
     #[inline]
-    pub fn new(service: u8, subservice: u8, ack: u8, source_id: u16) -> Self {
+    pub fn new(
+        service: u8,
+        subservice: u8,
+        ack: u8,
+        source_id: Option<UnsignedByteField>,
+        spare_bytes: usize,
+    ) -> Self {
         PusTcSecondaryHeader {
             service,
             subservice,
             ack: ack & 0b1111,
             source_id,
-            version: PusVersion::PusC,
+            version: PUS_VERSION,
+            spare_bytes,
         }
+    }
+
+    /// Set number of spare bytes. Any value larger than 7 will be ignored.
+    pub fn set_spare_bytes(&mut self, spare_bytes: usize) {
+        if spare_bytes > 7 {
+            return;
+        }
+        self.spare_bytes = spare_bytes;
+    }
+
+    pub fn written_len(&self) -> usize {
+        let mut len = 3 + self.spare_bytes;
+        if let Some(source_id) = self.source_id {
+            len += source_id.size();
+        }
+        len
+    }
+
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> Result<Vec<u8>, ByteConversionError> {
+        let mut buf = alloc::vec![0; self.written_len()];
+        self.write_to_be_bytes(&mut buf)?;
+        Ok(buf)
+    }
+
+    pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        if buf.len() < self.written_len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: self.written_len(),
+            });
+        }
+        let mut current_idx = 0;
+        buf[0] = ((PUS_VERSION as u8) << 4) | self.ack;
+        buf[1] = self.service;
+        buf[2] = self.subservice;
+        current_idx += 3;
+        if let Some(source_id) = self.source_id {
+            current_idx += source_id
+                .write_to_be_bytes(&mut buf[current_idx..current_idx + source_id.size()])
+                .unwrap();
+        }
+        if self.spare_bytes > 0 {
+            buf[current_idx..current_idx + self.spare_bytes].fill(0);
+            current_idx += self.spare_bytes;
+        }
+
+        Ok(current_idx)
+    }
+
+    pub fn from_bytes(
+        data: &[u8],
+        source_id_size: Option<usize>,
+        spare_bytes: usize,
+    ) -> Result<Self, PusError> {
+        let expected_len = 3 + source_id_size.unwrap_or(0) + spare_bytes;
+        if data.len() < expected_len {
+            return Err(PusError::ByteConversion(
+                ByteConversionError::FromSliceTooSmall {
+                    found: data.len(),
+                    expected: expected_len,
+                },
+            ));
+        }
+        let version = (data[0] >> 4) & 0b111;
+        if version != PusVersion::PusA as u8 {
+            return Err(PusError::VersionNotSupported(version));
+        }
+        let ack = data[0] & 0b1111;
+        let service = data[1];
+        let subservice = data[2];
+        let mut source_id = None;
+        if let Some(source_id_len) = source_id_size {
+            source_id = Some(
+                UnsignedByteField::new_from_be_bytes(source_id_len, &data[3..3 + source_id_len])
+                    .unwrap(),
+            );
+        }
+        Ok(Self {
+            service,
+            subservice,
+            source_id,
+            ack,
+            version: PusVersion::PusA,
+            spare_bytes,
+        })
     }
 }
 
@@ -281,7 +319,7 @@ impl<'app_data> PusTcCreator<'app_data> {
     ) -> Self {
         Self::new(
             sph,
-            PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
+            PusTcSecondaryHeader::new(service, subservice, ACK_ALL, None, 0),
             app_data,
             set_ccsds_len,
         )
@@ -316,8 +354,13 @@ impl<'app_data> PusTcCreator<'app_data> {
     }
 
     #[inline]
-    pub fn set_source_id(&mut self, source_id: u16) {
+    pub fn set_source_id(&mut self, source_id: Option<UnsignedByteField>) {
         self.sec_header.source_id = source_id;
+    }
+
+    #[inline]
+    pub fn app_data(&'app_data self) -> &'app_data [u8] {
+        self.user_data()
     }
 
     sp_header_impls!();
@@ -339,8 +382,10 @@ impl<'app_data> PusTcCreator<'app_data> {
         let mut digest = CRC_CCITT_FALSE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         digest.update(sph_zc.as_bytes());
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-        digest.update(pus_tc_header.as_bytes());
+        let mut buf: [u8; MAX_SEC_HEADER_LEN] = [0; MAX_SEC_HEADER_LEN];
+        // Can not fail.
+        let sec_header_len = self.sec_header.write_to_be_bytes(&mut buf).unwrap();
+        digest.update(&buf[0..sec_header_len]);
         digest.update(self.app_data);
         digest.finalize()
     }
@@ -350,8 +395,10 @@ impl<'app_data> PusTcCreator<'app_data> {
         let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         digest.update(sph_zc.as_bytes());
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-        digest.update(pus_tc_header.as_bytes());
+        let mut buf: [u8; MAX_SEC_HEADER_LEN] = [0; MAX_SEC_HEADER_LEN];
+        // Can not fail.
+        let sec_header_len = self.sec_header.write_to_be_bytes(&mut buf).unwrap();
+        digest.update(&buf[0..sec_header_len]);
         digest.update(self.app_data);
         digest.finalize()
     }
@@ -359,17 +406,16 @@ impl<'app_data> PusTcCreator<'app_data> {
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> usize {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
-        let mut appended_len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA;
-        appended_len += self.app_data.len();
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
-        // The PUS version is hardcoded to PUS C
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
-        vec.extend_from_slice(pus_tc_header.as_bytes());
+        vec.extend_from_slice(self.sec_header.to_vec().unwrap().as_slice());
         vec.extend_from_slice(self.app_data);
         let mut digest = CRC_CCITT_FALSE.digest();
-        digest.update(&vec[start_idx..start_idx + appended_len - 2]);
+        let mut appended_len =
+            CCSDS_HEADER_LEN + self.sec_header.written_len() + self.app_data.len();
+        digest.update(&vec[start_idx..start_idx + appended_len]);
         vec.extend_from_slice(&digest.finalize().to_be_bytes());
+        appended_len += 2;
         appended_len
     }
 
@@ -420,7 +466,7 @@ impl<'app_data> PusTcCreator<'app_data> {
 impl WritablePusPacket for PusTcCreator<'_> {
     #[inline]
     fn len_written(&self) -> usize {
-        PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
+        CCSDS_HEADER_LEN + self.sec_header.written_len() + self.app_data.len() + 2
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
@@ -471,9 +517,11 @@ impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
         #[inline]
         fn subservice(&self) -> u8;
         #[inline]
-        fn source_id(&self) -> u16;
+        fn source_id(&self) -> Option<UnsignedByteField>;
         #[inline]
         fn ack_flags(&self) -> u8;
+        #[inline]
+        fn spare_bytes(&self) -> usize;
     });
 }
 
@@ -517,7 +565,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     ) -> Result<Self, ByteConversionError> {
         sp_header.set_packet_type(PacketType::Tc);
         sp_header.set_sec_header_flag();
-        let len_written = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + app_data_len;
+        let len_written = CCSDS_HEADER_LEN + sec_header.written_len() + app_data_len + 2;
         if len_written > buf.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -537,12 +585,8 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         let mut curr_idx = 0;
         sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
         curr_idx += CCSDS_HEADER_LEN;
-        let sec_header_len = size_of::<zc::PusTcSecondaryHeader>();
-        let sec_header_zc = zc::PusTcSecondaryHeader::try_from(sec_header).unwrap();
-        sec_header_zc
-            .write_to(&mut buf[curr_idx..curr_idx + sec_header_len])
-            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
-        curr_idx += sec_header_len;
+        curr_idx += sec_header
+            .write_to_be_bytes(&mut buf[curr_idx..curr_idx + sec_header.written_len()])?;
         let app_data_offset = curr_idx;
         curr_idx += app_data_len;
         Ok(Self {
@@ -633,27 +677,39 @@ impl<'raw_data> PusTcReader<'raw_data> {
     /// Create a [PusTcReader] instance from a raw slice. On success, it returns a tuple containing
     /// the instance and the found byte length of the packet. This function also performs a CRC
     /// check and will return an appropriate [PusError] if the check fails.
-    pub fn new(slice: &'raw_data [u8]) -> Result<Self, PusError> {
-        let pus_tc = Self::new_no_crc_check(slice)?;
+    pub fn new(
+        slice: &'raw_data [u8],
+        source_id_size: Option<usize>,
+        spare_bytes: usize,
+    ) -> Result<Self, PusError> {
+        let pus_tc = Self::new_no_crc_check(slice, source_id_size, spare_bytes)?;
         verify_crc16_ccitt_false_from_raw_to_pus_error(pus_tc.raw_data(), pus_tc.crc16())?;
         Ok(pus_tc)
     }
 
     /// Similar to [PusTcReader::new], but uses a table-less CRC16 algorithm which can reduce
     /// binary size and memory usage.
-    pub fn new_crc_no_table(slice: &'raw_data [u8]) -> Result<Self, PusError> {
-        let pus_tc = Self::new_no_crc_check(slice)?;
+    pub fn new_crc_no_table(
+        slice: &'raw_data [u8],
+        source_id_size: Option<usize>,
+        spare_bytes: usize,
+    ) -> Result<Self, PusError> {
+        let pus_tc = Self::new_no_crc_check(slice, source_id_size, spare_bytes)?;
         verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(pus_tc.raw_data(), pus_tc.crc16())?;
         Ok(pus_tc)
     }
 
     /// Creates a new instance without performing a CRC check.
-    pub fn new_no_crc_check(slice: &'raw_data [u8]) -> Result<Self, PusError> {
+    pub fn new_no_crc_check(
+        slice: &'raw_data [u8],
+        source_id_size: Option<usize>,
+        spare_bytes: usize,
+    ) -> Result<Self, PusError> {
         let raw_data_len = slice.len();
-        if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
+        if raw_data_len < CCSDS_HEADER_LEN {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: raw_data_len,
-                expected: PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
+                expected: CCSDS_HEADER_LEN,
             }
             .into());
         }
@@ -668,22 +724,14 @@ impl<'raw_data> PusTcReader<'raw_data> {
             }
             .into());
         }
-        if total_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
-            return Err(ByteConversionError::FromSliceTooSmall {
-                found: total_len,
-                expected: PUS_TC_MIN_LEN_WITHOUT_APP_DATA,
-            }
-            .into());
-        }
-        let sec_header = zc::PusTcSecondaryHeader::read_from_bytes(
-            &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
-        )
-        .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
-        current_idx += PUC_TC_SECONDARY_HEADER_LEN;
+        let sec_header =
+            PusTcSecondaryHeader::from_bytes(&slice[current_idx..], source_id_size, spare_bytes)
+                .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
+        current_idx += sec_header.written_len();
         let raw_data = &slice[0..total_len];
         Ok(Self {
             sp_header,
-            sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
+            sec_header,
             raw_data,
             app_data: user_data_from_raw(current_idx, total_len, slice)?,
             crc16: crc_from_raw_data(raw_data)?,
@@ -730,11 +778,11 @@ impl CcsdsPacket for PusTcReader<'_> {
 impl PusPacket for PusTcReader<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8>;
-        #[inline]
         fn service(&self) -> u8;
         #[inline]
         fn subservice(&self) -> u8;
+        #[inline]
+        fn pus_version(&self) -> Result<PusVersion, u8>;
     });
 
     #[inline]
@@ -757,9 +805,11 @@ impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
         #[inline]
         fn subservice(&self) -> u8;
         #[inline]
-        fn source_id(&self) -> u16;
+        fn source_id(&self) -> Option<UnsignedByteField>;
         #[inline]
         fn ack_flags(&self) -> u8;
+        #[inline]
+        fn spare_bytes(&self) -> usize;
     });
 }
 
@@ -783,9 +833,11 @@ impl PartialEq<PusTcReader<'_>> for PusTcCreator<'_> {
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
+    use std::println;
+
     use super::*;
-    use crate::ecss::PusVersion::PusC;
     use crate::ecss::{PusError, PusPacket, WritablePusPacket};
+    use crate::util::{UnsignedByteFieldU16, UnsignedByteFieldU8};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::string::ToString;
@@ -812,7 +864,7 @@ mod tests {
     #[test]
     fn test_tc_fields() {
         let pus_tc = base_ping_tc_full_ctor();
-        verify_test_tc(&pus_tc, false, 13);
+        verify_test_tc(&pus_tc, false, 11);
     }
 
     #[test]
@@ -822,7 +874,7 @@ mod tests {
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 13);
+        assert_eq!(size, 11);
         assert_eq!(
             pus_tc.opt_crc16().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
@@ -835,7 +887,7 @@ mod tests {
         let mut test_buf: [u8; 32] = [0; 32];
         let size = WritablePusPacket::write_to_bytes(&pus_tc, test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 13);
+        assert_eq!(size, 11);
         assert_eq!(
             pus_tc.opt_crc16().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
@@ -848,7 +900,7 @@ mod tests {
         let mut test_buf: [u8; 32] = [0; 32];
         let size = WritablePusPacket::write_to_bytes_crc_no_table(&pus_tc, test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 13);
+        assert_eq!(size, 11);
         assert_eq!(
             pus_tc.opt_crc16().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
@@ -862,7 +914,7 @@ mod tests {
         let size = pus_tc
             .write_to_bytes_crc_no_table(test_buf.as_mut_slice())
             .expect("error writing tc to buffer");
-        assert_eq!(size, 13);
+        assert_eq!(size, 11);
         assert_eq!(
             pus_tc.opt_crc16().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
@@ -876,9 +928,9 @@ mod tests {
         let size = pus_tc
             .write_to_bytes_no_crc(test_buf.as_mut_slice())
             .expect("error writing tc to buffer");
-        assert_eq!(size, 11);
+        assert_eq!(size, 9);
+        assert_eq!(test_buf[10], 0);
         assert_eq!(test_buf[11], 0);
-        assert_eq!(test_buf[12], 0);
     }
 
     #[test]
@@ -887,9 +939,9 @@ mod tests {
         let mut test_buf: [u8; 32] = [0; 32];
         let size = WritablePusPacket::write_to_bytes_no_crc(&pus_tc, test_buf.as_mut_slice())
             .expect("error writing tc to buffer");
-        assert_eq!(size, 11);
-        assert_eq!(test_buf[11], 0);
-        assert_eq!(test_buf[12], 0);
+        assert_eq!(size, 9);
+        assert_eq!(test_buf[9], 0);
+        assert_eq!(test_buf[10], 0);
     }
 
     #[test]
@@ -899,11 +951,11 @@ mod tests {
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 13);
-        let tc_from_raw =
-            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 13);
-        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert_eq!(size, 11);
+        let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_from_raw.total_len(), 11);
+        verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
@@ -916,16 +968,16 @@ mod tests {
         let mut test_buf: [u8; 32] = [0; 32];
         let mut pus_tc =
             PusTcCreatorWithReservedAppData::new(&mut test_buf, sph, tc_header, 0).unwrap();
-        assert_eq!(pus_tc.len_written(), 13);
+        assert_eq!(pus_tc.len_written(), 11);
         assert_eq!(pus_tc.app_data_len(), 0);
         assert_eq!(pus_tc.app_data(), &[]);
         assert_eq!(pus_tc.app_data_mut(), &[]);
         let size = pus_tc.finalize();
-        assert_eq!(size, 13);
-        let tc_from_raw =
-            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 13);
-        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert_eq!(size, 11);
+        let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_from_raw.total_len(), 11);
+        verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
@@ -938,11 +990,11 @@ mod tests {
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 13);
-        let tc_from_raw = PusTcReader::new_crc_no_table(&test_buf)
+        assert_eq!(size, 11);
+        let tc_from_raw = PusTcReader::new_crc_no_table(&test_buf, None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 13);
-        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert_eq!(tc_from_raw.total_len(), 11);
+        verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
         verify_crc_no_app_data(&test_buf);
@@ -952,11 +1004,11 @@ mod tests {
     fn test_writing_into_vec() {
         let pus_tc = base_ping_tc_simple_ctor();
         let tc_vec = pus_tc.to_vec().expect("Error writing TC to buffer");
-        assert_eq!(tc_vec.len(), 13);
-        let tc_from_raw = PusTcReader::new(tc_vec.as_slice())
+        assert_eq!(tc_vec.len(), 11);
+        let tc_from_raw = PusTcReader::new(tc_vec.as_slice(), None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 13);
-        verify_test_tc_with_reader(&tc_from_raw, false, 13);
+        assert_eq!(tc_from_raw.total_len(), 11);
+        verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&tc_vec);
         verify_crc_no_app_data(&tc_vec);
@@ -968,7 +1020,7 @@ mod tests {
         let mut tc = PusTcCreator::new_simple(sph, 17, 1, &[], false);
         assert_eq!(tc.data_len(), 0);
         tc.update_ccsds_data_len();
-        assert_eq!(tc.data_len(), 6);
+        assert_eq!(tc.data_len(), 4);
     }
 
     #[test]
@@ -978,11 +1030,11 @@ mod tests {
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(size, 16);
-        let tc_from_raw =
-            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 16);
-        verify_test_tc_with_reader(&tc_from_raw, true, 16);
+        assert_eq!(size, 14);
+        let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_from_raw.total_len(), 14);
+        verify_test_tc_with_reader(&tc_from_raw, true, 14);
         let user_data = tc_from_raw.user_data();
         assert_eq!(tc_from_raw.user_data(), tc_from_raw.app_data());
         assert_eq!(tc_from_raw.raw_data(), &test_buf[..size]);
@@ -1002,10 +1054,10 @@ mod tests {
         pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        let tc_from_raw_0 =
-            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
-        let tc_from_raw_1 =
-            PusTcReader::new(&test_buf).expect("Creating PUS TC struct from raw buffer failed");
+        let tc_from_raw_0 = PusTcReader::new(&test_buf, None, 0)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        let tc_from_raw_1 = PusTcReader::new(&test_buf, None, 0)
+            .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(tc_from_raw_0, tc_from_raw_1);
     }
 
@@ -1014,7 +1066,8 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_vec = Vec::new();
         let size = pus_tc.append_to_vec(&mut test_vec);
-        assert_eq!(size, 13);
+        assert_eq!(size, 11);
+        println!("Test vector: {test_vec:x?}");
         verify_test_tc_raw(&test_vec.as_slice());
         verify_crc_no_app_data(&test_vec.as_slice());
     }
@@ -1026,9 +1079,9 @@ mod tests {
         pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        test_buf[12] = 0;
-        test_buf[11] = 0;
-        let res = PusTcReader::new(&test_buf);
+        test_buf[9] = 0;
+        test_buf[10] = 0;
+        let res = PusTcReader::new(&test_buf, None, 0);
         assert!(res.is_err());
         let err = res.unwrap_err();
         if let PusError::ChecksumFailure(crc) = err {
@@ -1057,47 +1110,47 @@ mod tests {
     #[test]
     fn test_with_application_data_vec() {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
-        verify_test_tc(&pus_tc, true, 16);
+        verify_test_tc(&pus_tc, true, 14);
         let mut test_vec = Vec::new();
         let size = pus_tc.append_to_vec(&mut test_vec);
-        assert_eq!(test_vec[11], 1);
-        assert_eq!(test_vec[12], 2);
-        assert_eq!(test_vec[13], 3);
-        assert_eq!(size, 16);
+        assert_eq!(test_vec[9], 1);
+        assert_eq!(test_vec[10], 2);
+        assert_eq!(test_vec[11], 3);
+        assert_eq!(size, 14);
     }
 
     #[test]
     fn test_write_buf_too_small() {
         let pus_tc = base_ping_tc_simple_ctor();
-        let mut test_buf = [0; 12];
+        let mut test_buf = [0; 10];
         let res = pus_tc.write_to_bytes(test_buf.as_mut_slice());
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert_eq!(
             err,
             ByteConversionError::ToSliceTooSmall {
-                found: 12,
-                expected: 13
+                found: 10,
+                expected: 11
             }
         );
         assert_eq!(
             err.to_string(),
-            "target slice with size 12 is too small, expected size of at least 13"
+            "target slice with size 10 is too small, expected size of at least 11"
         );
     }
 
     #[test]
     fn test_with_application_data_buf() {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
-        verify_test_tc(&pus_tc, true, 16);
+        verify_test_tc(&pus_tc, true, 14);
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
-        assert_eq!(test_buf[11], 1);
-        assert_eq!(test_buf[12], 2);
-        assert_eq!(test_buf[13], 3);
-        assert_eq!(size, 16);
+        assert_eq!(test_buf[9], 1);
+        assert_eq!(test_buf[10], 2);
+        assert_eq!(test_buf[11], 3);
+        assert_eq!(size, 14);
     }
 
     #[test]
@@ -1107,9 +1160,10 @@ mod tests {
         pus_tc.set_apid(0x7ff);
         pus_tc.set_seq_count(0x3fff);
         pus_tc.set_ack_field(0b11);
-        pus_tc.set_source_id(0xffff);
+        let source_id = UnsignedByteFieldU16::new(0xffff).into();
+        pus_tc.set_source_id(Some(source_id));
         pus_tc.set_seq_flags(SequenceFlags::Unsegmented);
-        assert_eq!(pus_tc.source_id(), 0xffff);
+        assert_eq!(pus_tc.source_id(), Some(source_id));
         assert_eq!(pus_tc.seq_count(), 0x3fff);
         assert_eq!(pus_tc.ack_flags(), 0b11);
         assert_eq!(pus_tc.apid(), 0x7ff);
@@ -1122,7 +1176,7 @@ mod tests {
         assert_eq!(test_buf[1], 0xff);
         assert_eq!(test_buf[2], 0xff);
         assert_eq!(test_buf[3], 0xff);
-        assert_eq!(test_buf[6], 0x23);
+        assert_eq!(test_buf[6], 0x13);
         // Source ID 0
         assert_eq!(test_buf[9], 0xff);
         assert_eq!(test_buf[10], 0xff);
@@ -1157,15 +1211,15 @@ mod tests {
         assert_eq!(PusPacket::subservice(tc), 1);
         assert_eq!(GenericPusTcSecondaryHeader::subservice(tc), 1);
         assert!(tc.sec_header_flag());
-        assert_eq!(PusPacket::pus_version(tc).unwrap(), PusC);
+        assert_eq!(PusPacket::pus_version(tc).unwrap(), PusVersion::PusA);
         assert_eq!(tc.seq_count(), 0x34);
-        assert_eq!(tc.source_id(), 0);
+        assert!(tc.source_id().is_none());
         assert_eq!(tc.apid(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
-        assert_eq!(PusPacket::pus_version(tc).unwrap(), PusVersion::PusC);
+        assert_eq!(PusPacket::pus_version(tc).unwrap(), PusVersion::PusA);
         assert_eq!(
             GenericPusTcSecondaryHeader::pus_version(tc).unwrap(),
-            PusVersion::PusC
+            PusVersion::PusA
         );
     }
     fn verify_test_tc_raw(slice: &impl AsRef<[u8]>) {
@@ -1181,25 +1235,22 @@ mod tests {
         // Sequence count 0x34
         assert_eq!(slice[3], 0x34);
         assert_eq!(slice[4], 0x00);
-        // Space data length of 6 equals total packet length of 13
-        assert_eq!(slice[5], 0x06);
-        // PUS Version C 0b0010 and ACK flags 0b1111
-        assert_eq!(slice[6], 0x2f);
+        // Space data length of 4 equals total packet length of 11
+        assert_eq!(slice[5], 0x04);
+        // PUS Version A 0b0001 and ACK flags 0b1111
+        assert_eq!(slice[6], 0x1f);
         // Service 17
         assert_eq!(slice[7], 0x11);
         // Subservice 1
         assert_eq!(slice[8], 0x01);
-        // Source ID 0
-        assert_eq!(slice[9], 0x00);
-        assert_eq!(slice[10], 0x00);
     }
 
     fn verify_crc_no_app_data(slice: &impl AsRef<[u8]>) {
         // Reference comparison implementation:
         // https://github.com/us-irs/py-spacepackets/blob/v0.13.0/tests/ecss/test_pus_tc.py
         let slice = slice.as_ref();
-        assert_eq!(slice[11], 0xee);
-        assert_eq!(slice[12], 0x63);
+        assert_eq!(slice[9], 0x37);
+        assert_eq!(slice[10], 0x2d);
     }
 
     #[test]
@@ -1215,8 +1266,8 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut buf = [0; 32];
         pus_tc.write_to_bytes(&mut buf).unwrap();
-        assert_eq!(pus_tc, PusTcReader::new(&buf).unwrap());
-        assert_eq!(PusTcReader::new(&buf).unwrap(), pus_tc);
+        assert_eq!(pus_tc, PusTcReader::new(&buf, None, 0).unwrap());
+        assert_eq!(PusTcReader::new(&buf, None, 0).unwrap(), pus_tc);
     }
 
     #[test]
@@ -1232,7 +1283,7 @@ mod tests {
         let pus_tc = base_ping_tc_simple_ctor_with_app_data(app_data);
         let mut buf = [0; 32];
         let written_len = pus_tc.write_to_bytes(&mut buf).unwrap();
-        let error = PusTcReader::new(&buf[0..PUS_TC_MIN_LEN_WITHOUT_APP_DATA + 1]);
+        let error = PusTcReader::new(&buf[0..7], None, 0);
         assert!(error.is_err());
         let error = error.unwrap_err();
         if let PusError::ByteConversion(ByteConversionError::FromSliceTooSmall {
@@ -1240,7 +1291,7 @@ mod tests {
             expected,
         }) = error
         {
-            assert_eq!(found, PUS_TC_MIN_LEN_WITHOUT_APP_DATA + 1);
+            assert_eq!(found, 7);
             assert_eq!(expected, written_len);
         } else {
             panic!("unexpected error {error}")
@@ -1250,7 +1301,7 @@ mod tests {
     #[test]
     fn test_reader_input_too_small() {
         let buf: [u8; 5] = [0; 5];
-        let error = PusTcReader::new(&buf);
+        let error = PusTcReader::new(&buf, None, 0);
         assert!(error.is_err());
         let error = error.unwrap_err();
         if let PusError::ByteConversion(ByteConversionError::FromSliceTooSmall {
@@ -1259,10 +1310,36 @@ mod tests {
         }) = error
         {
             assert_eq!(found, 5);
-            assert_eq!(expected, PUS_TC_MIN_LEN_WITHOUT_APP_DATA);
+            assert_eq!(expected, 6);
         } else {
             panic!("unexpected error {error}")
         }
+    }
+
+    #[test]
+    fn test_with_source_id_and_spare_bytes() {
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let source_id = UnsignedByteFieldU8::new(5).into();
+        let tc_header = PusTcSecondaryHeader::new(17, 1, 0b1111, Some(source_id), 2);
+        let creator = PusTcCreator::new(sph, tc_header, &[1, 2, 3], true);
+        assert_eq!(creator.len_written(), 17);
+        let mut buf: [u8; 32] = [0; 32];
+        assert_eq!(creator.write_to_bytes(&mut buf).unwrap(), 17);
+        // Source ID
+        assert_eq!(buf[9], 5);
+        // Two spare bytes which should be 0
+        assert_eq!(buf[10], 0);
+        assert_eq!(buf[11], 0);
+        // App data.
+        assert_eq!(buf[12], 1);
+        assert_eq!(buf[13], 2);
+        assert_eq!(buf[14], 3);
+        let tc_reader = PusTcReader::new(&buf, Some(1), 2)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_reader.sp_header(), creator.sp_header());
+        assert_eq!(tc_reader.app_data(), creator.app_data());
+        assert_eq!(tc_reader.source_id(), Some(source_id));
+        assert_eq!(creator.spare_bytes(), 2);
     }
 
     #[test]

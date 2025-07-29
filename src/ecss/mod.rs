@@ -19,7 +19,9 @@ pub mod event;
 pub mod hk;
 pub mod scheduling;
 pub mod tc;
+pub mod tc_pus_a;
 pub mod tm;
+pub mod tm_pus_a;
 pub mod verification;
 
 pub type CrcType = u16;
@@ -80,18 +82,17 @@ pub enum PusVersion {
     EsaPus = 0,
     PusA = 1,
     PusC = 2,
-    Invalid = 0b1111,
 }
 
 impl TryFrom<u8> for PusVersion {
-    type Error = ();
+    type Error = u8;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             x if x == PusVersion::EsaPus as u8 => Ok(PusVersion::EsaPus),
             x if x == PusVersion::PusA as u8 => Ok(PusVersion::PusA),
             x if x == PusVersion::PusC as u8 => Ok(PusVersion::PusC),
-            _ => Err(()),
+            _ => Err(value),
         }
     }
 }
@@ -154,7 +155,7 @@ pub enum PfcReal {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
     #[error("PUS version {0:?} not supported")]
-    VersionNotSupported(PusVersion),
+    VersionNotSupported(u8),
     #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
@@ -167,9 +168,7 @@ pub enum PusError {
 /// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry
 /// (TM) packets. All PUS packets are also a special type of [CcsdsPacket]s.
 pub trait PusPacket: CcsdsPacket {
-    const PUS_VERSION: PusVersion = PusVersion::PusC;
-
-    fn pus_version(&self) -> PusVersion;
+    fn pus_version(&self) -> Result<PusVersion, u8>;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
     fn user_data(&self) -> &[u8];
@@ -369,6 +368,7 @@ generic_ecss_enum_typedefs_and_from_impls! {
 /// byte representation. This is especially useful for generic abstractions which depend only
 /// on the serialization of those packets.
 pub trait WritablePusPacket {
+    /// The length here also includes the CRC length.
     fn len_written(&self) -> usize;
 
     /// Writes the packet to the given slice without writing the CRC.
@@ -536,9 +536,9 @@ mod tests {
 
     #[test]
     fn test_pus_error_display() {
-        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus);
+        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus as u8);
         let write_str = unsupport_version.to_string();
-        assert_eq!(write_str, "PUS version EsaPus not supported")
+        assert_eq!(write_str, "PUS version 0 not supported")
     }
 
     #[test]
@@ -572,8 +572,8 @@ mod tests {
     #[test]
     fn test_pus_error_eq_impl() {
         assert_eq!(
-            PusError::VersionNotSupported(PusVersion::EsaPus),
-            PusError::VersionNotSupported(PusVersion::EsaPus)
+            PusError::VersionNotSupported(PusVersion::EsaPus as u8),
+            PusError::VersionNotSupported(PusVersion::EsaPus as u8)
         );
     }
 

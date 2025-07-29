@@ -131,7 +131,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         self.end_of_scope
     }
 
-    pub fn segment_requests(&self) -> Option<&SegmentRequests> {
+    pub fn segment_requests(&self) -> Option<&SegmentRequests<'_>> {
         self.segment_requests.as_ref()
     }
 

@@ -201,7 +201,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             .calc_pdu_datafield_len(self.file_data.len() as u64)
     }
 
-    pub fn segment_metadata(&self) -> Option<&SegmentMetadata> {
+    pub fn segment_metadata(&self) -> Option<&SegmentMetadata<'_>> {
         self.common.segment_metadata.as_ref()
     }
 
@@ -419,8 +419,8 @@ pub fn calculate_max_file_seg_len_for_max_packet_len_and_pdu_header(
     segment_metadata: Option<&SegmentMetadata>,
 ) -> usize {
     let mut subtract = pdu_header.header_len();
-    if segment_metadata.is_some() {
-        subtract += 1 + segment_metadata.as_ref().unwrap().metadata().unwrap().len();
+    if let Some(segment_metadata) = segment_metadata {
+        subtract += 1 + segment_metadata.metadata().unwrap().len();
     }
     if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
         subtract += 8;
