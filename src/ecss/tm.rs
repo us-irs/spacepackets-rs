@@ -107,7 +107,7 @@ pub mod zc {
         type Error = PusError;
         fn try_from(header: crate::ecss::tm::PusTmSecondaryHeader) -> Result<Self, Self::Error> {
             if header.pus_version != PusVersion::PusC {
-                return Err(PusError::VersionNotSupported(header.pus_version));
+                return Err(PusError::VersionNotSupported(header.pus_version as u8));
             }
             Ok(PusTmSecHeaderWithoutTimestamp {
                 pus_version_and_sc_time_ref_status: ((header.pus_version as u8) << 4)

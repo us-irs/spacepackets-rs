@@ -19,6 +19,7 @@ pub mod event;
 pub mod hk;
 pub mod scheduling;
 pub mod tc;
+pub mod tc_pus_a;
 pub mod tm;
 pub mod verification;
 
@@ -154,7 +155,7 @@ pub enum PfcReal {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
     #[error("PUS version {0:?} not supported")]
-    VersionNotSupported(PusVersion),
+    VersionNotSupported(u8),
     #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
@@ -536,9 +537,9 @@ mod tests {
 
     #[test]
     fn test_pus_error_display() {
-        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus);
+        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus as u8);
         let write_str = unsupport_version.to_string();
-        assert_eq!(write_str, "PUS version EsaPus not supported")
+        assert_eq!(write_str, "PUS version 0 not supported")
     }
 
     #[test]
@@ -572,8 +573,8 @@ mod tests {
     #[test]
     fn test_pus_error_eq_impl() {
         assert_eq!(
-            PusError::VersionNotSupported(PusVersion::EsaPus),
-            PusError::VersionNotSupported(PusVersion::EsaPus)
+            PusError::VersionNotSupported(PusVersion::EsaPus as u8),
+            PusError::VersionNotSupported(PusVersion::EsaPus as u8)
         );
     }
 
