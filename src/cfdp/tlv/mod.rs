@@ -153,14 +153,17 @@ pub struct Tlv<'data> {
 }
 
 impl<'data> Tlv<'data> {
-    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv, TlvLvDataTooLargeError> {
+    pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv<'_>, TlvLvDataTooLargeError> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Standard(tlv_type),
             lv: Lv::new(data)?,
         })
     }
 
-    pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Result<Tlv, TlvLvDataTooLargeError> {
+    pub fn new_with_custom_type(
+        tlv_type: u8,
+        data: &[u8],
+    ) -> Result<Tlv<'_>, TlvLvDataTooLargeError> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Custom(tlv_type),
             lv: Lv::new(data)?,
@@ -370,7 +373,7 @@ impl EntityIdTlv {
     }
 
     /// Convert to a generic [Tlv], which also erases the programmatic type information.
-    pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv, ByteConversionError> {
+    pub fn to_tlv(self, buf: &mut [u8]) -> Result<Tlv<'_>, ByteConversionError> {
         Self::len_check(buf)?;
         self.entity_id
             .write_to_be_bytes(&mut buf[2..2 + self.entity_id.size()])?;

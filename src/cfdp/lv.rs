@@ -64,7 +64,7 @@ pub(crate) fn generic_len_check_deserialization(
 
 impl<'data> Lv<'data> {
     #[inline]
-    pub fn new(data: &[u8]) -> Result<Lv, TlvLvDataTooLargeError> {
+    pub fn new(data: &[u8]) -> Result<Lv<'_>, TlvLvDataTooLargeError> {
         if data.len() > u8::MAX as usize {
             return Err(TlvLvDataTooLargeError(data.len()));
         }
@@ -86,7 +86,7 @@ impl<'data> Lv<'data> {
     /// Helper function to build a string LV. This is especially useful for the file or directory
     /// path LVs
     #[inline]
-    pub fn new_from_str(str_slice: &str) -> Result<Lv, TlvLvDataTooLargeError> {
+    pub fn new_from_str(str_slice: &str) -> Result<Lv<'_>, TlvLvDataTooLargeError> {
         Self::new(str_slice.as_bytes())
     }
 

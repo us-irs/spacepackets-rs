@@ -338,11 +338,11 @@ impl<'raw> MetadataPduReader<'raw> {
         &self.metadata_params
     }
 
-    pub fn src_file_name(&self) -> Lv {
+    pub fn src_file_name(&self) -> Lv<'_> {
         self.src_file_name
     }
 
-    pub fn dest_file_name(&self) -> Lv {
+    pub fn dest_file_name(&self) -> Lv<'_> {
         self.dest_file_name
     }
 }
