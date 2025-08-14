@@ -1,6 +1,7 @@
 [![Crates.io](https://img.shields.io/crates/v/spacepackets)](https://crates.io/crates/spacepackets)
 [![docs.rs](https://img.shields.io/docsrs/spacepackets)](https://docs.rs/spacepackets)
 [![ci](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/us-irs/spacepackets-rs/actions/workflows/ci.yml)
+[![matrix chat](https://img.shields.io/matrix/sat-rs%3Amatrix.org)](https://matrix.to/#/#sat-rs:matrix.org)
 
 ECSS and CCSDS Spacepackets
 ======
