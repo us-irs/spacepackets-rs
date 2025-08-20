@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- CFDP NAK PDU `SegmentRequestIter` is not generic over the file size anymore. Instead, the
+  iterator returns pairs of `u64` for both large and normal file size.
 - `PusVersion::VersionNotSupported` contains raw version number instead of `PusVersion` enum now
   to make it more flexible.
 - `pus_version` API now returns a `Result<PusVersion, u8>` instead of a `PusVersion` to allow

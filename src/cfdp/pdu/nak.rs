@@ -2,7 +2,6 @@ use crate::{
     cfdp::{CrcFlag, Direction, LargeFileFlag},
     ByteConversionError,
 };
-use core::{marker::PhantomData, mem::size_of};
 
 use super::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, CfdpPdu, FileDirectiveType, PduError,
@@ -247,85 +246,82 @@ impl WritablePduPacket for NakPduCreator<'_> {
 /// Special iterator type for the NAK PDU which allows to iterate over both normal and large file
 /// segment requests.
 #[derive(Debug)]
-pub struct SegmentRequestIter<'a, T> {
+pub struct SegmentRequestIter<'a> {
     seq_req_raw: &'a [u8],
+    large_file: LargeFileFlag,
     current_idx: usize,
-    phantom: core::marker::PhantomData<T>,
 }
 
-pub trait SegReqFromBytes {
-    fn from_bytes(bytes: &[u8]) -> Self;
-}
-
-impl SegReqFromBytes for u32 {
-    fn from_bytes(bytes: &[u8]) -> u32 {
-        u32::from_be_bytes(bytes.try_into().unwrap())
-    }
-}
-
-impl SegReqFromBytes for u64 {
-    fn from_bytes(bytes: &[u8]) -> u64 {
-        u64::from_be_bytes(bytes.try_into().unwrap())
-    }
-}
-
-impl<T> Iterator for SegmentRequestIter<'_, T>
-where
-    T: SegReqFromBytes,
-{
-    type Item = (T, T);
+impl Iterator for SegmentRequestIter<'_> {
+    type Item = (u64, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
         let value = self.next_at_offset(self.current_idx);
-        self.current_idx += 2 * size_of::<T>();
+        if value.is_none() {
+            return value;
+        }
+        self.current_idx += 2 * self.increment();
         value
     }
 }
 
-impl<'a> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'_, u32> {
-    fn eq(&self, other: &SegmentRequests<'a>) -> bool {
-        match other {
-            SegmentRequests::U32Pairs(pairs) => self.compare_pairs(pairs),
-            SegmentRequests::U64Pairs(pairs) => {
-                if pairs.is_empty() && self.seq_req_raw.is_empty() {
-                    return true;
-                }
-                false
+impl SegmentRequestIter<'_> {
+    const fn increment(&self) -> usize {
+        match self.large_file {
+            LargeFileFlag::Normal => core::mem::size_of::<u32>(),
+            LargeFileFlag::Large => core::mem::size_of::<u64>(),
+        }
+    }
+
+    fn next_at_offset(&self, mut offset: usize) -> Option<(u64, u64)> {
+        let increment = self.increment();
+        if offset + increment * 2 > self.seq_req_raw.len() {
+            return None;
+        }
+        match self.large_file {
+            LargeFileFlag::Normal => {
+                let start_offset = u32::from_be_bytes(
+                    self.seq_req_raw[offset..offset + increment]
+                        .try_into()
+                        .unwrap(),
+                );
+                offset += increment;
+                let end_offset = u32::from_be_bytes(
+                    self.seq_req_raw[offset..offset + increment]
+                        .try_into()
+                        .unwrap(),
+                );
+                Some((start_offset as u64, end_offset as u64))
+            }
+            LargeFileFlag::Large => {
+                let start_offset = u64::from_be_bytes(
+                    self.seq_req_raw[offset..offset + increment]
+                        .try_into()
+                        .unwrap(),
+                );
+                offset += increment;
+                let end_offset = u64::from_be_bytes(
+                    self.seq_req_raw[offset..offset + increment]
+                        .try_into()
+                        .unwrap(),
+                );
+                Some((start_offset, end_offset))
             }
         }
     }
-}
 
-impl<'a> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'_, u64> {
-    fn eq(&self, other: &SegmentRequests<'a>) -> bool {
-        match other {
-            SegmentRequests::U32Pairs(pairs) => {
-                if pairs.is_empty() && self.seq_req_raw.is_empty() {
-                    return true;
-                }
-                false
-            }
-            SegmentRequests::U64Pairs(pairs) => self.compare_pairs(pairs),
-        }
-    }
-}
-
-impl<T> SegmentRequestIter<'_, T>
-where
-    T: SegReqFromBytes + PartialEq,
-{
-    fn compare_pairs(&self, pairs: &[(T, T)]) -> bool {
+    fn compare_pairs<T: Into<u64> + Copy>(&self, pairs: &[(T, T)]) -> bool {
         if pairs.is_empty() && self.seq_req_raw.is_empty() {
             return true;
         }
-        let size = size_of::<T>();
-        if pairs.len() * 2 * size != self.seq_req_raw.len() {
+        if pairs.len() * 2 * self.increment() != self.seq_req_raw.len() {
             return false;
         }
 
         for (i, pair) in pairs.iter().enumerate() {
-            let next_val = self.next_at_offset(i * 2 * size).unwrap();
-            if next_val != *pair {
+            let next_val = self.next_at_offset(i * 2 * self.increment()).unwrap();
+            let pair = (pair.0.into(), pair.1.into());
+            if next_val != pair {
                 return false;
             }
         }
@@ -334,17 +330,12 @@ where
     }
 }
 
-impl<T: SegReqFromBytes> SegmentRequestIter<'_, T> {
-    fn next_at_offset(&self, mut offset: usize) -> Option<(T, T)> {
-        if offset + size_of::<T>() * 2 > self.seq_req_raw.len() {
-            return None;
+impl<'a> PartialEq<SegmentRequests<'a>> for SegmentRequestIter<'_> {
+    fn eq(&self, other: &SegmentRequests<'a>) -> bool {
+        match other {
+            SegmentRequests::U32Pairs(pairs) => self.compare_pairs(pairs),
+            SegmentRequests::U64Pairs(pairs) => self.compare_pairs(pairs),
         }
-
-        let start_offset = T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
-        offset += size_of::<T>();
-
-        let end_offset = T::from_bytes(&self.seq_req_raw[offset..offset + size_of::<T>()]);
-        Some((start_offset, end_offset))
     }
 }
 
@@ -443,33 +434,21 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
             return 0;
         }
         if self.file_flag() == LargeFileFlag::Normal {
-            self.seg_reqs_raw.len() / 8
+            self.seg_reqs_raw.len() / (2 * core::mem::size_of::<u32>())
         } else {
-            self.seg_reqs_raw.len() / 16
+            self.seg_reqs_raw.len() / (2 * core::mem::size_of::<u64>())
         }
     }
 
-    /// This function returns [None] if this NAK PDUs contains segment requests for a large file.
-    pub fn get_normal_segment_requests_iterator(&self) -> Option<SegmentRequestIter<'_, u32>> {
-        if self.file_flag() == LargeFileFlag::Large {
+    /// Get a generic segment request iterator.
+    pub fn get_segment_requests_iterator(&self) -> Option<SegmentRequestIter<'_>> {
+        if self.seg_reqs_raw.is_empty() {
             return None;
         }
         Some(SegmentRequestIter {
             seq_req_raw: self.seg_reqs_raw,
             current_idx: 0,
-            phantom: PhantomData,
-        })
-    }
-
-    /// This function returns [None] if this NAK PDUs contains segment requests for a normal file.
-    pub fn get_large_segment_requests_iterator(&self) -> Option<SegmentRequestIter<'_, u64>> {
-        if self.file_flag() == LargeFileFlag::Normal {
-            return None;
-        }
-        Some(SegmentRequestIter {
-            seq_req_raw: self.seg_reqs_raw,
-            current_idx: 0,
-            phantom: PhantomData,
+            large_file: self.file_flag(),
         })
     }
 }
@@ -489,14 +468,8 @@ impl<'a> PartialEq<NakPduCreator<'a>> for NakPduReader<'_> {
             (true, Some(seg_reqs)) => seg_reqs.is_empty(),
             (false, None) => false,
             _ => {
-                // Compare based on file_flag
-                if self.file_flag() == LargeFileFlag::Normal {
-                    let normal_iter = self.get_normal_segment_requests_iterator().unwrap();
-                    normal_iter == *other.segment_requests().unwrap()
-                } else {
-                    let large_iter = self.get_large_segment_requests_iterator().unwrap();
-                    large_iter == *other.segment_requests().unwrap()
-                }
+                let normal_iter = self.get_segment_requests_iterator().unwrap();
+                normal_iter == *other.segment_requests().unwrap()
             }
         }
     }
@@ -650,30 +623,23 @@ mod tests {
         assert_eq!(nak_pdu_deser.start_of_scope(), 100);
         assert_eq!(nak_pdu_deser.end_of_scope(), 300);
         assert_eq!(nak_pdu_deser.num_segment_reqs(), 2);
-        assert!(nak_pdu_deser
-            .get_large_segment_requests_iterator()
-            .is_some());
-        assert!(nak_pdu_deser
-            .get_normal_segment_requests_iterator()
-            .is_none());
         assert_eq!(
             nak_pdu_deser
-                .get_large_segment_requests_iterator()
+                .get_segment_requests_iterator()
                 .unwrap()
                 .count(),
             2
         );
-        for (idx, large_segments) in nak_pdu_deser
-            .get_large_segment_requests_iterator()
-            .unwrap()
-            .enumerate()
-        {
+        let segment_iter = nak_pdu_deser.get_segment_requests_iterator();
+        assert!(segment_iter.is_some());
+        let segment_iter = segment_iter.unwrap();
+        for (idx, segments) in segment_iter.enumerate() {
             if idx == 0 {
-                assert_eq!(large_segments.0, 50);
-                assert_eq!(large_segments.1, 100);
+                assert_eq!(segments.0, 50);
+                assert_eq!(segments.1, 100);
             } else {
-                assert_eq!(large_segments.0, 200);
-                assert_eq!(large_segments.1, 300);
+                assert_eq!(segments.0, 200);
+                assert_eq!(segments.1, 300);
             }
         }
     }
@@ -693,30 +659,23 @@ mod tests {
         assert_eq!(nak_pdu_deser.start_of_scope(), 100);
         assert_eq!(nak_pdu_deser.end_of_scope(), 300);
         assert_eq!(nak_pdu_deser.num_segment_reqs(), 2);
-        assert!(nak_pdu_deser
-            .get_normal_segment_requests_iterator()
-            .is_some());
-        assert!(nak_pdu_deser
-            .get_large_segment_requests_iterator()
-            .is_none());
         assert_eq!(
             nak_pdu_deser
-                .get_normal_segment_requests_iterator()
+                .get_segment_requests_iterator()
                 .unwrap()
                 .count(),
             2
         );
-        for (idx, large_segments) in nak_pdu_deser
-            .get_normal_segment_requests_iterator()
-            .unwrap()
-            .enumerate()
-        {
+        let segment_iter = nak_pdu_deser.get_segment_requests_iterator();
+        assert!(segment_iter.is_some());
+        let segment_iter = segment_iter.unwrap();
+        for (idx, segments) in segment_iter.enumerate() {
             if idx == 0 {
-                assert_eq!(large_segments.0, 50);
-                assert_eq!(large_segments.1, 100);
+                assert_eq!(segments.0, 50);
+                assert_eq!(segments.1, 100);
             } else {
-                assert_eq!(large_segments.0, 200);
-                assert_eq!(large_segments.1, 300);
+                assert_eq!(segments.0, 200);
+                assert_eq!(segments.1, 300);
             }
         }
     }
