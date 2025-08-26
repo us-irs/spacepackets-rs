@@ -140,7 +140,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         spare_bytes: usize,
     ) -> Self {
         PusTmSecondaryHeader {
-            pus_version: PusVersion::PusC,
+            pus_version: PusVersion::PusA,
             service,
             subservice,
             msg_counter,
@@ -167,7 +167,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             return Err(PusError::VersionNotSupported(version_raw));
         }
         let pus_version = pus_version.unwrap();
-        if pus_version != PusVersion::PusC {
+        if pus_version != PusVersion::PusA {
             return Err(PusError::VersionNotSupported(pus_version as u8));
         }
         let mut msg_counter = None;
@@ -1135,7 +1135,7 @@ mod tests {
     #[cfg(feature = "serde")]
     use crate::time::CcsdsTimeProvider;
     use crate::SpHeader;
-    use crate::{ecss::PusVersion::PusC, util::UnsignedByteFieldU16};
+    use crate::{ecss::PusVersion::PusA, util::UnsignedByteFieldU16};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
 
@@ -1678,7 +1678,7 @@ mod tests {
             expected_len += 1;
         }
         assert_eq!(((buf[4] as u16) << 8) | buf[5] as u16, expected_len as u16);
-        assert_eq!(buf[6], (PusC as u8) << 4);
+        assert_eq!(buf[6], (PusA as u8) << 4);
         assert_eq!(buf[7], 17);
         assert_eq!(buf[8], 2);
         let mut current_idx = 9;
@@ -1764,10 +1764,10 @@ mod tests {
         }
         assert_eq!(tm.apid(), 0x123);
         assert_eq!(tm.seq_count(), 0x234);
-        assert_eq!(PusPacket::pus_version(tm).unwrap(), PusVersion::PusC);
+        assert_eq!(PusPacket::pus_version(tm).unwrap(), PusVersion::PusA);
         assert_eq!(
             GenericPusTmSecondaryHeader::pus_version(tm),
-            PusVersion::PusC
+            PusVersion::PusA
         );
         assert_eq!(tm.data_len(), exp_full_len as u16 - 7);
         assert_eq!(tm.dest_id(), dest_id);
