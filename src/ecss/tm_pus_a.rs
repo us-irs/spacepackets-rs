@@ -40,7 +40,7 @@
 //!
 //! // Deserialize from the raw byte representation
 //! let ping_tm_reader = PusTmReader::new(&test_buf, &SecondaryHeaderParameters::new_minimal(7)).expect("deserialization failed");
-//! assert_eq!(written_size, ping_tm_reader.total_len());
+//! assert_eq!(written_size, ping_tm_reader.packet_len());
 //! assert_eq!(ping_tm_reader.service(), 17);
 //! assert_eq!(ping_tm_reader.subservice(), 2);
 //! assert_eq!(ping_tm_reader.apid(), 0x02);
@@ -766,7 +766,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         let mut current_idx = 0;
         let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
         current_idx += CCSDS_HEADER_LEN;
-        let total_len = sp_header.total_len();
+        let total_len = sp_header.packet_len();
         if raw_data_len < total_len {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: raw_data_len,
@@ -796,7 +796,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
     #[inline]
     pub fn len_packed(&self) -> usize {
-        self.sp_header.total_len()
+        self.sp_header.packet_len()
     }
 
     #[inline]
@@ -939,11 +939,11 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
             return None;
         }
         let sp_header = crate::zc::SpHeader::read_from_bytes(&raw_tm[0..CCSDS_HEADER_LEN]).unwrap();
-        if raw_tm_len < sp_header.total_len() {
+        if raw_tm_len < sp_header.packet_len() {
             return None;
         }
         let writer = Self {
-            raw_tm: &mut raw_tm[..sp_header.total_len()],
+            raw_tm: &mut raw_tm[..sp_header.packet_len()],
             sec_header_params: *sec_header_params,
         };
         Some(writer)
@@ -1113,13 +1113,13 @@ impl PusPacket for PusTmZeroCopyWriter<'_> {
         &self.raw_tm[CCSDS_HEADER_LEN
             + PUS_TM_MIN_SEC_HEADER_LEN
             + self.sec_header_params.timestamp_len
-            ..self.sp_header().total_len() - 2]
+            ..self.sp_header().packet_len() - 2]
     }
 
     #[inline]
     fn opt_crc16(&self) -> Option<u16> {
         Some(u16::from_be_bytes(
-            self.raw_tm[self.sp_header().total_len() - 2..self.sp_header().total_len()]
+            self.raw_tm[self.sp_header().packet_len() - 2..self.sp_header().packet_len()]
                 .try_into()
                 .unwrap(),
         ))
@@ -1433,7 +1433,7 @@ mod tests {
         assert_eq!(tm_vec.len(), 18);
         let tm_deserialized = PusTmReader::new(tm_vec.as_slice(), &MIN_SEC_HEADER_PARAMS)
             .expect("Deserialization failed");
-        assert_eq!(tm_vec.len(), tm_deserialized.total_len());
+        assert_eq!(tm_vec.len(), tm_deserialized.packet_len());
         verify_ping_reply_with_reader(&tm_deserialized, false, 18, dummy_timestamp(), None, None);
     }
 
@@ -1448,7 +1448,7 @@ mod tests {
         assert_eq!(ser_len, 18);
         let tm_deserialized =
             PusTmReader::new(&buf, &MIN_SEC_HEADER_PARAMS).expect("Deserialization failed");
-        assert_eq!(ser_len, tm_deserialized.total_len());
+        assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
         assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
@@ -1479,7 +1479,7 @@ mod tests {
             },
         )
         .expect("Deserialization failed");
-        assert_eq!(ser_len, tm_deserialized.total_len());
+        assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
         assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
@@ -1551,7 +1551,7 @@ mod tests {
         assert_eq!(ser_len, 18);
         let tm_deserialized =
             PusTmReader::new(&buf, &MIN_SEC_HEADER_PARAMS).expect("Deserialization failed");
-        assert_eq!(ser_len, tm_deserialized.total_len());
+        assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
         assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
@@ -1569,7 +1569,7 @@ mod tests {
         assert_eq!(ser_len, 18);
         let tm_deserialized = PusTmReader::new_crc_no_table(&buf, &MIN_SEC_HEADER_PARAMS)
             .expect("Deserialization failed");
-        assert_eq!(ser_len, tm_deserialized.total_len());
+        assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
         assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
@@ -1811,7 +1811,7 @@ mod tests {
         // This performs all necessary checks, including the CRC check.
         let tm_read_back =
             PusTmReader::new(&buf, &MIN_SEC_HEADER_PARAMS).expect("Re-creating PUS TM failed");
-        assert_eq!(tm_read_back.total_len(), tm_size);
+        assert_eq!(tm_read_back.packet_len(), tm_size);
         assert!(tm_read_back.msg_counter().is_none());
         assert!(tm_read_back.dest_id().is_none());
         assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT);

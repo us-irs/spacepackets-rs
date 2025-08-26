@@ -227,7 +227,8 @@ pub fn verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
         .ok_or(PusError::ChecksumFailure(crc16))
 }
 
-pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
+/// Verify the CRC16 of a raw packet.
+pub fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
     let mut digest = CRC_CCITT_FALSE.digest();
     digest.update(raw_data);
     if digest.finalize() == 0 {
@@ -236,7 +237,8 @@ pub(crate) fn verify_crc16_ccitt_false_from_raw(raw_data: &[u8]) -> bool {
     false
 }
 
-pub(crate) fn verify_crc16_ccitt_false_from_raw_no_table(raw_data: &[u8]) -> bool {
+/// Verify the CRC16 of a raw packet, using the table-less implementation.
+pub fn verify_crc16_ccitt_false_from_raw_no_table(raw_data: &[u8]) -> bool {
     let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
     digest.update(raw_data);
     if digest.finalize() == 0 {
