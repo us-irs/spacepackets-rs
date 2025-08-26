@@ -376,7 +376,7 @@ pub trait CcsdsPacket {
     fn data_len(&self) -> u16;
     /// Retrieve the total packet size based on the data length field
     #[inline]
-    fn total_len(&self) -> usize {
+    fn packet_len(&self) -> usize {
         usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
     }
 

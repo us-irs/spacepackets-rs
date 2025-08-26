@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   to make it more flexible.
 - `pus_version` API now returns a `Result<PusVersion, u8>` instead of a `PusVersion` to allow
   modelling invalid version numbers properly.
+- Renamed `CcsdsPacket::total_len` to `CcsdsPacket::packet_len`
 
 ## Removed
 

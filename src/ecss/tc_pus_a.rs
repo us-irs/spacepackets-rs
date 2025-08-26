@@ -716,7 +716,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
         let mut current_idx = 0;
         let (sp_header, _) = SpHeader::from_be_bytes(&slice[0..CCSDS_HEADER_LEN])?;
         current_idx += CCSDS_HEADER_LEN;
-        let total_len = sp_header.total_len();
+        let total_len = sp_header.packet_len();
         if raw_data_len < total_len {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: raw_data_len,
@@ -750,7 +750,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
 
     #[inline]
     pub fn len_packed(&self) -> usize {
-        self.sp_header.total_len()
+        self.sp_header.packet_len()
     }
 
     #[inline]
@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(size, 11);
         let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 11);
+        assert_eq!(tc_from_raw.packet_len(), 11);
         verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
@@ -976,7 +976,7 @@ mod tests {
         assert_eq!(size, 11);
         let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 11);
+        assert_eq!(tc_from_raw.packet_len(), 11);
         verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
@@ -993,7 +993,7 @@ mod tests {
         assert_eq!(size, 11);
         let tc_from_raw = PusTcReader::new_crc_no_table(&test_buf, None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 11);
+        assert_eq!(tc_from_raw.packet_len(), 11);
         verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&test_buf);
@@ -1007,7 +1007,7 @@ mod tests {
         assert_eq!(tc_vec.len(), 11);
         let tc_from_raw = PusTcReader::new(tc_vec.as_slice(), None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 11);
+        assert_eq!(tc_from_raw.packet_len(), 11);
         verify_test_tc_with_reader(&tc_from_raw, false, 11);
         assert!(tc_from_raw.user_data().is_empty());
         verify_test_tc_raw(&tc_vec);
@@ -1033,7 +1033,7 @@ mod tests {
         assert_eq!(size, 14);
         let tc_from_raw = PusTcReader::new(&test_buf, None, 0)
             .expect("Creating PUS TC struct from raw buffer failed");
-        assert_eq!(tc_from_raw.total_len(), 14);
+        assert_eq!(tc_from_raw.packet_len(), 14);
         verify_test_tc_with_reader(&tc_from_raw, true, 14);
         let user_data = tc_from_raw.user_data();
         assert_eq!(tc_from_raw.user_data(), tc_from_raw.app_data());
