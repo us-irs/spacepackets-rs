@@ -1132,8 +1132,6 @@ mod tests {
 
     use super::*;
     use crate::time::cds::CdsTime;
-    #[cfg(feature = "serde")]
-    use crate::time::CcsdsTimeProvider;
     use crate::SpHeader;
     use crate::{ecss::PusVersion::PusA, util::UnsignedByteFieldU16};
     #[cfg(feature = "serde")]
