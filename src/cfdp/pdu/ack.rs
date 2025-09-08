@@ -268,8 +268,47 @@ mod tests {
     }
 
     #[test]
+    fn test_serialization_too_small() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let ack_pdu = AckPdu::new(
+            pdu_header,
+            FileDirectiveType::FinishedPdu,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        )
+        .expect("creating ACK PDU failed");
+        if let Err(PduError::ByteConversion(ByteConversionError::ToSliceTooSmall {
+            found,
+            expected,
+        })) = ack_pdu.write_to_bytes(&mut [0; 5])
+        {
+            assert_eq!(found, 5);
+            assert_eq!(expected, ack_pdu.len_written());
+        } else {
+            panic!("serialization should have failed");
+        }
+    }
+
+    #[test]
     fn test_serialization_fs_error() {
         generic_serialization_test(ConditionCode::FileSizeError, TransactionStatus::Terminated);
+    }
+    #[test]
+    fn test_invalid_directive_code_of_acked_pdu() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        if let Err(PduError::InvalidDirectiveType { found, expected }) = AckPdu::new(
+            pdu_header,
+            FileDirectiveType::MetadataPdu,
+            ConditionCode::NoError,
+            TransactionStatus::Active,
+        ) {
+            assert!(expected.is_none());
+            assert_eq!(found, FileDirectiveType::MetadataPdu as u8);
+        } else {
+            panic!("ACK PDU construction should have failed");
+        }
     }
 
     #[test]
