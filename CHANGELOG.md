@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `pus_version` API now returns a `Result<PusVersion, u8>` instead of a `PusVersion` to allow
   modelling invalid version numbers properly.
 - Renamed `CcsdsPacket::total_len` to `CcsdsPacket::packet_len`
+- Renamed `SequenceCountProvider` to `SequenceCounter`
+- Renamed `SeqCountProviderSimple` to `SequenceCounterSimple`
+- Renamed `CcsdsSimpleSeqCountProvider` to `SequenceCounterCcsdsSimple`
+- Renamed `SeqCountProviderSync` to `SequenceCounterSync`
 
 ## Removed
 
@@ -25,6 +29,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Added
 
 - Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
+- Added `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
 
 # [v0.15.0] 2025-07-18
 
