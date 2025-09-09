@@ -1,8 +1,6 @@
 use crate::MAX_SEQ_COUNT;
 use core::cell::Cell;
 use paste::paste;
-#[cfg(feature = "std")]
-pub use stdmod::*;
 
 /// Core trait for objects which can provide a sequence count.
 ///
@@ -120,76 +118,133 @@ impl SequenceCounter for SequenceCounterCcsdsSimple {
     }
 }
 
-#[cfg(feature = "std")]
-pub mod stdmod {
-    use super::*;
-    use std::sync::{Arc, Mutex};
+impl SequenceCounter for core::sync::atomic::AtomicU8 {
+    type Raw = u8;
 
-    macro_rules! sync_clonable_seq_counter_impl {
-         ($($ty: ident,)+) => {
-             $(paste! {
-                 /// These sequence counters can be shared between threads and can also be
-                 /// configured to wrap around at specified maximum values. Please note that
-                 /// that the API provided by this class will not panic und [Mutex] lock errors,
-                 /// but it will yield 0 for the getter functions.
-                 #[derive(Clone, Default)]
-                 pub struct [<SequenceCounterSync $ty:upper>] {
-                     seq_count: Arc<Mutex<$ty>>,
-                     max_val: $ty
-                 }
+    const MAX_BIT_WIDTH: usize = 8;
 
-                 impl [<SequenceCounterSync $ty:upper>] {
-                     pub fn new() -> Self {
-                        Self::new_with_max_val($ty::MAX)
-                     }
-
-                     pub fn new_with_max_val(max_val: $ty) -> Self {
-                         Self {
-                             seq_count: Arc::default(),
-                             max_val
-                         }
-                     }
-                 }
-                 impl SequenceCounter for [<SequenceCounterSync $ty:upper>] {
-                    type Raw = $ty;
-                    const MAX_BIT_WIDTH: usize = core::mem::size_of::<Self::Raw>() * 8;
-
-                    fn get(&self) -> $ty {
-                        match self.seq_count.lock() {
-                            Ok(counter) => *counter,
-                            Err(_) => 0
-                        }
-                    }
-
-                    fn increment(&self) {
-                        self.get_and_increment();
-                    }
-
-                    fn get_and_increment(&self) -> $ty {
-                        match self.seq_count.lock() {
-                            Ok(mut counter) => {
-                                let val = *counter;
-                                if val == self.max_val {
-                                    *counter = 0;
-                                } else {
-                                    *counter += 1;
-                                }
-                                val
-                            }
-                            Err(_) => 0,
-                        }
-                    }
-                 }
-             })+
-         }
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
     }
-    sync_clonable_seq_counter_impl!(u8, u16, u32, u64,);
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
 }
+
+impl SequenceCounter for core::sync::atomic::AtomicU16 {
+    type Raw = u16;
+
+    const MAX_BIT_WIDTH: usize = 16;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for core::sync::atomic::AtomicU32 {
+    type Raw = u32;
+
+    const MAX_BIT_WIDTH: usize = 32;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for core::sync::atomic::AtomicU64 {
+    type Raw = u64;
+
+    const MAX_BIT_WIDTH: usize = 64;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl<T: SequenceCounter + ?Sized> SequenceCounter for &T {
+    type Raw = T::Raw;
+    const MAX_BIT_WIDTH: usize = T::MAX_BIT_WIDTH;
+
+    fn get(&self) -> Self::Raw {
+        (**self).get()
+    }
+
+    fn increment(&self) {
+        (**self).increment()
+    }
+}
+
+macro_rules! sync_clonable_seq_counter_impl {
+     ($($ty: ident,)+) => {
+         $(paste! {
+
+            /// This can be used if a custom wrap value is required when using a thread-safe
+            /// atomic based sequence counter.
+            #[derive(Debug)]
+            pub struct [<SequenceCounterSyncCustomWrap $ty:upper>] {
+                seq_count: core::sync::atomic::[<Atomic $ty:upper>],
+                max_val: $ty,
+            }
+
+            impl [<SequenceCounterSyncCustomWrap $ty:upper>] {
+                pub fn new(max_val: $ty) -> Self {
+                    Self {
+                        seq_count: core::sync::atomic::[<Atomic $ty:upper>]::new(0),
+                        max_val,
+                    }
+                }
+            }
+
+            impl SequenceCounter for [<SequenceCounterSyncCustomWrap $ty:upper>] {
+                type Raw = $ty;
+                const MAX_BIT_WIDTH: usize = core::mem::size_of::<Self::Raw>() * 8;
+
+                fn get(&self) -> $ty {
+                    self.seq_count.load(core::sync::atomic::Ordering::Relaxed)
+                }
+
+                fn increment(&self) {
+                    self.get_and_increment();
+                }
+
+                fn get_and_increment(&self) -> $ty {
+                    self.seq_count.fetch_update(
+                        core::sync::atomic::Ordering::Relaxed,
+                        core::sync::atomic::Ordering::Relaxed,
+                        |cur| {
+                            // compute the next value, wrapping at MAX_VAL
+                            let next = if cur == self.max_val { 0 } else { cur + 1 };
+                            Some(next)
+                        },
+                    ).unwrap()
+                }
+            }
+        })+
+    }
+}
+
+sync_clonable_seq_counter_impl!(u8, u16, u32, u64,);
 
 #[cfg(test)]
 mod tests {
+    use core::sync::atomic::AtomicU8;
+
     use crate::seq_count::{
-        SequenceCounter, SequenceCounterCcsdsSimple, SequenceCounterSimple, SequenceCounterSyncU8,
+        SequenceCounter, SequenceCounterCcsdsSimple, SequenceCounterSimple,
+        SequenceCounterSyncCustomWrapU8,
     };
     use crate::MAX_SEQ_COUNT;
 
@@ -231,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_atomic_ref_counters() {
-        let sync_u8_counter = SequenceCounterSyncU8::new();
+        let sync_u8_counter = AtomicU8::new(0);
         assert_eq!(sync_u8_counter.get(), 0);
         assert_eq!(sync_u8_counter.get_and_increment(), 0);
         assert_eq!(sync_u8_counter.get_and_increment(), 1);
@@ -240,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_atomic_ref_counters_overflow() {
-        let sync_u8_counter = SequenceCounterSyncU8::new();
+        let sync_u8_counter = AtomicU8::new(0);
         for _ in 0..u8::MAX as u16 + 1 {
             sync_u8_counter.increment();
         }
@@ -249,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_atomic_ref_counters_overflow_custom_max_val() {
-        let sync_u8_counter = SequenceCounterSyncU8::new_with_max_val(128);
+        let sync_u8_counter = SequenceCounterSyncCustomWrapU8::new(128);
         for _ in 0..129 {
             sync_u8_counter.increment();
         }

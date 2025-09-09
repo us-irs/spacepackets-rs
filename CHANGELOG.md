@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
 - Added `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
+- Implemented `SequenceCounter` for `Atomic` unsigned types and references of them
 
 # [v0.15.0] 2025-07-18
 
