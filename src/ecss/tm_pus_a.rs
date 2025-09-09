@@ -1141,9 +1141,13 @@ mod tests {
     const MIN_SEC_HEADER_PARAMS: SecondaryHeaderParameters =
         SecondaryHeaderParameters::new_minimal(7);
 
-    fn ping_reply_no_data<'a, 'b>(timestamp: &'a [u8]) -> PusTmCreator<'a, 'b> {
+    fn ping_reply_no_data<'a, 'b>(
+        timestamp: &'a [u8],
+        dest_id: Option<UnsignedByteField>,
+    ) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm_checked(0x123, 0x234, 0).unwrap();
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let mut tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        tm_header.dest_id = dest_id;
         PusTmCreator::new_no_source_data(sph, tm_header, true)
     }
 
@@ -1177,7 +1181,7 @@ mod tests {
     #[test]
     fn test_basic() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         verify_ping_reply(&pus_tm, false, 18, dummy_timestamp(), None, None);
     }
 
@@ -1234,7 +1238,7 @@ mod tests {
     #[test]
     fn test_serialization_no_source_data() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1334,7 +1338,7 @@ mod tests {
     #[test]
     fn test_serialization_no_source_data_no_table() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes_crc_no_table(&mut buf)
@@ -1346,7 +1350,7 @@ mod tests {
     #[test]
     fn test_serialization_no_source_data_no_crc() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes_no_crc(&mut buf)
@@ -1413,7 +1417,7 @@ mod tests {
     #[test]
     fn test_setters() {
         let timestamp = dummy_timestamp();
-        let mut pus_tm = ping_reply_no_data(timestamp);
+        let mut pus_tm = ping_reply_no_data(timestamp, None);
         let u16_dest_id = UnsignedByteFieldU16::new(0x7fff).into();
         pus_tm.set_dest_id(Some(u16_dest_id));
         pus_tm.set_msg_counter(Some(0x1f));
@@ -1426,7 +1430,7 @@ mod tests {
     #[test]
     fn test_write_into_vec() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let tm_vec = pus_tm.to_vec().expect("Serialization failed");
         assert_eq!(tm_vec.len(), 18);
         let tm_deserialized = PusTmReader::new(tm_vec.as_slice(), &MIN_SEC_HEADER_PARAMS)
@@ -1438,7 +1442,7 @@ mod tests {
     #[test]
     fn test_deserialization_no_source_data() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1542,7 +1546,7 @@ mod tests {
     #[test]
     fn test_deserialization_no_source_data_with_trait() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len =
             WritablePusPacket::write_to_bytes(&pus_tm, &mut buf).expect("Serialization failed");
@@ -1559,7 +1563,7 @@ mod tests {
     #[test]
     fn test_deserialization_no_table() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1577,7 +1581,7 @@ mod tests {
     #[test]
     fn test_deserialization_faulty_crc() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 32] = [0; 32];
         let ser_len = pus_tm
             .write_to_bytes(&mut buf)
@@ -1618,7 +1622,7 @@ mod tests {
     #[test]
     fn test_target_buf_too_small() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf: [u8; 16] = [0; 16];
         let res = pus_tm.write_to_bytes(&mut buf);
         assert!(res.is_err());
@@ -1635,7 +1639,7 @@ mod tests {
     #[cfg(feature = "alloc")]
     fn test_append_to_vec() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut vec = Vec::new();
         let res = pus_tm.append_to_vec(&mut vec);
         assert!(res.is_ok());
@@ -1775,15 +1779,15 @@ mod tests {
     #[test]
     fn partial_eq_pus_tm() {
         let timestamp = dummy_timestamp();
-        let pus_tm_1 = ping_reply_no_data(timestamp);
-        let pus_tm_2 = ping_reply_no_data(timestamp);
+        let pus_tm_1 = ping_reply_no_data(timestamp, None);
+        let pus_tm_2 = ping_reply_no_data(timestamp, None);
         assert_eq!(pus_tm_1, pus_tm_2);
     }
 
     #[test]
     fn partial_eq_serialized_vs_derialized() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf = [0; 32];
         pus_tm.write_to_bytes(&mut buf).unwrap();
         assert_eq!(
@@ -1794,7 +1798,7 @@ mod tests {
 
     #[test]
     fn test_zero_copy_writer() {
-        let ping_tm = ping_reply_no_data(dummy_timestamp());
+        let ping_tm = ping_reply_no_data(dummy_timestamp(), None);
         let mut buf: [u8; 64] = [0; 64];
         let tm_size = ping_tm
             .write_to_bytes(&mut buf)
@@ -1818,17 +1822,33 @@ mod tests {
 
     #[test]
     fn test_zero_copy_writer_ccsds_api() {
-        let ping_tm = ping_reply_no_data(dummy_timestamp());
+        let dest_id = UnsignedByteFieldU16::new(0x1f1f);
+        let ping_tm = ping_reply_no_data(dummy_timestamp(), Some(dest_id.into()));
         let mut buf: [u8; 64] = [0; 64];
         let tm_size = ping_tm
             .write_to_bytes(&mut buf)
             .expect("writing PUS ping TM failed");
-        let mut writer = PusTmZeroCopyWriter::new(&mut buf[..tm_size], &MIN_SEC_HEADER_PARAMS)
-            .expect("Creating zero copy writer failed");
+        let mut writer = PusTmZeroCopyWriter::new(
+            &mut buf[..tm_size],
+            &SecondaryHeaderParameters {
+                timestamp_len: dummy_timestamp().len(),
+                has_msg_counter: false,
+                dest_id_len: Some(2),
+                spare_bytes: 0,
+            },
+        )
+        .expect("Creating zero copy writer failed");
         writer.set_seq_count(MAX_SEQ_COUNT);
         writer.set_apid(MAX_APID);
+        writer
+            .set_destination_id(UnsignedByteFieldU16::new(0xf1f1).into())
+            .unwrap();
         assert_eq!(PusPacket::service(&writer), 17);
         assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(
+            writer.dest_id().unwrap().unwrap(),
+            UnsignedByteFieldU16::new(0xf1f1).into()
+        );
         assert_eq!(writer.apid(), MAX_APID);
         assert_eq!(writer.seq_count(), MAX_SEQ_COUNT);
     }
@@ -1849,6 +1869,16 @@ mod tests {
         assert_eq!(PusPacket::subservice(&writer), 2);
         assert!(writer.dest_id().unwrap().is_none());
         assert!(writer.msg_counter().is_none());
+        if let Err(err) = writer.set_destination_id(UnsignedByteFieldU16::new(0xf1f1).into()) {
+            matches!(err, DestIdOperationError::FieldNotPresent(_));
+        } else {
+            panic!("setting destination ID should have failed");
+        }
+        if let Err(err) = writer.set_msg_count(22) {
+            matches!(err, SecondaryHeaderFieldNotPresentError);
+        } else {
+            panic!("setting destination ID should have failed");
+        }
         assert_eq!(writer.user_data(), DUMMY_DATA);
         // Need to check crc16 before finish, because finish will update the CRC.
         let crc16 = writer.opt_crc16();
@@ -1866,7 +1896,7 @@ mod tests {
     #[test]
     fn test_reader_partial_eq() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf = [0; 32];
         pus_tm.write_to_bytes(&mut buf).unwrap();
         let tm_0 = PusTmReader::new(&buf, &MIN_SEC_HEADER_PARAMS).unwrap();
@@ -1876,7 +1906,7 @@ mod tests {
     #[test]
     fn test_reader_buf_too_small_2() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf = [0; 32];
         let written = pus_tm.write_to_bytes(&mut buf).unwrap();
         let tm_error = PusTmReader::new(
@@ -1899,7 +1929,7 @@ mod tests {
     #[test]
     fn test_reader_buf_too_small() {
         let timestamp = dummy_timestamp();
-        let pus_tm = ping_reply_no_data(timestamp);
+        let pus_tm = ping_reply_no_data(timestamp, None);
         let mut buf = [0; 32];
         pus_tm.write_to_bytes(&mut buf).unwrap();
         let tm_error = PusTmReader::new(&buf[0..5], &MIN_SEC_HEADER_PARAMS);
