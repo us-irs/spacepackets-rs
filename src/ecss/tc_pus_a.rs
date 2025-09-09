@@ -469,8 +469,13 @@ impl WritablePusPacket for PusTcCreator<'_> {
         CCSDS_HEADER_LEN + self.sec_header.written_len() + self.app_data.len() + 2
     }
 
+    /// Currently, checksum is always added.
+    fn has_checksum(&self) -> bool {
+        true
+    }
+
     /// Write the raw PUS byte representation to a provided buffer.
-    fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_no_crc(self, slice)?)
     }
 
@@ -478,7 +483,7 @@ impl WritablePusPacket for PusTcCreator<'_> {
         Ok(Self::write_to_bytes(self, slice)?)
     }
 
-    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_crc_no_table(self, slice)?)
     }
 }
@@ -503,7 +508,7 @@ impl PusPacket for PusTcCreator<'_> {
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
         Some(self.calc_own_crc16())
     }
 }
@@ -733,7 +738,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
             sp_header,
             sec_header,
             raw_data,
-            app_data: user_data_from_raw(current_idx, total_len, slice)?,
+            app_data: user_data_from_raw(current_idx, total_len, slice, true)?,
             crc16: crc_from_raw_data(raw_data)?,
         })
     }
@@ -786,12 +791,17 @@ impl PusPacket for PusTcReader<'_> {
     });
 
     #[inline]
+    fn has_checksum(&self) -> bool {
+        true
+    }
+
+    #[inline]
     fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
         Some(self.crc16)
     }
 }
@@ -876,7 +886,7 @@ mod tests {
             .expect("Error writing TC to buffer");
         assert_eq!(size, 11);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -889,7 +899,7 @@ mod tests {
             .expect("Error writing TC to buffer");
         assert_eq!(size, 11);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -898,11 +908,12 @@ mod tests {
     fn test_serialization_with_trait_2() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        let size = WritablePusPacket::write_to_bytes_crc_no_table(&pus_tc, test_buf.as_mut_slice())
-            .expect("Error writing TC to buffer");
+        let size =
+            WritablePusPacket::write_to_bytes_checksum_no_table(&pus_tc, test_buf.as_mut_slice())
+                .expect("Error writing TC to buffer");
         assert_eq!(size, 11);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -916,7 +927,7 @@ mod tests {
             .expect("error writing tc to buffer");
         assert_eq!(size, 11);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -937,7 +948,7 @@ mod tests {
     fn test_serialization_no_crc_with_trait() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        let size = WritablePusPacket::write_to_bytes_no_crc(&pus_tc, test_buf.as_mut_slice())
+        let size = WritablePusPacket::write_to_bytes_no_checksum(&pus_tc, test_buf.as_mut_slice())
             .expect("error writing tc to buffer");
         assert_eq!(size, 9);
         assert_eq!(test_buf[9], 0);
@@ -1039,7 +1050,7 @@ mod tests {
         assert_eq!(tc_from_raw.user_data(), tc_from_raw.app_data());
         assert_eq!(tc_from_raw.raw_data(), &test_buf[..size]);
         assert_eq!(
-            tc_from_raw.opt_crc16().unwrap(),
+            tc_from_raw.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
         assert_eq!(user_data[0], 1);

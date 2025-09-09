@@ -6,13 +6,13 @@
 //! ```rust
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::ecss::{PusPacket, WritablePusPacket};
-//! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader};
+//! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
 //!
 //! // Create a ping telecommand with no user application data
 //! let pus_tc = PusTcCreator::new_no_app_data(
 //!     SpHeader::new_from_apid(0x02),
 //!     PusTcSecondaryHeader::new_simple(17, 1),
-//!     true
+//!     CreatorConfig::default()
 //! );
 //! println!("{:?}", pus_tc);
 //! assert_eq!(pus_tc.service(), 17);
@@ -34,9 +34,10 @@
 //! assert_eq!(pus_tc.apid(), 0x02);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
+pub use crate::ecss::CreatorConfig;
 use crate::ecss::{
     ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
+    verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
 use crate::SpHeader;
@@ -55,8 +56,7 @@ use super::verify_crc16_ccitt_false_from_raw_to_pus_error_no_table;
 
 /// PUS C secondary header length is fixed
 pub const PUC_TC_SECONDARY_HEADER_LEN: usize = size_of::<zc::PusTcSecondaryHeader>();
-pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize =
-    CCSDS_HEADER_LEN + PUC_TC_SECONDARY_HEADER_LEN + size_of::<CrcType>();
+pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize = CCSDS_HEADER_LEN + PUC_TC_SECONDARY_HEADER_LEN;
 const PUS_VERSION: PusVersion = PusVersion::PusC;
 
 /// Marker trait for PUS telecommand structures.
@@ -234,6 +234,7 @@ pub struct PusTcCreator<'app_data> {
     sp_header: SpHeader,
     pub sec_header: PusTcSecondaryHeader,
     app_data: &'app_data [u8],
+    has_checksum: bool,
 }
 
 impl<'app_data> PusTcCreator<'app_data> {
@@ -246,15 +247,13 @@ impl<'app_data> PusTcCreator<'app_data> {
     /// * `sec_header` - Information contained in the data field header, including the service
     ///   and subservice type
     /// * `app_data` - Custom application data
-    /// * `set_ccsds_len` - Can be used to automatically update the CCSDS space packet data length
-    ///   field. If this is not set to true, [Self::update_ccsds_data_len] can be called to set
-    ///   the correct value to this field manually
+    /// * `packet_config` - Common configuration options for TC packet creation
     #[inline]
     pub fn new(
         mut sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
         app_data: &'app_data [u8],
-        set_ccsds_len: bool,
+        packet_config: CreatorConfig,
     ) -> Self {
         sp_header.set_packet_type(PacketType::Tc);
         sp_header.set_sec_header_flag();
@@ -262,8 +261,9 @@ impl<'app_data> PusTcCreator<'app_data> {
             sp_header,
             app_data,
             sec_header,
+            has_checksum: packet_config.has_checksum,
         };
-        if set_ccsds_len {
+        if packet_config.set_ccsds_len {
             pus_tc.update_ccsds_data_len();
         }
         pus_tc
@@ -277,13 +277,13 @@ impl<'app_data> PusTcCreator<'app_data> {
         service: u8,
         subservice: u8,
         app_data: &'app_data [u8],
-        set_ccsds_len: bool,
+        packet_config: CreatorConfig,
     ) -> Self {
         Self::new(
             sph,
             PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
             app_data,
-            set_ccsds_len,
+            packet_config,
         )
     }
 
@@ -291,9 +291,9 @@ impl<'app_data> PusTcCreator<'app_data> {
     pub fn new_no_app_data(
         sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
-        set_ccsds_len: bool,
+        packet_config: CreatorConfig,
     ) -> Self {
-        Self::new(sp_header, sec_header, &[], set_ccsds_len)
+        Self::new(sp_header, sec_header, &[], packet_config)
     }
 
     #[inline]
@@ -356,6 +356,11 @@ impl<'app_data> PusTcCreator<'app_data> {
         digest.finalize()
     }
 
+    #[inline]
+    pub fn has_checksum(&self) -> bool {
+        self.has_checksum
+    }
+
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> usize {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -367,9 +372,12 @@ impl<'app_data> PusTcCreator<'app_data> {
         let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
         vec.extend_from_slice(pus_tc_header.as_bytes());
         vec.extend_from_slice(self.app_data);
-        let mut digest = CRC_CCITT_FALSE.digest();
-        digest.update(&vec[start_idx..start_idx + appended_len - 2]);
-        vec.extend_from_slice(&digest.finalize().to_be_bytes());
+        if self.has_checksum() {
+            let mut digest = CRC_CCITT_FALSE.digest();
+            digest.update(&vec[start_idx..start_idx + appended_len]);
+            vec.extend_from_slice(&digest.finalize().to_be_bytes());
+            appended_len += 2;
+        }
         appended_len
     }
 
@@ -385,13 +393,13 @@ impl<'app_data> PusTcCreator<'app_data> {
         slice: &mut [u8],
     ) -> Result<usize, ByteConversionError> {
         let writer_unfinalized = self.common_write(slice)?;
-        Ok(writer_unfinalized.finalize_crc_no_table())
+        Ok(writer_unfinalized.finalize_checksum_no_table())
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
     pub fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, ByteConversionError> {
         let writer_unfinalized = self.common_write(slice)?;
-        Ok(writer_unfinalized.finalize_no_crc())
+        Ok(writer_unfinalized.finalize_no_checksum())
     }
 
     fn common_write<'a>(
@@ -409,6 +417,7 @@ impl<'app_data> PusTcCreator<'app_data> {
             self.sp_header,
             self.sec_header,
             self.app_data.len(),
+            self.has_checksum,
         )?;
         writer_unfinalized
             .app_data_mut()
@@ -420,11 +429,20 @@ impl<'app_data> PusTcCreator<'app_data> {
 impl WritablePusPacket for PusTcCreator<'_> {
     #[inline]
     fn len_written(&self) -> usize {
-        PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len()
+        let mut len = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + self.app_data.len();
+        if self.has_checksum() {
+            len += 2;
+        }
+        len
+    }
+
+    #[inline]
+    fn has_checksum(&self) -> bool {
+        self.has_checksum()
     }
 
     /// Write the raw PUS byte representation to a provided buffer.
-    fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_no_crc(self, slice)?)
     }
 
@@ -432,7 +450,7 @@ impl WritablePusPacket for PusTcCreator<'_> {
         Ok(Self::write_to_bytes(self, slice)?)
     }
 
-    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_crc_no_table(self, slice)?)
     }
 }
@@ -457,8 +475,15 @@ impl PusPacket for PusTcCreator<'_> {
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
+        if !self.has_checksum {
+            return None;
+        }
         Some(self.calc_own_crc16())
+    }
+
+    fn has_checksum(&self) -> bool {
+        self.has_checksum
     }
 }
 
@@ -496,6 +521,7 @@ pub struct PusTcCreatorWithReservedAppData<'buf> {
     buf: &'buf mut [u8],
     app_data_offset: usize,
     full_len: usize,
+    has_checksum: bool,
 }
 
 impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
@@ -514,10 +540,14 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         mut sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
         app_data_len: usize,
+        has_checksum: bool,
     ) -> Result<Self, ByteConversionError> {
         sp_header.set_packet_type(PacketType::Tc);
         sp_header.set_sec_header_flag();
-        let len_written = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + app_data_len;
+        let mut len_written = PUS_TC_MIN_LEN_WITHOUT_APP_DATA + app_data_len;
+        if has_checksum {
+            len_written += 2;
+        }
         if len_written > buf.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -525,7 +555,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
             });
         }
         sp_header.data_len = len_written as u16 - size_of::<crate::zc::SpHeader>() as u16 - 1;
-        Self::write_to_bytes_partially(buf, sp_header, sec_header, app_data_len)
+        Self::write_to_bytes_partially(buf, sp_header, sec_header, app_data_len, has_checksum)
     }
 
     fn write_to_bytes_partially(
@@ -533,6 +563,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         sp_header: SpHeader,
         sec_header: PusTcSecondaryHeader,
         app_data_len: usize,
+        has_checksum: bool,
     ) -> Result<Self, ByteConversionError> {
         let mut curr_idx = 0;
         sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
@@ -545,10 +576,14 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         curr_idx += sec_header_len;
         let app_data_offset = curr_idx;
         curr_idx += app_data_len;
+        if has_checksum {
+            curr_idx += 2;
+        }
         Ok(Self {
             buf,
             app_data_offset,
-            full_len: curr_idx + 2,
+            full_len: curr_idx,
+            has_checksum,
         })
     }
 
@@ -560,49 +595,74 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     /// Mutable access to the application data buffer.
     #[inline]
     pub fn app_data_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.app_data_offset..self.full_len - 2]
+        let end_index = if self.has_checksum {
+            self.full_len - 2
+        } else {
+            self.full_len
+        };
+        &mut self.buf[self.app_data_offset..end_index]
     }
 
     /// Access to the source data buffer.
     #[inline]
     pub fn app_data(&self) -> &[u8] {
-        &self.buf[self.app_data_offset..self.full_len - 2]
+        let end_index = if self.has_checksum {
+            self.full_len - 2
+        } else {
+            self.full_len
+        };
+        &self.buf[self.app_data_offset..end_index]
     }
 
     #[inline]
     pub fn app_data_len(&self) -> usize {
-        self.full_len - 2 - self.app_data_offset
+        let mut len = self.full_len - self.app_data_offset;
+        if self.has_checksum {
+            len -= 2;
+        }
+        len
     }
 
-    /// Finalize the TC packet by calculating and writing the CRC16.
+    /// Finalize the TC packet by calculating and writing the CRC16 if checksum generation is
+    /// enabled.
     ///
     /// Returns the full packet length.
     pub fn finalize(self) -> usize {
-        let mut digest = CRC_CCITT_FALSE.digest();
-        digest.update(&self.buf[0..self.full_len - 2]);
-        self.buf[self.full_len - 2..self.full_len]
-            .copy_from_slice(&digest.finalize().to_be_bytes());
-        self.full_len
+        let written_len = self.len_written();
+        if self.has_checksum {
+            let mut digest = CRC_CCITT_FALSE.digest();
+            digest.update(&self.buf[0..written_len - 2]);
+            self.buf[self.full_len - 2..written_len]
+                .copy_from_slice(&digest.finalize().to_be_bytes());
+        }
+        written_len
     }
 
     /// Finalize the TC packet by calculating and writing the CRC16 using a table-less
-    /// implementation.
+    /// implementation if checksum genration is enabled.
     ///
     /// Returns the full packet length.
-    pub fn finalize_crc_no_table(self) -> usize {
-        let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
-        digest.update(&self.buf[0..self.full_len - 2]);
-        self.buf[self.full_len - 2..self.full_len]
-            .copy_from_slice(&digest.finalize().to_be_bytes());
-        self.full_len
+    pub fn finalize_checksum_no_table(self) -> usize {
+        let written_len = self.len_written();
+        if self.has_checksum {
+            let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
+            digest.update(&self.buf[0..written_len - 2]);
+            self.buf[self.full_len - 2..written_len]
+                .copy_from_slice(&digest.finalize().to_be_bytes());
+        }
+        written_len
     }
 
-    /// Finalize the TC packet without writing the CRC16.
+    /// Finalize the TC packet without writing the CRC16 checksum.
     ///
-    /// Returns the length WITHOUT the CRC16.
+    /// Returns the length WITHOUT the CRC16 checksum.
     #[inline]
-    pub fn finalize_no_crc(self) -> usize {
-        self.full_len - 2
+    pub fn finalize_no_checksum(self) -> usize {
+        if self.has_checksum {
+            self.full_len - 2
+        } else {
+            self.full_len
+        }
     }
 }
 
@@ -626,29 +686,44 @@ pub struct PusTcReader<'raw_data> {
     sp_header: SpHeader,
     sec_header: PusTcSecondaryHeader,
     app_data: &'raw_data [u8],
-    crc16: u16,
+    crc16: Option<u16>,
 }
 
 impl<'raw_data> PusTcReader<'raw_data> {
-    /// Create a [PusTcReader] instance from a raw slice. On success, it returns a tuple containing
-    /// the instance and the found byte length of the packet. This function also performs a CRC
-    /// check and will return an appropriate [PusError] if the check fails.
+    /// Create a [PusTcReader] instance from a raw slice. The given packet should have a
+    /// a CRC16-CCITT checksum which is also verified.
+    ///
+    /// On success, it returns a tuple containing the instance and the found byte length of the
+    /// packet. This function also expects a CRC16 checksum and will verify it.
     pub fn new(slice: &'raw_data [u8]) -> Result<Self, PusError> {
-        let pus_tc = Self::new_no_crc_check(slice)?;
-        verify_crc16_ccitt_false_from_raw_to_pus_error(pus_tc.raw_data(), pus_tc.crc16())?;
+        let pus_tc = Self::new_no_checksum_verification(slice, true)?;
+        // Unwrap for CRC16 okay, should always have some value.
+        verify_crc16_ccitt_false_from_raw_to_pus_error(pus_tc.raw_data(), pus_tc.crc16().unwrap())?;
         Ok(pus_tc)
     }
 
     /// Similar to [PusTcReader::new], but uses a table-less CRC16 algorithm which can reduce
     /// binary size and memory usage.
-    pub fn new_crc_no_table(slice: &'raw_data [u8]) -> Result<Self, PusError> {
-        let pus_tc = Self::new_no_crc_check(slice)?;
-        verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(pus_tc.raw_data(), pus_tc.crc16())?;
+    pub fn new_checksum_no_table(slice: &'raw_data [u8]) -> Result<Self, PusError> {
+        let pus_tc = Self::new_no_checksum_verification(slice, true)?;
+        // Unwrap for CRC16 okay, should always have some value.
+        verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
+            pus_tc.raw_data(),
+            pus_tc.crc16().unwrap(),
+        )?;
         Ok(pus_tc)
     }
 
-    /// Creates a new instance without performing a CRC check.
-    pub fn new_no_crc_check(slice: &'raw_data [u8]) -> Result<Self, PusError> {
+    /// Read a PUS TC from a raw slice where no checksum is expected.
+    pub fn new_no_checksum(slice: &'raw_data [u8]) -> Result<Self, PusError> {
+        Self::new_no_checksum_verification(slice, false)
+    }
+
+    /// Create a new [Self] instance without verifying the checksum, even if the packet has one.
+    pub fn new_no_checksum_verification(
+        slice: &'raw_data [u8],
+        has_checksum: bool,
+    ) -> Result<Self, PusError> {
         let raw_data_len = slice.len();
         if raw_data_len < PUS_TC_MIN_LEN_WITHOUT_APP_DATA {
             return Err(ByteConversionError::FromSliceTooSmall {
@@ -681,12 +756,16 @@ impl<'raw_data> PusTcReader<'raw_data> {
         .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
+        let mut crc16 = None;
+        if has_checksum {
+            crc16 = Some(crc_from_raw_data(&slice[total_len - 2..total_len])?);
+        }
         Ok(Self {
             sp_header,
             sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),
             raw_data,
-            app_data: user_data_from_raw(current_idx, total_len, slice)?,
-            crc16: crc_from_raw_data(raw_data)?,
+            app_data: user_data_from_raw(current_idx, total_len, slice, has_checksum)?,
+            crc16,
         })
     }
 
@@ -711,7 +790,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
     }
 
     #[inline]
-    pub fn crc16(&self) -> u16 {
+    pub fn crc16(&self) -> Option<u16> {
         self.crc16
     }
 }
@@ -737,14 +816,18 @@ impl PusPacket for PusTcReader<'_> {
         fn subservice(&self) -> u8;
     });
 
+    fn has_checksum(&self) -> bool {
+        self.crc16.is_some()
+    }
+
     #[inline]
     fn user_data(&self) -> &[u8] {
         self.app_data
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
-        Some(self.crc16)
+    fn checksum(&self) -> Option<u16> {
+        self.crc16
     }
 }
 
@@ -796,23 +879,68 @@ mod tests {
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
-        PusTcCreator::new_no_app_data(sph, tc_header, true)
+        PusTcCreator::new_no_app_data(sph, tc_header, CreatorConfig::default())
+    }
+
+    fn base_ping_tc_full_ctor_no_checksum() -> PusTcCreator<'static> {
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+        PusTcCreator::new_no_app_data(
+            sph,
+            tc_header,
+            CreatorConfig {
+                set_ccsds_len: true,
+                has_checksum: false,
+            },
+        )
     }
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(sph, 17, 1, &[], true)
+        PusTcCreator::new_simple(sph, 17, 1, &[], CreatorConfig::default())
     }
 
-    fn base_ping_tc_simple_ctor_with_app_data(app_data: &'static [u8]) -> PusTcCreator<'static> {
+    fn base_ping_tc_simple_ctor_no_checksum() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        PusTcCreator::new_simple(sph, 17, 1, app_data, true)
+        PusTcCreator::new_simple(
+            sph,
+            17,
+            1,
+            &[],
+            CreatorConfig {
+                set_ccsds_len: true,
+                has_checksum: false,
+            },
+        )
+    }
+
+    fn base_ping_tc_simple_ctor_with_app_data(
+        app_data: &'static [u8],
+        has_checksum: bool,
+    ) -> PusTcCreator<'static> {
+        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        PusTcCreator::new_simple(
+            sph,
+            17,
+            1,
+            app_data,
+            CreatorConfig {
+                set_ccsds_len: true,
+                has_checksum,
+            },
+        )
     }
 
     #[test]
     fn test_tc_fields() {
         let pus_tc = base_ping_tc_full_ctor();
-        verify_test_tc(&pus_tc, false, 13);
+        verify_test_tc(&pus_tc, false, true, 13);
+    }
+
+    #[test]
+    fn test_tc_fields_no_checksum() {
+        let pus_tc = base_ping_tc_full_ctor_no_checksum();
+        verify_test_tc(&pus_tc, false, false, 11);
     }
 
     #[test]
@@ -824,9 +952,21 @@ mod tests {
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
+    }
+
+    #[test]
+    fn test_serialization_no_checksum() {
+        let pus_tc = base_ping_tc_simple_ctor_no_checksum();
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = pus_tc
+            .write_to_bytes(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 11);
+        assert_eq!(0, u16::from_be_bytes(test_buf[11..13].try_into().unwrap()));
+        verify_test_tc(&pus_tc, false, false, 11);
     }
 
     #[test]
@@ -837,7 +977,7 @@ mod tests {
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -846,11 +986,12 @@ mod tests {
     fn test_serialization_with_trait_2() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        let size = WritablePusPacket::write_to_bytes_crc_no_table(&pus_tc, test_buf.as_mut_slice())
-            .expect("Error writing TC to buffer");
+        let size =
+            WritablePusPacket::write_to_bytes_checksum_no_table(&pus_tc, test_buf.as_mut_slice())
+                .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
@@ -864,13 +1005,13 @@ mod tests {
             .expect("error writing tc to buffer");
         assert_eq!(size, 13);
         assert_eq!(
-            pus_tc.opt_crc16().unwrap(),
+            pus_tc.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
     }
 
     #[test]
-    fn test_serialization_no_crc() {
+    fn test_serialization_no_checksum_generation() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
@@ -882,10 +1023,10 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization_no_crc_with_trait() {
+    fn test_serialization_no_checksum_with_trait() {
         let pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        let size = WritablePusPacket::write_to_bytes_no_crc(&pus_tc, test_buf.as_mut_slice())
+        let size = WritablePusPacket::write_to_bytes_no_checksum(&pus_tc, test_buf.as_mut_slice())
             .expect("error writing tc to buffer");
         assert_eq!(size, 11);
         assert_eq!(test_buf[11], 0);
@@ -915,7 +1056,7 @@ mod tests {
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
         let mut test_buf: [u8; 32] = [0; 32];
         let mut pus_tc =
-            PusTcCreatorWithReservedAppData::new(&mut test_buf, sph, tc_header, 0).unwrap();
+            PusTcCreatorWithReservedAppData::new(&mut test_buf, sph, tc_header, 0, true).unwrap();
         assert_eq!(pus_tc.len_written(), 13);
         assert_eq!(pus_tc.app_data_len(), 0);
         assert_eq!(pus_tc.app_data(), &[]);
@@ -939,7 +1080,7 @@ mod tests {
             .write_to_bytes(test_buf.as_mut_slice())
             .expect("Error writing TC to buffer");
         assert_eq!(size, 13);
-        let tc_from_raw = PusTcReader::new_crc_no_table(&test_buf)
+        let tc_from_raw = PusTcReader::new_checksum_no_table(&test_buf)
             .expect("Creating PUS TC struct from raw buffer failed");
         assert_eq!(tc_from_raw.packet_len(), 13);
         verify_test_tc_with_reader(&tc_from_raw, false, 13);
@@ -965,7 +1106,16 @@ mod tests {
     #[test]
     fn test_update_func() {
         let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
-        let mut tc = PusTcCreator::new_simple(sph, 17, 1, &[], false);
+        let mut tc = PusTcCreator::new_simple(
+            sph,
+            17,
+            1,
+            &[],
+            CreatorConfig {
+                set_ccsds_len: false,
+                has_checksum: true,
+            },
+        );
         assert_eq!(tc.data_len(), 0);
         tc.update_ccsds_data_len();
         assert_eq!(tc.data_len(), 6);
@@ -973,7 +1123,7 @@ mod tests {
 
     #[test]
     fn test_deserialization_with_app_data() {
-        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3], true);
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
@@ -987,7 +1137,7 @@ mod tests {
         assert_eq!(tc_from_raw.user_data(), tc_from_raw.app_data());
         assert_eq!(tc_from_raw.raw_data(), &test_buf[..size]);
         assert_eq!(
-            tc_from_raw.opt_crc16().unwrap(),
+            tc_from_raw.checksum().unwrap(),
             u16::from_be_bytes(test_buf[size - 2..size].try_into().unwrap())
         );
         assert_eq!(user_data[0], 1);
@@ -996,8 +1146,32 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialization_with_app_data_no_checksum() {
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3], false);
+        let mut test_buf: [u8; 32] = [0; 32];
+        let size = pus_tc
+            .write_to_bytes(test_buf.as_mut_slice())
+            .expect("Error writing TC to buffer");
+        assert_eq!(size, 14);
+        let tc_from_raw = PusTcReader::new_no_checksum(&test_buf)
+            .expect("Creating PUS TC struct from raw buffer failed");
+        assert_eq!(tc_from_raw.packet_len(), 14);
+        verify_test_tc_with_reader(&tc_from_raw, true, 14);
+        let user_data = tc_from_raw.user_data();
+        assert_eq!(tc_from_raw.user_data(), tc_from_raw.app_data());
+        assert_eq!(tc_from_raw.raw_data(), &test_buf[..size]);
+        assert_eq!(
+            0,
+            u16::from_be_bytes(test_buf[size..size + 2].try_into().unwrap())
+        );
+        assert_eq!(user_data[0], 1);
+        assert_eq!(user_data[1], 2);
+        assert_eq!(user_data[2], 3);
+    }
+
+    #[test]
     fn test_reader_eq() {
-        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3], true);
         let mut test_buf: [u8; 32] = [0; 32];
         pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
@@ -1056,8 +1230,8 @@ mod tests {
 
     #[test]
     fn test_with_application_data_vec() {
-        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
-        verify_test_tc(&pus_tc, true, 16);
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3], true);
+        verify_test_tc(&pus_tc, true, true, 16);
         let mut test_vec = Vec::new();
         let size = pus_tc.append_to_vec(&mut test_vec);
         assert_eq!(test_vec[11], 1);
@@ -1088,8 +1262,8 @@ mod tests {
 
     #[test]
     fn test_with_application_data_buf() {
-        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3]);
-        verify_test_tc(&pus_tc, true, 16);
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(&[1, 2, 3], true);
+        verify_test_tc(&pus_tc, true, true, 16);
         let mut test_buf: [u8; 32] = [0; 32];
         let size = pus_tc
             .write_to_bytes(test_buf.as_mut_slice())
@@ -1128,7 +1302,12 @@ mod tests {
         assert_eq!(test_buf[10], 0xff);
     }
 
-    fn verify_test_tc(tc: &PusTcCreator, has_user_data: bool, exp_full_len: usize) {
+    fn verify_test_tc(
+        tc: &PusTcCreator,
+        has_user_data: bool,
+        has_checksum: bool,
+        exp_full_len: usize,
+    ) {
         verify_test_tc_generic(tc);
         if !has_user_data {
             assert!(tc.user_data().is_empty());
@@ -1136,6 +1315,11 @@ mod tests {
         let mut comp_header =
             SpHeader::new_for_unseg_tc_checked(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
         comp_header.set_sec_header_flag();
+
+        assert_eq!(tc.has_checksum(), has_checksum);
+        assert_eq!(tc.checksum().is_some(), has_checksum);
+        assert_eq!(PusPacket::has_checksum(tc), has_checksum);
+        assert_eq!(WritablePusPacket::has_checksum(tc), has_checksum);
         assert_eq!(*tc.sp_header(), comp_header);
     }
 
@@ -1229,7 +1413,7 @@ mod tests {
     #[test]
     fn test_reader_buf_too_small() {
         let app_data = &[1, 2, 3, 4];
-        let pus_tc = base_ping_tc_simple_ctor_with_app_data(app_data);
+        let pus_tc = base_ping_tc_simple_ctor_with_app_data(app_data, true);
         let mut buf = [0; 32];
         let written_len = pus_tc.write_to_bytes(&mut buf).unwrap();
         let error = PusTcReader::new(&buf[0..PUS_TC_MIN_LEN_WITHOUT_APP_DATA + 1]);

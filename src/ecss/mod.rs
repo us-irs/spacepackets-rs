@@ -172,7 +172,12 @@ pub trait PusPacket: CcsdsPacket {
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
     fn user_data(&self) -> &[u8];
-    fn opt_crc16(&self) -> Option<u16>;
+    /// CRC-16-CCITT checksum.
+    fn checksum(&self) -> Option<u16>;
+    /// The presence of the CRC-16-CCITT checksum is optional.
+    fn has_checksum(&self) -> bool {
+        self.checksum().is_some()
+    }
 }
 
 pub(crate) fn crc_from_raw_data(raw_data: &[u8]) -> Result<u16, ByteConversionError> {
@@ -199,13 +204,18 @@ pub(crate) fn user_data_from_raw(
     current_idx: usize,
     total_len: usize,
     slice: &[u8],
+    has_checksum: bool,
 ) -> Result<&[u8], ByteConversionError> {
-    match current_idx {
-        _ if current_idx > total_len - 2 => Err(ByteConversionError::FromSliceTooSmall {
-            found: total_len - 2,
-            expected: current_idx,
-        }),
-        _ => Ok(&slice[current_idx..total_len - 2]),
+    if has_checksum {
+        if current_idx > total_len - 2 {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: total_len - 2,
+                expected: current_idx,
+            });
+        }
+        Ok(&slice[current_idx..total_len - 2])
+    } else {
+        Ok(&slice[current_idx..total_len])
     }
 }
 
@@ -373,30 +383,41 @@ pub trait WritablePusPacket {
     /// The length here also includes the CRC length.
     fn len_written(&self) -> usize;
 
-    /// Writes the packet to the given slice without writing the CRC.
-    ///
-    /// The returned size is the written size WITHOUT the CRC.
-    fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+    /// Checksum generation is enabled for the packet.
+    fn has_checksum(&self) -> bool;
 
-    /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
-    /// uses the [CRC_CCITT_FALSE] to calculate the CRC and write it to the slice.
+    /// Writes the packet to the given slice without writing the CRC checksum.
+    ///
+    /// The returned size is the written size WITHOUT the CRC checksum.
+    /// If the checksum generation is disabled, this function is identical to the APIs which
+    /// generate a checksum.
+    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError>;
+
+    /// First uses [Self::write_to_bytes_no_checksum] to write the packet to the given slice and
+    /// then uses the [CRC_CCITT_FALSE] to calculate the CRC and write it to the slice if the
+    /// packet is configured to include a checksum.
     fn write_to_bytes(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = self.write_to_bytes_no_crc(slice)?;
-        let mut digest = CRC_CCITT_FALSE.digest();
-        digest.update(&slice[0..curr_idx]);
-        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
-        curr_idx += 2;
+        let mut curr_idx = self.write_to_bytes_no_checksum(slice)?;
+        if self.has_checksum() {
+            let mut digest = CRC_CCITT_FALSE.digest();
+            digest.update(&slice[0..curr_idx]);
+            slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+            curr_idx += 2;
+        }
         Ok(curr_idx)
     }
 
     /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
-    /// uses the [CRC_CCITT_FALSE_NO_TABLE] to calculate the CRC and write it to the slice.
-    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
-        let mut curr_idx = self.write_to_bytes_no_crc(slice)?;
-        let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
-        digest.update(&slice[0..curr_idx]);
-        slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
-        curr_idx += 2;
+    /// uses the [CRC_CCITT_FALSE_NO_TABLE] to calculate the CRC and write it to the slice if
+    /// the paket is configured to include a checksum.
+    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+        let mut curr_idx = self.write_to_bytes_no_checksum(slice)?;
+        if self.has_checksum() {
+            let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
+            digest.update(&slice[0..curr_idx]);
+            slice[curr_idx..curr_idx + 2].copy_from_slice(&digest.finalize().to_be_bytes());
+            curr_idx += 2;
+        }
         Ok(curr_idx)
     }
 
@@ -408,6 +429,25 @@ pub trait WritablePusPacket {
         let mut vec = alloc::vec![0; self.len_written()];
         self.write_to_bytes(&mut vec)?;
         Ok(vec)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct CreatorConfig {
+    /// Set the CCSDS data length field on construction.
+    pub set_ccsds_len: bool,
+    /// CRC-16-CCITT Checksum is present.
+    pub has_checksum: bool,
+}
+
+impl Default for CreatorConfig {
+    fn default() -> Self {
+        Self {
+            set_ccsds_len: true,
+            has_checksum: true,
+        }
     }
 }
 

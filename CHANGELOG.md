@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Renamed `SeqCountProviderSimple` to `SequenceCounterSimple`
 - Renamed `CcsdsSimpleSeqCountProvider` to `SequenceCounterCcsdsSimple`
 - Renamed `SeqCountProviderSync` to `SequenceCounterSync`
+- Renamed `PusPacket::opt_crc16` to `PusPacket::checksum`
+- ECSS checksum generation is now optional as specified in the standard. Added `has_checksum`
+  parameters for ECSS TM/TC creators and readers to reflect this.
 
 ## Removed
 
@@ -31,6 +34,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
 - Added `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
 - Implemented `SequenceCounter` for `Atomic` unsigned types and references of them
+- `PusPacket::has_checksum` and `WritablePusPacket::has_checksum`
 
 # [v0.15.0] 2025-07-18
 

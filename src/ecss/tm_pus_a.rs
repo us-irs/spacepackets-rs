@@ -508,8 +508,14 @@ impl WritablePusPacket for PusTmCreator<'_, '_> {
     fn len_written(&self) -> usize {
         CCSDS_HEADER_LEN + self.sec_header.written_len() + self.source_data.len() + 2
     }
+
+    /// Currently, checksum is always added.
+    fn has_checksum(&self) -> bool {
+        true
+    }
+
     /// Write the raw PUS byte representation to a provided buffer.
-    fn write_to_bytes_no_crc(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_no_checksum(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_no_crc(self, slice)?)
     }
 
@@ -517,7 +523,7 @@ impl WritablePusPacket for PusTmCreator<'_, '_> {
         Ok(Self::write_to_bytes(self, slice)?)
     }
 
-    fn write_to_bytes_crc_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
+    fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
         Ok(Self::write_to_bytes_crc_no_table(self, slice)?)
     }
 }
@@ -554,7 +560,7 @@ impl PusPacket for PusTmCreator<'_, '_> {
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
         Some(self.calc_own_crc16())
     }
 }
@@ -789,7 +795,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
             sp_header,
             sec_header,
             raw_data: &slice[0..total_len],
-            source_data: user_data_from_raw(current_idx, total_len, slice)?,
+            source_data: user_data_from_raw(current_idx, total_len, slice, true)?,
             crc16: crc_from_raw_data(raw_data)?,
         })
     }
@@ -853,7 +859,7 @@ impl PusPacket for PusTmReader<'_> {
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
         Some(self.crc16())
     }
 }
@@ -1117,7 +1123,7 @@ impl PusPacket for PusTmZeroCopyWriter<'_> {
     }
 
     #[inline]
-    fn opt_crc16(&self) -> Option<u16> {
+    fn checksum(&self) -> Option<u16> {
         Some(u16::from_be_bytes(
             self.raw_tm[self.sp_header().packet_len() - 2..self.sp_header().packet_len()]
                 .try_into()
@@ -1244,7 +1250,7 @@ mod tests {
             .write_to_bytes(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 18);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), &buf, ser_len, None, None);
+        verify_raw_ping_reply(pus_tm.checksum(), &buf, ser_len, None, None);
     }
 
     #[test]
@@ -1262,7 +1268,7 @@ mod tests {
             .write_to_bytes(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 21);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), &buf, ser_len, msg_counter, dest_id);
+        verify_raw_ping_reply(pus_tm.checksum(), &buf, ser_len, msg_counter, dest_id);
     }
 
     #[test]
@@ -1280,7 +1286,7 @@ mod tests {
             .write_to_bytes(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 20);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), &buf, ser_len, msg_counter, dest_id);
+        verify_raw_ping_reply(pus_tm.checksum(), &buf, ser_len, msg_counter, dest_id);
     }
 
     #[test]
@@ -1298,7 +1304,7 @@ mod tests {
             .write_to_bytes(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 19);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), &buf, ser_len, msg_counter, dest_id);
+        verify_raw_ping_reply(pus_tm.checksum(), &buf, ser_len, msg_counter, dest_id);
     }
 
     #[test]
@@ -1344,7 +1350,7 @@ mod tests {
             .write_to_bytes_crc_no_table(&mut buf)
             .expect("Serialization failed");
         assert_eq!(ser_len, 18);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), &buf, ser_len, None, None);
+        verify_raw_ping_reply(pus_tm.checksum(), &buf, ser_len, None, None);
     }
 
     #[test]
@@ -1453,7 +1459,7 @@ mod tests {
         assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
-        assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
+        assert_eq!(tm_deserialized.crc16(), pus_tm.checksum().unwrap());
         verify_ping_reply_with_reader(&tm_deserialized, false, 18, dummy_timestamp(), None, None);
     }
 
@@ -1484,7 +1490,7 @@ mod tests {
         assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
-        assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
+        assert_eq!(tm_deserialized.crc16(), pus_tm.checksum().unwrap());
         verify_ping_reply_with_reader(
             &tm_deserialized,
             false,
@@ -1556,7 +1562,7 @@ mod tests {
         assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
-        assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
+        assert_eq!(tm_deserialized.crc16(), pus_tm.checksum().unwrap());
         verify_ping_reply_with_reader(&tm_deserialized, false, 18, dummy_timestamp(), None, None);
     }
 
@@ -1574,7 +1580,7 @@ mod tests {
         assert_eq!(ser_len, tm_deserialized.packet_len());
         assert_eq!(tm_deserialized.user_data(), tm_deserialized.source_data());
         assert_eq!(tm_deserialized.raw_data(), &buf[..ser_len]);
-        assert_eq!(tm_deserialized.crc16(), pus_tm.opt_crc16().unwrap());
+        assert_eq!(tm_deserialized.crc16(), pus_tm.checksum().unwrap());
         verify_ping_reply_with_reader(&tm_deserialized, false, 18, dummy_timestamp(), None, None);
     }
 
@@ -1644,7 +1650,7 @@ mod tests {
         let res = pus_tm.append_to_vec(&mut vec);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), 18);
-        verify_raw_ping_reply(pus_tm.opt_crc16(), vec.as_slice(), res.unwrap(), None, None);
+        verify_raw_ping_reply(pus_tm.checksum(), vec.as_slice(), res.unwrap(), None, None);
     }
 
     #[test]
@@ -1881,7 +1887,7 @@ mod tests {
         }
         assert_eq!(writer.user_data(), DUMMY_DATA);
         // Need to check crc16 before finish, because finish will update the CRC.
-        let crc16 = writer.opt_crc16();
+        let crc16 = writer.checksum();
         assert!(crc16.is_some());
         assert_eq!(crc16.unwrap(), crc16_raw);
         writer.finish();
