@@ -160,7 +160,64 @@ impl SequenceCounter for core::sync::atomic::AtomicU32 {
     }
 }
 
+#[cfg(target_has_atomic = "64")]
 impl SequenceCounter for core::sync::atomic::AtomicU64 {
+    type Raw = u64;
+
+    const MAX_BIT_WIDTH: usize = 64;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for portable_atomic::AtomicU8 {
+    type Raw = u8;
+
+    const MAX_BIT_WIDTH: usize = 8;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for portable_atomic::AtomicU16 {
+    type Raw = u16;
+
+    const MAX_BIT_WIDTH: usize = 16;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for portable_atomic::AtomicU32 {
+    type Raw = u32;
+
+    const MAX_BIT_WIDTH: usize = 32;
+
+    fn get(&self) -> Self::Raw {
+        self.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn increment(&self) {
+        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl SequenceCounter for portable_atomic::AtomicU64 {
     type Raw = u64;
 
     const MAX_BIT_WIDTH: usize = 64;
@@ -188,9 +245,8 @@ impl<T: SequenceCounter + ?Sized> SequenceCounter for &T {
 }
 
 macro_rules! sync_clonable_seq_counter_impl {
-     ($($ty: ident,)+) => {
-         $(paste! {
-
+    ($ty: ident) => {
+        paste::paste! {
             /// This can be used if a custom wrap value is required when using a thread-safe
             /// atomic based sequence counter.
             #[derive(Debug)]
@@ -232,15 +288,22 @@ macro_rules! sync_clonable_seq_counter_impl {
                     ).unwrap()
                 }
             }
-        })+
-    }
+        }
+    };
 }
 
-sync_clonable_seq_counter_impl!(u8, u16, u32, u64,);
+#[cfg(target_has_atomic = "8")]
+sync_clonable_seq_counter_impl!(u8);
+#[cfg(target_has_atomic = "16")]
+sync_clonable_seq_counter_impl!(u16);
+#[cfg(target_has_atomic = "32")]
+sync_clonable_seq_counter_impl!(u32);
+#[cfg(target_has_atomic = "64")]
+sync_clonable_seq_counter_impl!(u64);
 
 #[cfg(test)]
 mod tests {
-    use core::sync::atomic::AtomicU8;
+    use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 
     use crate::seq_count::{
         SequenceCounter, SequenceCounterCcsdsSimple, SequenceCounterSimple,
@@ -284,22 +347,82 @@ mod tests {
         assert_eq!(ccsds_counter.get(), 0);
     }
 
-    #[test]
-    fn test_atomic_ref_counters() {
-        let sync_u8_counter = AtomicU8::new(0);
-        assert_eq!(sync_u8_counter.get(), 0);
-        assert_eq!(sync_u8_counter.get_and_increment(), 0);
-        assert_eq!(sync_u8_counter.get_and_increment(), 1);
-        assert_eq!(sync_u8_counter.get(), 2);
+    fn common_counter_test(seq_counter: &mut impl SequenceCounter) {
+        assert_eq!(seq_counter.get().into(), 0);
+        assert_eq!(seq_counter.get_and_increment().into(), 0);
+        assert_eq!(seq_counter.get_and_increment().into(), 1);
+        assert_eq!(seq_counter.get().into(), 2);
+        seq_counter.increment_mut();
+        assert_eq!(seq_counter.get().into(), 3);
+        assert_eq!(seq_counter.get_and_increment_mut().into(), 3);
+        assert_eq!(seq_counter.get().into(), 4);
     }
 
     #[test]
-    fn test_atomic_ref_counters_overflow() {
-        let sync_u8_counter = AtomicU8::new(0);
+    fn test_atomic_counter_u8() {
+        let mut sync_u8_counter = AtomicU8::new(0);
+        common_counter_test(&mut sync_u8_counter);
+    }
+
+    #[test]
+    fn test_atomic_counter_u16() {
+        let mut sync_u16_counter = AtomicU16::new(0);
+        common_counter_test(&mut sync_u16_counter);
+    }
+
+    #[test]
+    fn test_atomic_counter_u32() {
+        let mut sync_u32_counter = AtomicU32::new(0);
+        common_counter_test(&mut sync_u32_counter);
+    }
+
+    #[test]
+    fn test_atomic_counter_u64() {
+        let mut sync_u64_counter = AtomicU64::new(0);
+        common_counter_test(&mut sync_u64_counter);
+    }
+
+    #[test]
+    fn test_portable_atomic_counter_u8() {
+        let mut sync_u8_counter = portable_atomic::AtomicU8::new(0);
+        common_counter_test(&mut sync_u8_counter);
+    }
+
+    #[test]
+    fn test_portable_atomic_counter_u16() {
+        let mut sync_u16_counter = portable_atomic::AtomicU16::new(0);
+        common_counter_test(&mut sync_u16_counter);
+    }
+
+    #[test]
+    fn test_portable_atomic_counter_u32() {
+        let mut sync_u32_counter = portable_atomic::AtomicU32::new(0);
+        common_counter_test(&mut sync_u32_counter);
+    }
+
+    #[test]
+    fn test_portable_atomic_counter_u64() {
+        let mut sync_u64_counter = portable_atomic::AtomicU64::new(0);
+        common_counter_test(&mut sync_u64_counter);
+    }
+
+    fn common_overflow_test_u8(seq_counter: &impl SequenceCounter) {
         for _ in 0..u8::MAX as u16 + 1 {
-            sync_u8_counter.increment();
+            seq_counter.increment();
         }
-        assert_eq!(sync_u8_counter.get(), 0);
+        assert_eq!(seq_counter.get().into(), 0);
+    }
+
+    #[test]
+    fn test_atomic_u8_counter_overflow() {
+        let sync_u8_counter = AtomicU8::new(0);
+        common_overflow_test_u8(&sync_u8_counter);
+    }
+
+    #[test]
+    fn test_portable_atomic_u8_counter_overflow() {
+        let sync_u8_counter = portable_atomic::AtomicU8::new(0);
+        common_overflow_test_u8(&sync_u8_counter);
     }
 
     #[test]
