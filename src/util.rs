@@ -1,9 +1,7 @@
 use crate::ByteConversionError;
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::Debug;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::error::Error;
 
 pub trait ToBeBytes {
     type ByteArray: AsRef<[u8]>;
@@ -100,49 +98,23 @@ pub trait UnsignedEnum {
 
 pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq {}
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UnsignedByteFieldError {
     /// Value is too large for specified width of byte field.
-    ValueTooLargeForWidth {
-        width: usize,
-        value: u64,
-    },
+    #[error("value {value} too large for width {width}")]
+    ValueTooLargeForWidth { width: usize, value: u64 },
     /// Only 1, 2, 4 and 8 are allow width values. Optionally contains the expected width if
     /// applicable, for example for conversions.
+    #[error("invalid width {found}, expected {expected:?}")]
     InvalidWidth {
         found: usize,
         expected: Option<usize>,
     },
-    ByteConversionError(ByteConversionError),
+    #[error("byte conversion error: {0}")]
+    ByteConversionError(#[from] ByteConversionError),
 }
-
-impl From<ByteConversionError> for UnsignedByteFieldError {
-    #[inline]
-    fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversionError(value)
-    }
-}
-
-impl Display for UnsignedByteFieldError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::ByteConversionError(e) => {
-                write!(f, "low level byte conversion error: {e}")
-            }
-            Self::InvalidWidth { found, .. } => {
-                write!(f, "invalid width {found}, only 1, 2, 4 and 8 are allowed.")
-            }
-            Self::ValueTooLargeForWidth { width, value } => {
-                write!(f, "value {value} too large for width {width}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for UnsignedByteFieldError {}
 
 /// Type erased variant.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

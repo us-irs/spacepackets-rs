@@ -88,17 +88,10 @@ pub const CCSDS_HEADER_LEN: usize = core::mem::size_of::<crate::zc::SpHeader>();
 pub const MAX_APID: u11 = u11::MAX;
 pub const MAX_SEQ_COUNT: u14 = u14::MAX;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[error("apid is out of range, maximum value is {MAX_APID}")]
-pub struct ApidOutOfRangeError(u16);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[error("apid is out of range, maximum value is {MAX_SEQ_COUNT}")]
-pub struct SequenceCountOutOfRangeError(u16);
+#[inline]
+pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
+    PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
+}
 
 /// Generic error type when converting to and from raw byte slices.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
@@ -134,10 +127,6 @@ pub enum ZeroCopyError {
 pub enum PacketType {
     Tm = 0,
     Tc = 1,
-}
-
-pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
-    PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
 }
 
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
@@ -203,22 +192,16 @@ impl Default for PacketId {
 }
 
 impl PacketId {
-    /// This constructor will panic if the passed APID exceeds [MAX_APID].
-    /// Use the checked constructor variants to avoid panics.
     #[inline]
     pub const fn new_for_tc(sec_header: bool, apid: u11) -> Self {
         Self::new(PacketType::Tc, sec_header, apid)
     }
 
-    /// This constructor will panic if the passed APID exceeds [MAX_APID].
-    /// Use the checked constructor variants to avoid panics.
     #[inline]
     pub const fn new_for_tm(sec_header: bool, apid: u11) -> Self {
         Self::new(PacketType::Tm, sec_header, apid)
     }
 
-    /// This constructor will panic if the passed APID exceeds [MAX_APID].
-    /// Use the checked variants to avoid panics.
     #[inline]
     pub const fn new(ptype: PacketType, sec_header: bool, apid: u11) -> Self {
         PacketId {

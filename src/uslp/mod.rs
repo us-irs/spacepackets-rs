@@ -5,11 +5,10 @@ use crate::{crc::CRC_CCITT_FALSE, ByteConversionError};
 pub const USLP_VERSION_NUMBER: u8 = 0b1100;
 
 /// Identifies the association of the data contained in the transfer frame.
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum SourceOrDestField {
     /// SCID refers to the source of the transfer frame.
@@ -18,11 +17,10 @@ pub enum SourceOrDestField {
     Dest = 1,
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum BypassSequenceControlFlag {
     /// Acceptance of this frame on the receiving end is subject to normal frame acceptance
@@ -43,22 +41,24 @@ pub enum ProtocolControlCommandFlag {
     TfdfContainsProtocolInfo = 1,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UslpError {
-    ByteConversion(ByteConversionError),
+    #[error("byte conversion error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    #[error("header is truncated, which is not supported")]
     HeaderIsTruncated,
+    #[error("invalid protocol id: {0}")]
     InvalidProtocolId(u8),
+    #[error("invalid construction rule: {0}")]
     InvalidConstructionRule(u8),
+    #[error("invalid version number: {0}")]
     InvalidVersionNumber(u8),
-    InvalidVcid(u8),
+    #[error("invalid virtual channel ID: {0}")]
+    InvalidVcId(u8),
+    #[error("invalid MAP ID: {0}")]
     InvalidMapId(u8),
+    #[error("checksum failure")]
     ChecksumFailure(u16),
-}
-
-impl From<ByteConversionError> for UslpError {
-    fn from(value: ByteConversionError) -> Self {
-        Self::ByteConversion(value)
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -94,7 +94,7 @@ impl PrimaryHeader {
         frame_len: u16,
     ) -> Result<Self, UslpError> {
         if vc_id > 0b111111 {
-            return Err(UslpError::InvalidVcid(vc_id));
+            return Err(UslpError::InvalidVcId(vc_id));
         }
         if map_id > 0b1111 {
             return Err(UslpError::InvalidMapId(map_id));
@@ -271,11 +271,10 @@ impl PartialEq for PrimaryHeader {
     }
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u5, exhaustive = false)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum UslpProtocolId {
@@ -293,11 +292,10 @@ pub enum UslpProtocolId {
     Idle = 0b11111,
 }
 
-#[derive(
-    Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
-)]
+#[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u3, exhaustive = true)]
 #[repr(u8)]
 pub enum ConstructionRule {
     /// Indicated fixed-length TFDZ whose contents are CCSDS packets concatenated together, which
@@ -339,7 +337,8 @@ pub struct TransferFrameDataFieldHeader {
 }
 
 impl TransferFrameDataFieldHeader {
-    pub fn len_header(&self) -> usize {
+    #[inline]
+    pub const fn len_header(&self) -> usize {
         if self.construction_rule.applicable_to_fixed_len_tfdz() {
             3
         } else {
@@ -347,15 +346,18 @@ impl TransferFrameDataFieldHeader {
         }
     }
 
-    pub fn construction_rule(&self) -> ConstructionRule {
+    #[inline]
+    pub const fn construction_rule(&self) -> ConstructionRule {
         self.construction_rule
     }
 
-    pub fn uslp_protocol_id(&self) -> UslpProtocolId {
+    #[inline]
+    pub const fn uslp_protocol_id(&self) -> UslpProtocolId {
         self.uslp_protocol_id
     }
 
-    pub fn fhp_or_lvo(&self) -> Option<u16> {
+    #[inline]
+    pub const fn fhp_or_lvo(&self) -> Option<u16> {
         self.fhp_or_lvo
     }
 
@@ -449,22 +451,27 @@ impl<'buf> TransferFrameReader<'buf> {
         })
     }
 
+    #[inline]
     pub fn len_frame(&self) -> usize {
         self.primary_header.len_frame()
     }
 
+    #[inline]
     pub fn primary_header(&self) -> &PrimaryHeader {
         &self.primary_header
     }
 
+    #[inline]
     pub fn data_field_header(&self) -> &TransferFrameDataFieldHeader {
         &self.data_field_header
     }
 
+    #[inline]
     pub fn data(&self) -> &'buf [u8] {
         self.data
     }
 
+    #[inline]
     pub fn operational_control_field(&self) -> &Option<u32> {
         &self.operational_control_field
     }
@@ -669,7 +676,7 @@ mod tests {
         );
         assert!(error.is_err());
         let error = error.unwrap_err();
-        matches!(error, UslpError::InvalidVcid(0b1101011));
+        matches!(error, UslpError::InvalidVcId(0b1101011));
     }
 
     #[test]
