@@ -7,17 +7,18 @@
 //! use spacepackets::{CcsdsPacket, SpHeader};
 //! use spacepackets::ecss::{PusPacket, WritablePusPacket};
 //! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
+//! use arbitrary_int::u11;
 //!
 //! // Create a ping telecommand with no user application data
 //! let pus_tc = PusTcCreator::new_no_app_data(
-//!     SpHeader::new_from_apid(0x02),
+//!     SpHeader::new_from_apid(u11::new(0x02)),
 //!     PusTcSecondaryHeader::new_simple(17, 1),
 //!     CreatorConfig::default()
 //! );
 //! println!("{:?}", pus_tc);
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
-//! assert_eq!(pus_tc.apid(), 0x02);
+//! assert_eq!(pus_tc.apid().value(), 0x02);
 //!
 //! // Serialize TC into a raw buffer
 //! let mut test_buf: [u8; 32] = [0; 32];
@@ -31,7 +32,7 @@
 //! let pus_tc_deserialized = PusTcReader::new(&test_buf).expect("Deserialization failed");
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
-//! assert_eq!(pus_tc.apid(), 0x02);
+//! assert_eq!(pus_tc.apid().value(), 0x02);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 pub use crate::ecss::CreatorConfig;
@@ -42,12 +43,16 @@ use crate::ecss::{
 };
 use crate::SpHeader;
 use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
+use arbitrary_int::{u11, u14, u3, u4};
 use core::mem::size_of;
 use delegate::delegate;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use zerocopy::{FromBytes, IntoBytes};
+
+// Is necessary for some reason, possibly bug.
+#[cfg(feature = "defmt")]
+use arbitrary_int::traits::Integer;
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -62,33 +67,44 @@ const PUS_VERSION: PusVersion = PusVersion::PusC;
 /// Marker trait for PUS telecommand structures.
 pub trait IsPusTelecommand {}
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
+#[bitbybit::bitfield(u4, default = 0b0000, debug, defmt_bitfields(feature = "defmt"))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-#[repr(u8)]
-enum AckOpts {
-    Acceptance = 0b1000,
-    Start = 0b0100,
-    Progress = 0b0010,
-    Completion = 0b0001,
+#[derive(PartialEq, Eq)]
+pub struct AckFlags {
+    #[bit(3, rw)]
+    acceptance: bool,
+    #[bit(2, rw)]
+    start: bool,
+    #[bit(1, rw)]
+    progress: bool,
+    #[bit(0, rw)]
+    completion: bool,
 }
 
-pub const ACK_ALL: u8 = AckOpts::Acceptance as u8
-    | AckOpts::Start as u8
-    | AckOpts::Progress as u8
-    | AckOpts::Completion as u8;
+pub const ACK_ALL: AckFlags = AckFlags::builder()
+    .with_acceptance(true)
+    .with_start(true)
+    .with_progress(true)
+    .with_completion(true)
+    .build();
+
+impl AckFlags {
+    pub const ALL: Self = ACK_ALL;
+}
 
 pub trait GenericPusTcSecondaryHeader {
-    fn pus_version(&self) -> Result<PusVersion, u8>;
-    fn ack_flags(&self) -> u8;
+    fn pus_version(&self) -> Result<PusVersion, u4>;
+    fn ack_flags(&self) -> AckFlags;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
     fn source_id(&self) -> u16;
 }
 
 pub mod zc {
-    use crate::ecss::tc::GenericPusTcSecondaryHeader;
+    use crate::ecss::tc::{AckFlags, GenericPusTcSecondaryHeader};
     use crate::ecss::{PusError, PusVersion};
+    use arbitrary_int::traits::Integer;
+    use arbitrary_int::u4;
     use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
@@ -104,10 +120,10 @@ pub mod zc {
         type Error = PusError;
         fn try_from(value: crate::ecss::tc::PusTcSecondaryHeader) -> Result<Self, Self::Error> {
             if value.version != PusVersion::PusC {
-                return Err(PusError::VersionNotSupported(value.version as u8));
+                return Err(PusError::VersionNotSupported(value.version.raw_value()));
             }
             Ok(PusTcSecondaryHeader {
-                version_ack: ((value.version as u8) << 4) | value.ack,
+                version_ack: ((value.version as u8) << 4) | value.ack_flags.raw_value().as_u8(),
                 service: value.service,
                 subservice: value.subservice,
                 source_id: U16::from(value.source_id),
@@ -117,13 +133,13 @@ pub mod zc {
 
     impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8> {
-            PusVersion::try_from((self.version_ack >> 4) & 0b1111)
+        fn pus_version(&self) -> Result<PusVersion, u4> {
+            PusVersion::try_from(u4::new((self.version_ack >> 4) & 0b1111))
         }
 
         #[inline]
-        fn ack_flags(&self) -> u8 {
-            self.version_ack & 0b1111
+        fn ack_flags(&self) -> AckFlags {
+            AckFlags::new_with_raw_value(u4::new(self.version_ack & 0b1111))
         }
 
         #[inline]
@@ -150,19 +166,19 @@ pub struct PusTcSecondaryHeader {
     pub service: u8,
     pub subservice: u8,
     pub source_id: u16,
-    pub ack: u8,
+    pub ack_flags: AckFlags,
     pub version: PusVersion,
 }
 
 impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
     #[inline]
-    fn pus_version(&self) -> Result<PusVersion, u8> {
+    fn pus_version(&self) -> Result<PusVersion, u4> {
         Ok(self.version)
     }
 
     #[inline]
-    fn ack_flags(&self) -> u8 {
-        self.ack
+    fn ack_flags(&self) -> AckFlags {
+        self.ack_flags
     }
 
     #[inline]
@@ -189,30 +205,32 @@ impl TryFrom<zc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
             service: value.service(),
             subservice: value.subservice(),
             source_id: value.source_id(),
-            ack: value.ack_flags(),
+            ack_flags: value.ack_flags(),
             version: PUS_VERSION,
         })
     }
 }
 
 impl PusTcSecondaryHeader {
+    pub const HEADER_LEN: usize = PUC_TC_SECONDARY_HEADER_LEN;
+
     #[inline]
     pub fn new_simple(service: u8, subservice: u8) -> Self {
         PusTcSecondaryHeader {
             service,
             subservice,
-            ack: ACK_ALL,
+            ack_flags: ACK_ALL,
             source_id: 0,
             version: PusVersion::PusC,
         }
     }
 
     #[inline]
-    pub fn new(service: u8, subservice: u8, ack: u8, source_id: u16) -> Self {
+    pub fn new(service: u8, subservice: u8, ack_flags: AckFlags, source_id: u16) -> Self {
         PusTcSecondaryHeader {
             service,
             subservice,
-            ack: ack & 0b1111,
+            ack_flags,
             source_id,
             version: PusVersion::PusC,
         }
@@ -307,12 +325,8 @@ impl<'app_data> PusTcCreator<'app_data> {
     }
 
     #[inline]
-    pub fn set_ack_field(&mut self, ack: u8) -> bool {
-        if ack > 0b1111 {
-            return false;
-        }
-        self.sec_header.ack = ack & 0b1111;
-        true
+    pub fn set_ack_flags(&mut self, ack_flags: AckFlags) {
+        self.sec_header.ack_flags = ack_flags;
     }
 
     #[inline]
@@ -462,7 +476,7 @@ impl CcsdsPacket for PusTcCreator<'_> {
 impl PusPacket for PusTcCreator<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8>;
+        fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
         fn service(&self) -> u8;
         #[inline]
@@ -490,7 +504,7 @@ impl PusPacket for PusTcCreator<'_> {
 impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8>;
+        fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
         fn service(&self) -> u8;
         #[inline]
@@ -498,7 +512,7 @@ impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
         #[inline]
         fn source_id(&self) -> u16;
         #[inline]
-        fn ack_flags(&self) -> u8;
+        fn ack_flags(&self) -> AckFlags;
     });
 }
 
@@ -570,9 +584,10 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header_len = size_of::<zc::PusTcSecondaryHeader>();
         let sec_header_zc = zc::PusTcSecondaryHeader::try_from(sec_header).unwrap();
+        // Unwrap okay, this can not fail.
         sec_header_zc
             .write_to(&mut buf[curr_idx..curr_idx + sec_header_len])
-            .map_err(|_| ByteConversionError::ZeroCopyToError)?;
+            .unwrap();
         curr_idx += sec_header_len;
         let app_data_offset = curr_idx;
         curr_idx += app_data_len;
@@ -750,10 +765,11 @@ impl<'raw_data> PusTcReader<'raw_data> {
             }
             .into());
         }
+        // Unwrap okay, this can not fail.
         let sec_header = zc::PusTcSecondaryHeader::read_from_bytes(
-            &slice[current_idx..current_idx + PUC_TC_SECONDARY_HEADER_LEN],
+            &slice[current_idx..current_idx + core::mem::size_of::<zc::PusTcSecondaryHeader>()],
         )
-        .map_err(|_| ByteConversionError::ZeroCopyFromError)?;
+        .unwrap();
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
         let mut crc16 = None;
@@ -809,7 +825,7 @@ impl CcsdsPacket for PusTcReader<'_> {
 impl PusPacket for PusTcReader<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8>;
+        fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
         fn service(&self) -> u8;
         #[inline]
@@ -834,7 +850,7 @@ impl PusPacket for PusTcReader<'_> {
 impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn pus_version(&self) -> Result<PusVersion, u8>;
+        fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
         fn service(&self) -> u8;
         #[inline]
@@ -842,7 +858,7 @@ impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
         #[inline]
         fn source_id(&self) -> u16;
         #[inline]
-        fn ack_flags(&self) -> u8;
+        fn ack_flags(&self) -> AckFlags;
     });
 }
 
@@ -873,17 +889,18 @@ mod tests {
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::string::ToString;
     use alloc::vec::Vec;
+    use arbitrary_int::traits::Integer;
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
 
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
         PusTcCreator::new_no_app_data(sph, tc_header, CreatorConfig::default())
     }
 
     fn base_ping_tc_full_ctor_no_checksum() -> PusTcCreator<'static> {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
         PusTcCreator::new_no_app_data(
             sph,
@@ -896,12 +913,12 @@ mod tests {
     }
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(sph, 17, 1, &[], CreatorConfig::default())
     }
 
     fn base_ping_tc_simple_ctor_no_checksum() -> PusTcCreator<'static> {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(
             sph,
             17,
@@ -918,7 +935,7 @@ mod tests {
         app_data: &'static [u8],
         has_checksum: bool,
     ) -> PusTcCreator<'static> {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(
             sph,
             17,
@@ -1052,7 +1069,7 @@ mod tests {
 
     #[test]
     fn test_deserialization_alt_ctor() {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
         let mut test_buf: [u8; 32] = [0; 32];
         let mut pus_tc =
@@ -1105,7 +1122,7 @@ mod tests {
 
     #[test]
     fn test_update_func() {
-        let sph = SpHeader::new_for_unseg_tc_checked(0x02, 0x34, 0).unwrap();
+        let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         let mut tc = PusTcCreator::new_simple(
             sph,
             17,
@@ -1278,15 +1295,15 @@ mod tests {
     fn test_custom_setters() {
         let mut pus_tc = base_ping_tc_simple_ctor();
         let mut test_buf: [u8; 32] = [0; 32];
-        pus_tc.set_apid(0x7ff);
-        pus_tc.set_seq_count(0x3fff);
-        pus_tc.set_ack_field(0b11);
+        pus_tc.set_apid(u11::new(0x7ff));
+        pus_tc.set_seq_count(u14::new(0x3fff));
+        pus_tc.set_ack_flags(AckFlags::new_with_raw_value(u4::new(0b11)));
         pus_tc.set_source_id(0xffff);
         pus_tc.set_seq_flags(SequenceFlags::Unsegmented);
-        assert_eq!(pus_tc.source_id(), 0xffff);
-        assert_eq!(pus_tc.seq_count(), 0x3fff);
-        assert_eq!(pus_tc.ack_flags(), 0b11);
-        assert_eq!(pus_tc.apid(), 0x7ff);
+        assert_eq!(pus_tc.source_id().value(), 0xffff);
+        assert_eq!(pus_tc.seq_count().value(), 0x3fff);
+        assert_eq!(pus_tc.ack_flags().raw_value().value(), 0b11);
+        assert_eq!(pus_tc.apid().value(), 0x7ff);
         assert_eq!(pus_tc.sequence_flags(), SequenceFlags::Unsegmented);
         pus_tc.calc_own_crc16();
         pus_tc
@@ -1313,7 +1330,7 @@ mod tests {
             assert!(tc.user_data().is_empty());
         }
         let mut comp_header =
-            SpHeader::new_for_unseg_tc_checked(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
+            SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), exp_full_len as u16 - 7);
         comp_header.set_sec_header_flag();
 
         assert_eq!(tc.has_checksum(), has_checksum);
@@ -1330,7 +1347,7 @@ mod tests {
         }
         assert_eq!(tc.len_packed(), exp_full_len);
         let mut comp_header =
-            SpHeader::new_for_unseg_tc_checked(0x02, 0x34, exp_full_len as u16 - 7).unwrap();
+            SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), exp_full_len as u16 - 7);
         comp_header.set_sec_header_flag();
         assert_eq!(*tc.sp_header(), comp_header);
     }
@@ -1342,9 +1359,9 @@ mod tests {
         assert_eq!(GenericPusTcSecondaryHeader::subservice(tc), 1);
         assert!(tc.sec_header_flag());
         assert_eq!(PusPacket::pus_version(tc).unwrap(), PusC);
-        assert_eq!(tc.seq_count(), 0x34);
-        assert_eq!(tc.source_id(), 0);
-        assert_eq!(tc.apid(), 0x02);
+        assert_eq!(tc.seq_count().value(), 0x34);
+        assert_eq!(tc.source_id().value(), 0);
+        assert_eq!(tc.apid().value(), 0x02);
         assert_eq!(tc.ack_flags(), ACK_ALL);
         assert_eq!(PusPacket::pus_version(tc).unwrap(), PusVersion::PusC);
         assert_eq!(
@@ -1401,13 +1418,6 @@ mod tests {
         pus_tc.write_to_bytes(&mut buf).unwrap();
         assert_eq!(pus_tc, PusTcReader::new(&buf).unwrap());
         assert_eq!(PusTcReader::new(&buf).unwrap(), pus_tc);
-    }
-
-    #[test]
-    fn test_ack_opts_from_raw() {
-        let ack_opts_raw = AckOpts::Start as u8;
-        let ack_opts = AckOpts::try_from(ack_opts_raw).unwrap();
-        assert_eq!(ack_opts, AckOpts::Start);
     }
 
     #[test]

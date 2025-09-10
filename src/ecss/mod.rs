@@ -9,6 +9,7 @@ use crate::{
 };
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+use arbitrary_int::u4;
 use core::fmt::Debug;
 use core::mem::size_of;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -74,9 +75,11 @@ pub enum PusServiceId {
 }
 
 /// All PUS versions. Only PUS C is supported by this library.
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Debug, num_enum::TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u4, exhaustive = false)]
+#[repr(u8)]
 #[non_exhaustive]
 pub enum PusVersion {
     EsaPus = 0,
@@ -84,14 +87,14 @@ pub enum PusVersion {
     PusC = 2,
 }
 
-impl TryFrom<u8> for PusVersion {
-    type Error = u8;
+impl TryFrom<u4> for PusVersion {
+    type Error = u4;
 
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
+    fn try_from(value: u4) -> Result<Self, Self::Error> {
         match value {
-            x if x == PusVersion::EsaPus as u8 => Ok(PusVersion::EsaPus),
-            x if x == PusVersion::PusA as u8 => Ok(PusVersion::PusA),
-            x if x == PusVersion::PusC as u8 => Ok(PusVersion::PusC),
+            x if x == PusVersion::EsaPus.raw_value() => Ok(PusVersion::EsaPus),
+            x if x == PusVersion::PusA.raw_value() => Ok(PusVersion::PusA),
+            x if x == PusVersion::PusC.raw_value() => Ok(PusVersion::PusC),
             _ => Err(value),
         }
     }
@@ -155,7 +158,7 @@ pub enum PfcReal {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
     #[error("PUS version {0:?} not supported")]
-    VersionNotSupported(u8),
+    VersionNotSupported(u4),
     #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
@@ -168,7 +171,7 @@ pub enum PusError {
 /// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry
 /// (TM) packets. All PUS packets are also a special type of [CcsdsPacket]s.
 pub trait PusPacket: CcsdsPacket {
-    fn pus_version(&self) -> Result<PusVersion, u8>;
+    fn pus_version(&self) -> Result<PusVersion, u4>;
     fn service(&self) -> u8;
     fn subservice(&self) -> u8;
     fn user_data(&self) -> &[u8];
@@ -261,11 +264,11 @@ macro_rules! ccsds_impl {
     () => {
         delegate!(to self.sp_header {
             #[inline]
-            fn ccsds_version(&self) -> u8;
+            fn ccsds_version(&self) -> u3;
             #[inline]
             fn packet_id(&self) -> crate::PacketId;
             #[inline]
-            fn psc(&self) -> crate::PacketSequenceCtrl;
+            fn psc(&self) -> crate::PacketSequenceControl;
             #[inline]
             fn data_len(&self) -> u16;
         });
@@ -276,9 +279,9 @@ macro_rules! sp_header_impls {
     () => {
         delegate!(to self.sp_header {
             #[inline]
-            pub fn set_apid(&mut self, apid: u16) -> bool;
+            pub fn set_apid(&mut self, apid: u11);
             #[inline]
-            pub fn set_seq_count(&mut self, seq_count: u16) -> bool;
+            pub fn set_seq_count(&mut self, seq_count: u14);
             #[inline]
             pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
         });
@@ -407,7 +410,7 @@ pub trait WritablePusPacket {
         Ok(curr_idx)
     }
 
-    /// First uses [Self::write_to_bytes_no_crc] to write the packet to the given slice and then
+    /// First uses [Self::write_to_bytes_no_checksum] to write the packet to the given slice and then
     /// uses the [CRC_CCITT_FALSE_NO_TABLE] to calculate the CRC and write it to the slice if
     /// the paket is configured to include a checksum.
     fn write_to_bytes_checksum_no_table(&self, slice: &mut [u8]) -> Result<usize, PusError> {
@@ -578,7 +581,8 @@ mod tests {
 
     #[test]
     fn test_pus_error_display() {
-        let unsupport_version = PusError::VersionNotSupported(super::PusVersion::EsaPus as u8);
+        let unsupport_version =
+            PusError::VersionNotSupported(super::PusVersion::EsaPus.raw_value());
         let write_str = unsupport_version.to_string();
         assert_eq!(write_str, "PUS version 0 not supported")
     }
@@ -614,8 +618,8 @@ mod tests {
     #[test]
     fn test_pus_error_eq_impl() {
         assert_eq!(
-            PusError::VersionNotSupported(PusVersion::EsaPus as u8),
-            PusError::VersionNotSupported(PusVersion::EsaPus as u8)
+            PusError::VersionNotSupported(PusVersion::EsaPus.raw_value()),
+            PusError::VersionNotSupported(PusVersion::EsaPus.raw_value())
         );
     }
 

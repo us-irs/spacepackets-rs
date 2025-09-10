@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+- Bump Rust MSRV to v1.83
+
 ## Changed
 
 - CFDP NAK PDU `SegmentRequestIter` is not generic over the file size anymore. Instead, the
@@ -22,8 +24,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Renamed `CcsdsSimpleSeqCountProvider` to `SequenceCounterCcsdsSimple`
 - Renamed `SeqCountProviderSync` to `SequenceCounterSync`
 - Renamed `PusPacket::opt_crc16` to `PusPacket::checksum`
+- Renamed `PacketSequenceCtrl` to `PacketSequenceControl`
 - ECSS checksum generation is now optional as specified in the standard. Added `has_checksum`
   parameters for ECSS TM/TC creators and readers to reflect this.
+- APID is represented by `arbitrary-int::u11` while the sequence count is represented by
+  `arbitrary-int::u14`. A lot of corresponding checks were removed because the type now ensure
+  value validity.
+- ACK field changed from `u8` to `AckFlags` structure.
+- PUS version raw representation is `u4` now.
+- SC time reference status representation is `u4` now.
 
 ## Removed
 
@@ -31,6 +40,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- `AckFlags` which is implemented with `bitbybit::bitfield`
+- `ApidOutOfRangeError` and `SequenceCountOutOfRangeError`
 - Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
 - Added `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
 - Implemented `SequenceCounter` for `Atomic` unsigned types and references of them
