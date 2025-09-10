@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum Subservice {
     // Core subservices
@@ -47,6 +48,7 @@ pub enum Subservice {
 
 /// This status applies to sub-schedules and groups as well as specified in ECSS-E-ST-70-41C 8.11.3
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SchedStatus {
     Disabled = 0,
@@ -66,6 +68,7 @@ impl From<bool> for SchedStatus {
 
 /// Time window types as specified in  ECSS-E-ST-70-41C 8.11.3
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TimeWindowType {
     SelectAll = 0,
