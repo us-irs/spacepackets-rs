@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.16.0] 2025-09-10
+
 - Bump Rust MSRV to v1.83
 
 ## Changed
@@ -636,7 +638,8 @@ The timestamp of `PusTm` is now optional. See Added and Changed section for deta
 Initial release with CCSDS Space Packet Primary Header implementation and basic PUS TC and TM
 implementations.
 
-[unreleased]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.15.0...HEAD
+[unreleased]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.0...HEAD
+[v0.16.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.15.0...v0.16.0
 [v0.15.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.14.0...v0.15.0
 [v0.14.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.13.1...v0.14.0
 [v0.13.1]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.13.0...v0.13.1
