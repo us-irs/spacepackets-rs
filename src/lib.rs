@@ -302,6 +302,7 @@ pub trait CcsdsPacket {
 
     /// Retrieve data length field
     fn data_len(&self) -> u16;
+
     /// Retrieve the total packet size based on the data length field
     #[inline]
     fn packet_len(&self) -> usize {
@@ -502,6 +503,12 @@ impl SpHeader {
             #[inline]
             pub fn set_apid(&mut self, apid: u11);
         }
+    }
+
+    /// Retrieve the total packet size based on the data length field
+    #[inline]
+    fn packet_len(&self) -> usize {
+        usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
     }
 
     #[inline]

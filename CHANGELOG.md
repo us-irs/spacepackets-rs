@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- `SpHeader::packet_len` direct method.
 - `AckFlags` which is implemented with `bitbybit::bitfield`
 - `ApidOutOfRangeError` and `SequenceCountOutOfRangeError`
 - Added PUS A legacy support for telecommands inside the `ecss.tc_pus_a` module
