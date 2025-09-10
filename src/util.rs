@@ -102,6 +102,7 @@ pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UnsignedByteFieldError {
     /// Value is too large for specified width of byte field.
     ValueTooLargeForWidth {

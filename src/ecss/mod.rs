@@ -29,6 +29,7 @@ pub type CrcType = u16;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum PusServiceId {
@@ -103,6 +104,7 @@ impl TryFrom<u4> for PusVersion {
 /// ECSS Packet Type Codes (PTC)s.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PacketTypeCodes {
     Boolean = 1,
@@ -124,6 +126,7 @@ pub type Ptc = PacketTypeCodes;
 /// ECSS Packet Field Codes (PFC)s for the unsigned [Ptc].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PfcUnsigned {
     OneByte = 4,
@@ -141,6 +144,7 @@ pub enum PfcUnsigned {
 /// ECSS Packet Field Codes (PFC)s for the real (floating point) [Ptc].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PfcReal {
     /// 4 octets simple precision format (IEEE)
