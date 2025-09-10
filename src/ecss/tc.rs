@@ -5,7 +5,6 @@
 //!
 //! ```rust
 //! use spacepackets::SpHeader;
-//! use spacepackets::ecss::WritablePusPacket;
 //! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
 //! use arbitrary_int::u11;
 //!
@@ -45,7 +44,7 @@
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 pub use crate::ecss::CreatorConfig;
 use crate::ecss::{
-    ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
+    crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
@@ -497,7 +496,16 @@ impl WritablePusPacket for PusTcCreator<'_> {
 }
 
 impl CcsdsPacket for PusTcCreator<'_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTcCreator<'_> {
@@ -708,6 +716,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     }
 }
 
+#[derive(Debug)]
 pub struct PusTcBuilder<'a> {
     sp_header: SpHeader,
     sec_header: PusTcSecondaryHeader,
@@ -948,7 +957,16 @@ impl PartialEq for PusTcReader<'_> {
 }
 
 impl CcsdsPacket for PusTcReader<'_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTcReader<'_> {

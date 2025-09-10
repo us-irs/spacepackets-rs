@@ -3,7 +3,6 @@ use crate::ByteConversionError;
 #[cfg(feature = "chrono")]
 use chrono::{TimeZone, Utc};
 use core::cmp::Ordering;
-use core::fmt::{Display, Formatter};
 use core::ops::{Add, AddAssign, Sub};
 use core::time::Duration;
 
@@ -14,8 +13,6 @@ use num_traits::float::FloatCore;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "std")]
-use std::error::Error;
 #[cfg(feature = "std")]
 use std::time::{SystemTime, SystemTimeError};
 #[cfg(feature = "std")]
@@ -69,65 +66,21 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCode, u8> {
 #[error("date before ccsds epoch: {0:?}")]
 pub struct DateBeforeCcsdsEpochError(UnixTime);
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
 pub enum TimestampError {
+    #[error("invalid time code, expected {expected:?}, found {found}")]
     InvalidTimeCode { expected: CcsdsTimeCode, found: u8 },
-    ByteConversion(ByteConversionError),
-    Cds(cds::CdsError),
-    Cuc(cuc::CucError),
+    #[error("time stamp: byte conversion error: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    #[error("CDS error: {0}")]
+    Cds(#[from] cds::CdsError),
+    #[error("CUC error: {0}")]
+    Cuc(#[from] cuc::CucError),
+    #[error("custom epoch not supported")]
     CustomEpochNotSupported,
-}
-
-impl Display for TimestampError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            TimestampError::InvalidTimeCode { expected, found } => {
-                write!(
-                    f,
-                    "invalid raw time code value {found} for time code {expected:?}"
-                )
-            }
-            TimestampError::Cds(e) => {
-                write!(f, "cds error: {e}")
-            }
-            TimestampError::Cuc(e) => {
-                write!(f, "cuc error: {e}")
-            }
-            TimestampError::ByteConversion(e) => {
-                write!(f, "time stamp: {e}")
-            }
-            TimestampError::CustomEpochNotSupported => {
-                write!(f, "custom epochs are not supported")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for TimestampError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            TimestampError::ByteConversion(e) => Some(e),
-            TimestampError::Cds(e) => Some(e),
-            TimestampError::Cuc(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<cds::CdsError> for TimestampError {
-    fn from(e: cds::CdsError) -> Self {
-        TimestampError::Cds(e)
-    }
-}
-
-impl From<cuc::CucError> for TimestampError {
-    fn from(e: cuc::CucError) -> Self {
-        TimestampError::Cuc(e)
-    }
 }
 
 #[cfg(feature = "std")]
@@ -735,7 +688,7 @@ mod tests {
     fn test_cuc_error_printout() {
         let cuc_error = CucError::InvalidCounterWidth(12);
         let stamp_error = TimestampError::from(cuc_error);
-        assert_eq!(stamp_error.to_string(), format!("cuc error: {cuc_error}"));
+        assert_eq!(stamp_error.to_string(), format!("CUC error: {cuc_error}"));
     }
 
     #[test]

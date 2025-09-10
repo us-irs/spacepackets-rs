@@ -1,4 +1,4 @@
-all: check clippy fmt build docs
+all: check build test clippy fmt docs
 
 clippy:
   cargo clippy -- -D warnings
@@ -8,6 +8,10 @@ fmt:
 
 check:
   cargo check --all-features
+
+test:
+  cargo nextest r --all-features
+  cargo test --doc
 
 build:
   cargo build --all-features

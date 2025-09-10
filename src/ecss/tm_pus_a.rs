@@ -49,7 +49,7 @@
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 use crate::ecss::{
-    calc_pus_crc16, ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
+    calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
@@ -541,7 +541,16 @@ impl PartialEq for PusTmCreator<'_, '_> {
 }
 
 impl CcsdsPacket for PusTmCreator<'_, '_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTmCreator<'_, '_> {
@@ -840,7 +849,16 @@ impl PartialEq for PusTmReader<'_> {
 }
 
 impl CcsdsPacket for PusTmReader<'_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTmReader<'_> {
