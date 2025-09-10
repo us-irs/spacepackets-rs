@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Changed
 
+- `PusTcCreator` has its own `service`, `subservice` and `apid` methods and does not require trait
+  imports anymore.
 - CFDP NAK PDU `SegmentRequestIter` is not generic over the file size anymore. Instead, the
   iterator returns pairs of `u64` for both large and normal file size.
 - `PusVersion::VersionNotSupported` contains raw version number instead of `PusVersion` enum now
@@ -33,6 +35,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - ACK field changed from `u8` to `AckFlags` structure.
 - PUS version raw representation is `u4` now.
 - SC time reference status representation is `u4` now.
+- Renamed `ptype` to `packet_type`
 
 ## Removed
 
@@ -46,6 +49,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Added `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
 - Implemented `SequenceCounter` for `Atomic` unsigned types and references of them
 - `PusPacket::has_checksum` and `WritablePusPacket::has_checksum`
+- PUS TC builder API, either via `PusTcBuilder::new`, or `PusTcCreator::builder`
 
 # [v0.15.0] 2025-07-18
 

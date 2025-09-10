@@ -158,7 +158,7 @@ pub enum SequenceFlags {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PacketId {
-    pub ptype: PacketType,
+    pub packet_type: PacketType,
     pub sec_header_flag: bool,
     pub apid: u11,
 }
@@ -195,7 +195,7 @@ impl Default for PacketId {
     #[inline]
     fn default() -> Self {
         PacketId {
-            ptype: PacketType::Tm,
+            packet_type: PacketType::Tm,
             sec_header_flag: false,
             apid: u11::new(0),
         }
@@ -222,7 +222,7 @@ impl PacketId {
     #[inline]
     pub const fn new(ptype: PacketType, sec_header: bool, apid: u11) -> Self {
         PacketId {
-            ptype,
+            packet_type: ptype,
             sec_header_flag: sec_header,
             apid,
         }
@@ -243,14 +243,16 @@ impl PacketId {
 
     #[inline]
     pub const fn raw(&self) -> u16 {
-        ((self.ptype as u16) << 12) | ((self.sec_header_flag as u16) << 11) | self.apid.value()
+        ((self.packet_type as u16) << 12)
+            | ((self.sec_header_flag as u16) << 11)
+            | self.apid.value()
     }
 }
 
 impl From<u16> for PacketId {
     fn from(raw_id: u16) -> Self {
         PacketId {
-            ptype: PacketType::try_from(((raw_id >> 12) & 0b1) as u8).unwrap(),
+            packet_type: PacketType::try_from(((raw_id >> 12) & 0b1) as u8).unwrap(),
             sec_header_flag: ((raw_id >> 11) & 0b1) != 0,
             apid: u11::new(raw_id & 0x7FF),
         }
@@ -335,21 +337,20 @@ pub trait CcsdsPacket {
         self.psc().raw()
     }
 
-    /// Retrieve Packet Type (TM: 0, TC: 1).
     #[inline]
-    fn ptype(&self) -> PacketType {
+    fn packet_type(&self) -> PacketType {
         // This call should never fail because only 0 and 1 can be passed to the try_from call
-        self.packet_id().ptype
+        self.packet_id().packet_type
     }
 
     #[inline]
     fn is_tm(&self) -> bool {
-        self.ptype() == PacketType::Tm
+        self.packet_type() == PacketType::Tm
     }
 
     #[inline]
     fn is_tc(&self) -> bool {
-        self.ptype() == PacketType::Tc
+        self.packet_type() == PacketType::Tc
     }
 
     /// Retrieve the secondary header flag. Returns true if a secondary header is present
@@ -542,7 +543,7 @@ impl SpHeader {
 
     #[inline]
     pub fn set_packet_type(&mut self, packet_type: PacketType) {
-        self.packet_id.ptype = packet_type;
+        self.packet_id.packet_type = packet_type;
     }
 
     /// Create a struct from a raw slice where the fields have network endianness (big).
@@ -757,15 +758,15 @@ pub(crate) mod tests {
     fn verify_const_packet_id() {
         assert_eq!(PACKET_ID_TM.apid().value(), 0x22);
         assert!(PACKET_ID_TM.sec_header_flag);
-        assert_eq!(PACKET_ID_TM.ptype, PacketType::Tm);
+        assert_eq!(PACKET_ID_TM.packet_type, PacketType::Tm);
         let const_tc_id = PacketId::new_for_tc(true, u11::new(0x23));
-        assert_eq!(const_tc_id.ptype, PacketType::Tc);
+        assert_eq!(const_tc_id.packet_type, PacketType::Tc);
     }
 
     #[test]
     fn test_default_packet_id() {
         let id_default = PacketId::default();
-        assert_eq!(id_default.ptype, PacketType::Tm);
+        assert_eq!(id_default.packet_type, PacketType::Tm);
         assert_eq!(id_default.apid.value(), 0x000);
         assert!(!id_default.sec_header_flag);
     }
@@ -774,13 +775,13 @@ pub(crate) mod tests {
     fn test_packet_id_ctors() {
         let packet_id = PacketId::new(PacketType::Tc, true, u11::new(0x1ff));
         assert_eq!(packet_id.apid().value(), 0x1ff);
-        assert_eq!(packet_id.ptype, PacketType::Tc);
+        assert_eq!(packet_id.packet_type, PacketType::Tc);
         assert!(packet_id.sec_header_flag);
         let packet_id_tc = PacketId::new_for_tc(true, u11::new(0x1ff));
         assert_eq!(packet_id_tc, packet_id);
         let packet_id_tm = PacketId::new_for_tm(true, u11::new(0x2ff));
         assert!(packet_id_tm.sec_header_flag);
-        assert_eq!(packet_id_tm.ptype, PacketType::Tm);
+        assert_eq!(packet_id_tm.packet_type, PacketType::Tm);
         assert_eq!(packet_id_tm.apid, u11::new(0x2ff));
     }
 
@@ -853,7 +854,7 @@ pub(crate) mod tests {
         assert_eq!(sp_header.ccsds_version().value(), 0b000);
         assert!(sp_header.is_tc());
         assert!(!sp_header.sec_header_flag());
-        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
         assert_eq!(sp_header.seq_count().value(), 12);
         assert_eq!(sp_header.apid().value(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
@@ -862,7 +863,7 @@ pub(crate) mod tests {
         let sp_header: SpHeader = from_bytes(&output).unwrap();
         assert_eq!(sp_header.version.value(), 0b000);
         assert!(!sp_header.packet_id.sec_header_flag);
-        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
         assert_eq!(sp_header.seq_count().value(), 12);
         assert_eq!(sp_header.apid().value(), 0x42);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
@@ -875,7 +876,7 @@ pub(crate) mod tests {
         assert_eq!(sp_header.ccsds_version().value(), 0b000);
         assert!(sp_header.is_tm());
         assert!(!sp_header.sec_header_flag());
-        assert_eq!(sp_header.ptype(), PacketType::Tm);
+        assert_eq!(sp_header.packet_type(), PacketType::Tm);
         assert_eq!(sp_header.seq_count().value(), 22);
         assert_eq!(sp_header.apid().value(), 0x07);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
@@ -890,7 +891,7 @@ pub(crate) mod tests {
             0,
             None,
         );
-        assert_eq!(from_comp_fields.ptype(), PacketType::Tc);
+        assert_eq!(from_comp_fields.packet_type(), PacketType::Tc);
         assert_eq!(from_comp_fields.apid().value(), 0x42);
         assert!(from_comp_fields.sec_header_flag());
         assert_eq!(
@@ -911,9 +912,9 @@ pub(crate) mod tests {
         assert!(sp_header.sec_header_flag());
         sp_header.clear_sec_header_flag();
         assert!(!sp_header.sec_header_flag());
-        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
         sp_header.set_packet_type(PacketType::Tm);
-        assert_eq!(sp_header.ptype(), PacketType::Tm);
+        assert_eq!(sp_header.packet_type(), PacketType::Tm);
         sp_header.set_seq_count(u14::new(0x45));
         assert_eq!(sp_header.seq_count().as_u16(), 0x45);
     }
@@ -958,7 +959,7 @@ pub(crate) mod tests {
     }
 
     fn verify_sp_fields(ptype: PacketType, sp_header: &SpHeader) {
-        assert_eq!(sp_header.ptype(), ptype);
+        assert_eq!(sp_header.packet_type(), ptype);
         assert_eq!(sp_header.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(sp_header.apid().value(), 0x42);
         assert_eq!(sp_header.seq_count(), u14::new(25));
@@ -970,7 +971,7 @@ pub(crate) mod tests {
         use zerocopy::IntoBytes;
 
         let sp_header = SpHeader::new_for_unseg_tc(u11::MAX, u14::MAX, 0);
-        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
         assert_eq!(sp_header.apid().value(), 0x7FF);
         assert_eq!(sp_header.data_len(), 0);
         assert_eq!(sp_header.ccsds_version().value(), 0b000);
@@ -1013,7 +1014,7 @@ pub(crate) mod tests {
         assert_eq!(sp_header.ccsds_version().value(), 0b000);
         assert_eq!(sp_header.packet_id_raw(), 0x17FF);
         assert_eq!(sp_header.apid().value(), 0x7FF);
-        assert_eq!(sp_header.ptype(), PacketType::Tc);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
         assert_eq!(sp_header.data_len(), 0);
     }
 

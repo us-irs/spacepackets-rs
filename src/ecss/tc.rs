@@ -4,8 +4,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use spacepackets::{CcsdsPacket, SpHeader};
-//! use spacepackets::ecss::{PusPacket, WritablePusPacket};
+//! use spacepackets::SpHeader;
+//! use spacepackets::ecss::WritablePusPacket;
 //! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
 //! use arbitrary_int::u11;
 //!
@@ -33,6 +33,14 @@
 //! assert_eq!(pus_tc.service(), 17);
 //! assert_eq!(pus_tc.subservice(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
+//!
+//! // Alternative builder API
+//! let pus_tc_by_builder = PusTcCreator::builder()
+//!     .with_service(17)
+//!     .with_subservice(1)
+//!     .with_apid(u11::new(0x02))
+//!     .build();
+//! assert_eq!(pus_tc_by_builder, pus_tc);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 pub use crate::ecss::CreatorConfig;
@@ -41,8 +49,8 @@ use crate::ecss::{
     verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
-use crate::SpHeader;
 use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
+use crate::{PacketId, PacketSequenceControl, SpHeader};
 use arbitrary_int::{u11, u14, u3, u4};
 use core::mem::size_of;
 use delegate::delegate;
@@ -314,6 +322,10 @@ impl<'app_data> PusTcCreator<'app_data> {
         Self::new(sp_header, sec_header, &[], packet_config)
     }
 
+    pub fn builder<'a>() -> PusTcBuilder<'a> {
+        PusTcBuilder::default()
+    }
+
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
@@ -322,6 +334,21 @@ impl<'app_data> PusTcCreator<'app_data> {
     #[inline]
     pub fn sp_header_mut(&mut self) -> &mut SpHeader {
         &mut self.sp_header
+    }
+
+    #[inline]
+    pub fn service(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    pub fn subservice(&self) -> u8 {
+        self.sec_header.subservice
+    }
+
+    #[inline]
+    pub fn apid(&self) -> u11 {
+        self.sp_header.packet_id.apid
     }
 
     #[inline]
@@ -681,6 +708,108 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     }
 }
 
+pub struct PusTcBuilder<'a> {
+    sp_header: SpHeader,
+    sec_header: PusTcSecondaryHeader,
+    app_data: &'a [u8],
+    has_checksum: bool,
+}
+
+impl PusTcBuilder<'_> {
+    pub fn new() -> Self {
+        Self {
+            sp_header: SpHeader::new(
+                PacketId::new(PacketType::Tc, true, u11::new(0)),
+                PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0)),
+                0,
+            ),
+            sec_header: PusTcSecondaryHeader::new(0, 0, ACK_ALL, 0),
+            app_data: &[],
+            has_checksum: true,
+        }
+    }
+
+    #[inline]
+    pub fn with_packet_id(mut self, mut packet_id: PacketId) -> Self {
+        packet_id.packet_type = PacketType::Tc;
+        self.sp_header.packet_id = packet_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_packet_sequence_control(mut self, psc: PacketSequenceControl) -> Self {
+        self.sp_header.psc = psc;
+        self
+    }
+
+    #[inline]
+    pub fn with_sequence_count(mut self, seq_count: u14) -> Self {
+        self.sp_header.psc.seq_count = seq_count;
+        self
+    }
+
+    #[inline]
+    pub fn with_service(mut self, service: u8) -> Self {
+        self.sec_header.service = service;
+        self
+    }
+
+    #[inline]
+    pub fn with_subservice(mut self, service: u8) -> Self {
+        self.sec_header.subservice = service;
+        self
+    }
+
+    #[inline]
+    pub fn with_source_id(mut self, source_id: u16) -> Self {
+        self.sec_header.source_id = source_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_ack_flags(mut self, ack_flags: AckFlags) -> Self {
+        self.sec_header.ack_flags = ack_flags;
+        self
+    }
+
+    #[inline]
+    pub fn with_apid(mut self, apid: u11) -> Self {
+        self.sp_header.packet_id.set_apid(apid);
+        self
+    }
+
+    #[inline]
+    pub fn with_checksum(mut self, has_checksum: bool) -> Self {
+        self.has_checksum = has_checksum;
+        self
+    }
+}
+
+impl Default for PusTcBuilder<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'a> PusTcBuilder<'a> {
+    pub fn build(self) -> PusTcCreator<'a> {
+        PusTcCreator::new(
+            self.sp_header,
+            self.sec_header,
+            self.app_data,
+            CreatorConfig {
+                has_checksum: self.has_checksum,
+                set_ccsds_len: true,
+            },
+        )
+    }
+
+    pub fn with_app_data(mut self, app_data: &'a [u8]) -> Self {
+        self.app_data = app_data;
+        self
+    }
+}
+
 /// This class can be used to read a PUS TC telecommand from raw memory.
 ///
 /// This class also derives the [serde::Serialize] and [serde::Deserialize] trait if the
@@ -915,6 +1044,23 @@ mod tests {
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(sph, 17, 1, &[], CreatorConfig::default())
+    }
+
+    fn base_ping_tc_with_builder(alt_api: bool) -> PusTcCreator<'static> {
+        if alt_api {
+            return PusTcCreator::builder()
+                .with_service(17)
+                .with_subservice(1)
+                .with_apid(u11::new(0x02))
+                .with_sequence_count(u14::new(0x34))
+                .build();
+        }
+        PusTcBuilder::new()
+            .with_service(17)
+            .with_subservice(1)
+            .with_apid(u11::new(0x02))
+            .with_sequence_count(u14::new(0x34))
+            .build()
     }
 
     fn base_ping_tc_simple_ctor_no_checksum() -> PusTcCreator<'static> {
@@ -1466,5 +1612,37 @@ mod tests {
         let output = to_allocvec(&pus_tc).unwrap();
         let output_converted_back: PusTcCreator = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, pus_tc);
+    }
+
+    #[test]
+    fn test_builder() {
+        assert_eq!(base_ping_tc_with_builder(false), base_ping_tc_simple_ctor());
+    }
+
+    #[test]
+    fn test_builder_2() {
+        assert_eq!(base_ping_tc_with_builder(true), base_ping_tc_simple_ctor());
+    }
+
+    #[test]
+    fn test_builder_3() {
+        let tc = PusTcBuilder::new()
+            .with_packet_id(PacketId::new_for_tc(true, u11::new(0x02)))
+            .with_packet_sequence_control(PacketSequenceControl::new(
+                SequenceFlags::Unsegmented,
+                u14::new(0x34),
+            ))
+            .with_service(17)
+            .with_subservice(1)
+            .with_ack_flags(AckFlags::new_with_raw_value(u4::new(0b1010)))
+            .with_source_id(0x2f2f)
+            .with_checksum(false)
+            .build();
+        assert_eq!(tc.seq_count().value(), 0x34);
+        assert_eq!(tc.sequence_flags(), SequenceFlags::Unsegmented);
+        assert_eq!(tc.apid().value(), 0x02);
+        assert_eq!(tc.packet_type(), PacketType::Tc);
+        assert_eq!(tc.service(), 17);
+        assert_eq!(tc.subservice(), 1);
     }
 }
