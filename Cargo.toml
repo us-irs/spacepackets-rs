@@ -2,7 +2,7 @@
 name = "spacepackets"
 version = "0.15.0"
 edition = "2021"
-rust-version = "1.70.0"
+rust-version = "1.83"
 authors = ["Robin Mueller <muellerr@irs.uni-stuttgart.de>"]
 description = "Generic implementations for various CCSDS and ECSS packet standards"
 homepage = "https://egit.irs.uni-stuttgart.de/rust/spacepackets"
@@ -21,7 +21,9 @@ thiserror = { version = "2", default-features = false }
 num_enum = { version = ">0.5, <=0.7", default-features = false }
 num-traits = { version = "0.2", default-features = false }
 serde = { version = "1", optional = true, default-features = false, features = ["derive"] }
+arbitrary-int = { version = "2" }
 portable-atomic = "1"
+bitbybit = "1.4"
 
 time = { version = "0.3", default-features = false, optional = true }
 chrono = { version = "0.4", default-features = false, optional = true }
@@ -30,7 +32,8 @@ defmt = { version = "1", default-features = false, optional = true }
 [features]
 default = ["std"]
 std = ["alloc", "chrono/std", "chrono/clock", "thiserror/std"]
-serde = ["dep:serde", "chrono?/serde"]
+defmt = ["dep:defmt", "arbitrary-int/defmt"]
+serde = ["dep:serde", "chrono?/serde", "arbitrary-int/serde"]
 alloc = ["chrono?/alloc", "defmt?/alloc", "serde?/alloc"]
 timelib = ["dep:time"]
 

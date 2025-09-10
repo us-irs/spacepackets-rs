@@ -1,4 +1,5 @@
 use crate::MAX_SEQ_COUNT;
+use arbitrary_int::traits::Integer;
 use core::cell::Cell;
 use paste::paste;
 
@@ -101,7 +102,7 @@ pub struct SequenceCounterCcsdsSimple {
 impl Default for SequenceCounterCcsdsSimple {
     fn default() -> Self {
         Self {
-            provider: SequenceCounterSimple::new_custom_max_val_u16(MAX_SEQ_COUNT),
+            provider: SequenceCounterSimple::new_custom_max_val_u16(MAX_SEQ_COUNT.as_u16()),
         }
     }
 }
@@ -341,7 +342,7 @@ mod tests {
     #[test]
     fn test_ccsds_counter_overflow() {
         let ccsds_counter = SequenceCounterCcsdsSimple::default();
-        for _ in 0..MAX_SEQ_COUNT + 1 {
+        for _ in 0..MAX_SEQ_COUNT.value() + 1 {
             ccsds_counter.increment();
         }
         assert_eq!(ccsds_counter.get(), 0);
