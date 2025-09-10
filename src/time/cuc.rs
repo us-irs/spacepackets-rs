@@ -6,7 +6,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
 use core::time::Duration;
 
@@ -19,8 +19,6 @@ use super::{
     CcsdsTimeCode, CcsdsTimeProvider, DateBeforeCcsdsEpochError, TimeReader, TimeWriter,
     TimestampError, UnixTime,
 };
-#[cfg(feature = "std")]
-use std::error::Error;
 #[cfg(feature = "std")]
 use std::time::SystemTime;
 
@@ -103,63 +101,24 @@ pub fn fractional_part_from_subsec_ns(res: FractionalResolution, ns: u64) -> Fra
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CucError {
+    #[error("invalid cuc counter byte width {0}")]
     InvalidCounterWidth(u8),
     /// Invalid counter supplied.
-    InvalidCounter {
-        width: u8,
-        counter: u64,
-    },
+    #[error("invalid cuc counter {counter} for width {width}")]
+    InvalidCounter { width: u8, counter: u64 },
+    #[error("invalid cuc fractional part {value} for resolution {resolution:?}")]
     InvalidFractions {
         resolution: FractionalResolution,
         value: u64,
     },
+    #[error("error while correcting for leap seconds")]
     LeapSecondCorrectionError,
-    DateBeforeCcsdsEpoch(DateBeforeCcsdsEpochError),
-}
-
-impl Display for CucError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            CucError::InvalidCounterWidth(w) => {
-                write!(f, "invalid cuc counter byte width {w}")
-            }
-            CucError::InvalidCounter { width, counter } => {
-                write!(f, "invalid cuc counter {counter} for width {width}")
-            }
-            CucError::InvalidFractions { resolution, value } => {
-                write!(
-                    f,
-                    "invalid cuc fractional part {value} for resolution {resolution:?}"
-                )
-            }
-            CucError::LeapSecondCorrectionError => {
-                write!(f, "error while correcting for leap seconds")
-            }
-            CucError::DateBeforeCcsdsEpoch(e) => {
-                write!(f, "date before ccsds epoch: {e}")
-            }
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl Error for CucError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            CucError::DateBeforeCcsdsEpoch(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl From<DateBeforeCcsdsEpochError> for CucError {
-    fn from(e: DateBeforeCcsdsEpochError) -> Self {
-        Self::DateBeforeCcsdsEpoch(e)
-    }
+    #[error("date before ccsds epoch: {0}")]
+    DateBeforeCcsdsEpoch(#[from] DateBeforeCcsdsEpochError),
 }
 
 /// Tuple object where the first value is the width of the counter and the second value

@@ -642,14 +642,12 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         self.unix_time = UnixTime::new(unix_days_seconds, subsec_nanos);
     }
 
-    fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), TimestampError> {
+    fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), ByteConversionError> {
         if buf.len() < len_as_bytes {
-            return Err(TimestampError::ByteConversion(
-                ByteConversionError::ToSliceTooSmall {
-                    expected: len_as_bytes,
-                    found: buf.len(),
-                },
-            ));
+            return Err(ByteConversionError::ToSliceTooSmall {
+                expected: len_as_bytes,
+                found: buf.len(),
+            });
         }
         Ok(())
     }
@@ -957,6 +955,23 @@ impl CdsTime<DaysLen16Bits> {
         Self::from_now_generic_ps_prec(LengthOfDaySegment::Short16Bits)
     }
 
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.length_check(buf, self.len_as_bytes())?;
+        buf[0] = self.pfield;
+        buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
+        buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
+        match self.submillis_precision() {
+            SubmillisPrecision::Microseconds => {
+                buf[7..9].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
+            }
+            SubmillisPrecision::Picoseconds => {
+                buf[7..11].copy_from_slice(self.submillis().to_be_bytes().as_slice());
+            }
+            _ => (),
+        }
+        Ok(self.len_as_bytes())
+    }
+
     pub fn from_bytes_with_u16_days(buf: &[u8]) -> Result<Self, TimestampError> {
         let submillis_precision =
             Self::generic_raw_read_checks(buf, LengthOfDaySegment::Short16Bits)?;
@@ -1212,20 +1227,7 @@ impl TimeReader for CdsTime<DaysLen24Bits> {
 
 impl TimeWriter for CdsTime<DaysLen16Bits> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
-        self.length_check(buf, self.len_as_bytes())?;
-        buf[0] = self.pfield;
-        buf[1..3].copy_from_slice(self.ccsds_days.to_be_bytes().as_slice());
-        buf[3..7].copy_from_slice(self.ms_of_day.to_be_bytes().as_slice());
-        match self.submillis_precision() {
-            SubmillisPrecision::Microseconds => {
-                buf[7..9].copy_from_slice((self.submillis() as u16).to_be_bytes().as_slice());
-            }
-            SubmillisPrecision::Picoseconds => {
-                buf[7..11].copy_from_slice(self.submillis().to_be_bytes().as_slice());
-            }
-            _ => (),
-        }
-        Ok(self.len_as_bytes())
+        self.write_to_bytes(buf).map_err(TimestampError::from)
     }
 
     fn len_written(&self) -> usize {
@@ -1233,8 +1235,8 @@ impl TimeWriter for CdsTime<DaysLen16Bits> {
     }
 }
 
-impl TimeWriter for CdsTime<DaysLen24Bits> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
+impl CdsTime<DaysLen24Bits> {
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
         let be_days = self.ccsds_days.to_be_bytes();
@@ -1250,6 +1252,12 @@ impl TimeWriter for CdsTime<DaysLen24Bits> {
             _ => (),
         }
         Ok(self.len_as_bytes())
+    }
+}
+
+impl TimeWriter for CdsTime<DaysLen24Bits> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, TimestampError> {
+        self.write_to_bytes(buf).map_err(TimestampError::from)
     }
 
     fn len_written(&self) -> usize {
@@ -1331,7 +1339,7 @@ mod tests {
     use super::*;
     use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
     use crate::time::{UnixTime, DAYS_CCSDS_TO_UNIX, MS_PER_DAY};
-    use crate::ByteConversionError::{FromSliceTooSmall, ToSliceTooSmall};
+    use crate::ByteConversionError::FromSliceTooSmall;
     use alloc::string::ToString;
     use chrono::{Datelike, NaiveDate, Timelike};
     #[cfg(feature = "serde")]
@@ -1486,12 +1494,14 @@ mod tests {
             assert!(res.is_err());
             let error = res.unwrap_err();
             match error {
-                ByteConversion(ToSliceTooSmall { found, expected }) => {
+                ByteConversionError::ToSliceTooSmall { found, expected } => {
                     assert_eq!(found, i);
                     assert_eq!(expected, 7);
                     assert_eq!(
                         error.to_string(),
-                        format!("time stamp: target slice with size {i} is too small, expected size of at least 7")
+                        format!(
+                            "target slice with size {i} is too small, expected size of at least 7"
+                        )
                     );
                 }
                 _ => panic!(
@@ -1537,10 +1547,7 @@ mod tests {
         if let InvalidTimeCode { expected, found } = err {
             assert_eq!(expected, CcsdsTimeCode::Cds);
             assert_eq!(found, 0);
-            assert_eq!(
-                err.to_string(),
-                "invalid raw time code value 0 for time code Cds"
-            );
+            assert_eq!(err.to_string(), "invalid time code, expected Cds, found 0");
         }
     }
 
@@ -2301,7 +2308,7 @@ mod tests {
     fn test_serialization() {
         let stamp_now = CdsTime::now_with_u16_days().expect("Error retrieving time");
         let val = to_allocvec(&stamp_now).expect("Serializing timestamp failed");
-        assert!(val.len() > 0);
+        assert!(!val.is_empty());
         let stamp_deser: CdsTime = from_bytes(&val).expect("Stamp deserialization failed");
         assert_eq!(stamp_deser, stamp_now);
     }

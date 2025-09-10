@@ -4,10 +4,8 @@
 //! # Examples
 //!
 //! ```rust
-//! use spacepackets::time::TimeWriter;
 //! use spacepackets::time::cds::CdsTime;
-//! use spacepackets::{CcsdsPacket, SpHeader};
-//! use spacepackets::ecss::{PusPacket, WritablePusPacket};
+//! use spacepackets::SpHeader;
 //! use spacepackets::ecss::tm::{PusTmCreator, PusTmReader, PusTmSecondaryHeader, CreatorConfig};
 //! use arbitrary_int::u11;
 //!
@@ -42,17 +40,26 @@
 //! assert_eq!(ping_tm_reader.subservice(), 2);
 //! assert_eq!(ping_tm_reader.apid().value(), 0x02);
 //! assert_eq!(ping_tm_reader.timestamp(), &time_buf);
+//!
+//! // Alternative builder API
+//! let pus_tm_by_builder = PusTmCreator::builder()
+//!     .with_service(17)
+//!     .with_subservice(2)
+//!     .with_apid(u11::new(0x02))
+//!     .with_timestamp(&time_buf)
+//!     .build();
+//! assert_eq!(pus_tm_by_builder, ping_tm);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 pub use crate::ecss::CreatorConfig;
 use crate::ecss::{
-    calc_pus_crc16, ccsds_impl, crc_from_raw_data, sp_header_impls, user_data_from_raw,
+    calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
 use crate::{
-    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SpHeader, CCSDS_HEADER_LEN,
-    MAX_APID,
+    ByteConversionError, CcsdsPacket, PacketId, PacketSequenceControl, PacketType, SequenceFlags,
+    SpHeader, CCSDS_HEADER_LEN, MAX_APID,
 };
 use arbitrary_int::traits::Integer;
 use arbitrary_int::{u11, u14, u3, u4};
@@ -344,8 +351,12 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         Self::new(sp_header, sec_header, &[], packet_config)
     }
 
+    pub fn builder() -> PusTmBuilder<'time, 'src_data> {
+        PusTmBuilder::new()
+    }
+
     #[inline]
-    fn has_checksum(&self) -> bool {
+    pub fn has_checksum(&self) -> bool {
         self.has_checksum
     }
 
@@ -357,6 +368,21 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.source_data
+    }
+
+    #[inline]
+    pub fn service(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    pub fn subservice(&self) -> u8 {
+        self.sec_header.subservice
+    }
+
+    #[inline]
+    pub fn apid(&self) -> u11 {
+        self.sp_header.packet_id.apid
     }
 
     #[inline]
@@ -516,7 +542,16 @@ impl PartialEq for PusTmCreator<'_, '_> {
 }
 
 impl CcsdsPacket for PusTmCreator<'_, '_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTmCreator<'_, '_> {
@@ -569,6 +604,126 @@ impl GenericPusTmSecondaryHeader for PusTmCreator<'_, '_> {
 }
 
 impl IsPusTelemetry for PusTmCreator<'_, '_> {}
+
+#[derive(Debug)]
+pub struct PusTmBuilder<'time, 'src_data> {
+    sp_header: SpHeader,
+    sec_header: PusTmSecondaryHeader<'time>,
+    source_data: &'src_data [u8],
+    has_checksum: bool,
+}
+
+impl Default for PusTmBuilder<'_, '_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PusTmBuilder<'_, '_> {
+    pub fn new() -> Self {
+        Self {
+            sp_header: SpHeader::new(
+                PacketId::new_for_tm(true, u11::new(0)),
+                PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0)),
+                0,
+            ),
+            sec_header: PusTmSecondaryHeader::new(0, 0, 0, 0, &[]),
+            source_data: &[],
+            has_checksum: true,
+        }
+    }
+
+    #[inline]
+    pub fn with_apid(mut self, apid: u11) -> Self {
+        self.sp_header.packet_id.set_apid(apid);
+        self
+    }
+
+    #[inline]
+    pub fn with_packet_id(mut self, mut packet_id: PacketId) -> Self {
+        packet_id.packet_type = PacketType::Tc;
+        self.sp_header.packet_id = packet_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_packet_sequence_control(mut self, psc: PacketSequenceControl) -> Self {
+        self.sp_header.psc = psc;
+        self
+    }
+
+    #[inline]
+    pub fn with_sequence_count(mut self, seq_count: u14) -> Self {
+        self.sp_header.psc.seq_count = seq_count;
+        self
+    }
+
+    #[inline]
+    pub fn with_service(mut self, service: u8) -> Self {
+        self.sec_header.service = service;
+        self
+    }
+
+    #[inline]
+    pub fn with_subservice(mut self, service: u8) -> Self {
+        self.sec_header.subservice = service;
+        self
+    }
+
+    #[inline]
+    pub fn with_dest_id(mut self, dest_id: u16) -> Self {
+        self.sec_header.dest_id = dest_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_msg_counter(mut self, msg_counter: u16) -> Self {
+        self.sec_header.msg_counter = msg_counter;
+        self
+    }
+
+    #[inline]
+    pub fn with_sc_time_ref_status(mut self, sc_time_ref_status: u4) -> Self {
+        self.sec_header.sc_time_ref_status = sc_time_ref_status;
+        self
+    }
+
+    #[inline]
+    pub fn with_checksum(mut self, has_checksum: bool) -> Self {
+        self.has_checksum = has_checksum;
+        self
+    }
+}
+
+impl<'src_data> PusTmBuilder<'_, 'src_data> {
+    #[inline]
+    pub fn with_source_data(mut self, source_data: &'src_data [u8]) -> Self {
+        self.source_data = source_data;
+        self
+    }
+}
+
+impl<'time> PusTmBuilder<'time, '_> {
+    #[inline]
+    pub fn with_timestamp(mut self, timestamp: &'time [u8]) -> Self {
+        self.sec_header.timestamp = timestamp;
+        self
+    }
+}
+
+impl<'time, 'src_data> PusTmBuilder<'time, 'src_data> {
+    pub fn build(self) -> PusTmCreator<'time, 'src_data> {
+        PusTmCreator::new(
+            self.sp_header,
+            self.sec_header,
+            self.source_data,
+            CreatorConfig {
+                has_checksum: self.has_checksum,
+                set_ccsds_len: true,
+            },
+        )
+    }
+}
 
 /// A specialized variant of [PusTmCreator] designed for efficiency when handling large source
 /// data.
@@ -883,6 +1038,26 @@ impl<'raw_data> PusTmReader<'raw_data> {
     }
 
     #[inline]
+    pub fn service(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    pub fn subservice(&self) -> u8 {
+        self.sec_header.subservice
+    }
+
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        self.sp_header.packet_len()
+    }
+
+    #[inline]
+    pub fn apid(&self) -> u11 {
+        self.sp_header.packet_id.apid
+    }
+
+    #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
@@ -909,7 +1084,16 @@ impl PartialEq for PusTmReader<'_> {
 }
 
 impl CcsdsPacket for PusTmReader<'_> {
-    ccsds_impl!();
+    delegate!(to self.sp_header {
+        #[inline]
+        fn ccsds_version(&self) -> u3;
+        #[inline]
+        fn packet_id(&self) -> crate::PacketId;
+        #[inline]
+        fn psc(&self) -> crate::PacketSequenceControl;
+        #[inline]
+        fn data_len(&self) -> u16;
+    });
 }
 
 impl PusPacket for PusTmReader<'_> {
@@ -1171,14 +1355,13 @@ impl GenericPusTmSecondaryHeader for PusTmZeroCopyWriter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::string::ToString;
-
     use super::*;
     use crate::time::cds::CdsTime;
     #[cfg(feature = "serde")]
     use crate::time::CcsdsTimeProvider;
     use crate::SpHeader;
     use crate::{ecss::PusVersion::PusC, MAX_SEQ_COUNT};
+    use alloc::string::ToString;
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
 
@@ -1188,6 +1371,28 @@ mod tests {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
         let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
         PusTmCreator::new_no_source_data(sph, tm_header, CreatorConfig::default())
+    }
+
+    fn base_ping_reply_full_ctor_builder<'a, 'b>(
+        timestamp: &'a [u8],
+        alt_api: bool,
+    ) -> PusTmCreator<'a, 'b> {
+        if alt_api {
+            return PusTmCreator::builder()
+                .with_apid(u11::new(0x123))
+                .with_sequence_count(u14::new(0x234))
+                .with_service(17)
+                .with_subservice(2)
+                .with_timestamp(timestamp)
+                .build();
+        }
+        PusTmBuilder::new()
+            .with_apid(u11::new(0x123))
+            .with_sequence_count(u14::new(0x234))
+            .with_service(17)
+            .with_subservice(2)
+            .with_timestamp(timestamp)
+            .build()
     }
 
     fn base_ping_reply_full_ctor_no_checksum<'a, 'b>(timestamp: &'a [u8]) -> PusTmCreator<'a, 'b> {
@@ -1937,5 +2142,42 @@ mod tests {
         let output = to_allocvec(&tm_reader).unwrap();
         let output_converted_back: PusTmReader = from_bytes(&output).unwrap();
         assert_eq!(output_converted_back, tm_reader);
+    }
+
+    #[test]
+    fn test_builder() {
+        assert_eq!(
+            base_ping_reply_full_ctor_builder(dummy_timestamp(), false),
+            base_ping_reply_full_ctor(dummy_timestamp())
+        );
+    }
+
+    #[test]
+    fn test_builder_2() {
+        assert_eq!(
+            base_ping_reply_full_ctor_builder(dummy_timestamp(), true),
+            base_ping_reply_full_ctor(dummy_timestamp())
+        );
+    }
+
+    #[test]
+    fn test_builder_3() {
+        let tm = PusTmBuilder::new()
+            .with_packet_id(PacketId::new_for_tc(true, u11::new(0x02)))
+            .with_packet_sequence_control(PacketSequenceControl::new(
+                SequenceFlags::Unsegmented,
+                u14::new(0x34),
+            ))
+            .with_service(17)
+            .with_subservice(2)
+            .with_dest_id(0x2f2f)
+            .with_checksum(false)
+            .build();
+        assert_eq!(tm.seq_count().value(), 0x34);
+        assert_eq!(tm.sequence_flags(), SequenceFlags::Unsegmented);
+        assert_eq!(tm.apid().value(), 0x02);
+        assert_eq!(tm.packet_type(), PacketType::Tm);
+        assert_eq!(tm.service(), 17);
+        assert_eq!(tm.subservice(), 2);
     }
 }

@@ -260,21 +260,6 @@ pub fn verify_crc16_ccitt_false_from_raw_no_table(raw_data: &[u8]) -> bool {
     false
 }
 
-macro_rules! ccsds_impl {
-    () => {
-        delegate!(to self.sp_header {
-            #[inline]
-            fn ccsds_version(&self) -> u3;
-            #[inline]
-            fn packet_id(&self) -> crate::PacketId;
-            #[inline]
-            fn psc(&self) -> crate::PacketSequenceControl;
-            #[inline]
-            fn data_len(&self) -> u16;
-        });
-    }
-}
-
 macro_rules! sp_header_impls {
     () => {
         delegate!(to self.sp_header {
@@ -289,7 +274,6 @@ macro_rules! sp_header_impls {
 }
 
 use crate::util::{GenericUnsignedByteField, ToBeBytes, UnsignedEnum};
-pub(crate) use ccsds_impl;
 pub(crate) use sp_header_impls;
 
 /// Generic trait for ECSS enumeration which consist of a PFC field denoting their bit length
