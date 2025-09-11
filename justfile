@@ -18,4 +18,14 @@ build:
 
 docs:
   export RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options"
+  cargo +nightly doc --all-features
+
+docs-html:
+  export RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options"
   cargo +nightly doc --all-features --open
+
+coverage:
+  cargo llvm-cov nextest
+
+coverage-html:
+  cargo llvm-cov nextest --html --open
