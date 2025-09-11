@@ -311,6 +311,8 @@ pub struct PduHeader {
 }
 
 impl PduHeader {
+    pub const FIXED_LEN: usize = FIXED_HEADER_LEN;
+
     #[inline]
     pub fn new_for_file_data(
         pdu_conf: CommonPduConfig,
@@ -565,6 +567,7 @@ impl PduHeader {
         &self.pdu_conf
     }
 
+    #[inline]
     pub fn seg_metadata_flag(&self) -> SegmentMetadataFlag {
         self.seg_metadata_flag
     }

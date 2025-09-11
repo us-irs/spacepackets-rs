@@ -128,18 +128,27 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         pdu
     }
 
+    #[inline]
     pub fn metadata_params(&self) -> &MetadataGenericParams {
         &self.metadata_params
     }
 
+    #[inline]
     pub fn src_file_name(&self) -> Lv<'src_name> {
         self.src_file_name
     }
 
+    #[inline]
     pub fn dest_file_name(&self) -> Lv<'dest_name> {
         self.dest_file_name
     }
 
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    #[inline]
     pub fn options(&self) -> &'opts [u8] {
         self.options
     }
@@ -169,20 +178,9 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         }
         len
     }
-}
 
-impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::MetadataPdu)
-    }
-}
-
-impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -217,8 +215,30 @@ impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        self.pdu_header()
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::MetadataPdu)
+    }
+}
+
+impl WritablePduPacket for MetadataPduCreator<'_, '_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 
@@ -330,26 +350,36 @@ impl<'raw> MetadataPduReader<'raw> {
         })
     }
 
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    #[inline]
     pub fn options(&self) -> &'raw [u8] {
         self.options
     }
 
+    #[inline]
     pub fn metadata_params(&self) -> &MetadataGenericParams {
         &self.metadata_params
     }
 
+    #[inline]
     pub fn src_file_name(&self) -> Lv<'_> {
         self.src_file_name
     }
 
+    #[inline]
     pub fn dest_file_name(&self) -> Lv<'_> {
         self.dest_file_name
     }
 }
 
 impl CfdpPdu for MetadataPduReader<'_> {
+    #[inline]
     fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
+        self.pdu_header()
     }
 
     fn file_directive_type(&self) -> Option<FileDirectiveType> {

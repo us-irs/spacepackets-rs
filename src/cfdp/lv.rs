@@ -63,6 +63,8 @@ pub(crate) fn generic_len_check_deserialization(
 }
 
 impl<'data> Lv<'data> {
+    pub const MIN_LEN: usize = MIN_LV_LEN;
+
     #[inline]
     pub fn new(data: &[u8]) -> Result<Lv<'_>, TlvLvDataTooLargeError> {
         if data.len() > u8::MAX as usize {

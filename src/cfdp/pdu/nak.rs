@@ -18,6 +18,7 @@ pub enum SegmentRequests<'a> {
 }
 
 impl SegmentRequests<'_> {
+    #[inline]
     pub fn is_empty(&self) -> bool {
         match self {
             SegmentRequests::U32Pairs(pairs) => pairs.is_empty(),
@@ -122,14 +123,17 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         Ok(nak_pdu)
     }
 
+    #[inline]
     pub fn start_of_scope(&self) -> u64 {
         self.start_of_scope
     }
 
+    #[inline]
     pub fn end_of_scope(&self) -> u64 {
         self.end_of_scope
     }
 
+    #[inline]
     pub fn segment_requests(&self) -> Option<&SegmentRequests<'_>> {
         self.segment_requests.as_ref()
     }
@@ -144,6 +148,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         }
     }
 
+    #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
@@ -162,20 +167,9 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         }
         datafield_len
     }
-}
 
-impl CfdpPdu for NakPduCreator<'_> {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::NakPdu)
-    }
-}
-
-impl WritablePduPacket for NakPduCreator<'_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -238,8 +232,32 @@ impl WritablePduPacket for NakPduCreator<'_> {
         Ok(current_idx)
     }
 
+    #[inline]
     fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+impl CfdpPdu for NakPduCreator<'_> {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        self.pdu_header()
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::NakPdu)
+    }
+}
+
+impl WritablePduPacket for NakPduCreator<'_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 

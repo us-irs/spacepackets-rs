@@ -55,18 +55,22 @@ impl EofPdu {
         )
     }
 
+    #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    #[inline]
     pub fn file_checksum(&self) -> u32 {
         self.file_checksum
     }
 
+    #[inline]
     pub fn file_size(&self) -> u64 {
         self.file_size
     }
@@ -129,20 +133,9 @@ impl EofPdu {
             fault_location,
         })
     }
-}
 
-impl CfdpPdu for EofPdu {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::EofPdu)
-    }
-}
-
-impl WritablePduPacket for EofPdu {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -172,8 +165,30 @@ impl WritablePduPacket for EofPdu {
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+impl CfdpPdu for EofPdu {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        self.pdu_header()
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::EofPdu)
+    }
+}
+
+impl WritablePduPacket for EofPdu {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 

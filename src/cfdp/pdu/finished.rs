@@ -109,23 +109,33 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         finished_pdu
     }
 
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    #[inline]
     pub fn delivery_code(&self) -> DeliveryCode {
         self.delivery_code
     }
 
+    #[inline]
     pub fn file_status(&self) -> FileStatus {
         self.file_status
     }
 
     // If there are no filestore responses, an empty slice will be returned.
+    #[inline]
     pub fn filestore_responses(&self) -> &[FilestoreResponseTlv<'_, '_, '_>] {
         self.fs_responses
     }
 
+    #[inline]
     pub fn fault_location(&self) -> Option<EntityIdTlv> {
         self.fault_location
     }
@@ -143,20 +153,9 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         }
         datafield_len
     }
-}
 
-impl CfdpPdu for FinishedPduCreator<'_> {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::FinishedPdu)
-    }
-}
-
-impl WritablePduPacket for FinishedPduCreator<'_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -185,8 +184,30 @@ impl WritablePduPacket for FinishedPduCreator<'_> {
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+impl CfdpPdu for FinishedPduCreator<'_> {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        self.pdu_header()
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::FinishedPdu)
+    }
+}
+
+impl WritablePduPacket for FinishedPduCreator<'_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 
@@ -276,10 +297,12 @@ impl<'buf> FinishedPduReader<'buf> {
         })
     }
 
+    #[inline]
     pub fn fs_responses_raw(&self) -> &[u8] {
         self.fs_responses_raw
     }
 
+    #[inline]
     pub fn fs_responses_iter(&self) -> FilestoreResponseIterator<'_> {
         FilestoreResponseIterator {
             responses_buf: self.fs_responses_raw,
@@ -287,20 +310,29 @@ impl<'buf> FinishedPduReader<'buf> {
         }
     }
 
+    #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    #[inline]
     pub fn delivery_code(&self) -> DeliveryCode {
         self.delivery_code
     }
 
+    #[inline]
     pub fn file_status(&self) -> FileStatus {
         self.file_status
     }
 
+    #[inline]
     pub fn fault_location(&self) -> Option<EntityIdTlv> {
         self.fault_location
+    }
+
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
     }
 
     fn parse_tlv_fields(
@@ -360,10 +392,12 @@ impl<'buf> FinishedPduReader<'buf> {
 }
 
 impl CfdpPdu for FinishedPduReader<'_> {
+    #[inline]
     fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
+        self.pdu_header()
     }
 
+    #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
         Some(FileDirectiveType::FinishedPdu)
     }

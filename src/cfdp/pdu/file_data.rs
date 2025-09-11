@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{CfdpPdu, FileDirectiveType, WritablePduPacket};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[bitbybit::bitenum(u2, exhaustive = true)]
 #[repr(u8)]
 pub enum RecordContinuationState {
     NoStartNoEnd = 0b00,
@@ -43,24 +45,27 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         })
     }
 
+    #[inline]
     pub fn record_continuation_state(&self) -> RecordContinuationState {
         self.record_continuation_state
     }
 
+    #[inline]
     pub fn metadata(&self) -> Option<&'seg_meta [u8]> {
         self.metadata
     }
 
-    pub fn written_len(&self) -> usize {
+    #[inline]
+    pub fn len_written(&self) -> usize {
         // Map empty metadata to 0 and slice to its length.
         1 + self.metadata.map_or(0, |meta| meta.len())
     }
 
     pub(crate) fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        if buf.len() < self.written_len() {
+        if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
-                expected: self.written_len(),
+                expected: self.len_written(),
             });
         }
         buf[0] = ((self.record_continuation_state as u8) << 6)
@@ -68,7 +73,7 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         if let Some(metadata) = self.metadata {
             buf[1..1 + metadata.len()].copy_from_slice(metadata)
         }
-        Ok(self.written_len())
+        Ok(self.len_written())
     }
 
     pub(crate) fn from_bytes(buf: &'seg_meta [u8]) -> Result<Self, ByteConversionError> {
@@ -102,10 +107,12 @@ struct FdPduBase<'seg_meta> {
 }
 
 impl CfdpPdu for FdPduBase<'_> {
+    #[inline]
     fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
+        self.pdu_header()
     }
 
+    #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
         None
     }
@@ -118,7 +125,7 @@ impl FdPduBase<'_> {
             len += 4;
         }
         if self.segment_metadata.is_some() {
-            len += self.segment_metadata.as_ref().unwrap().written_len()
+            len += self.segment_metadata.as_ref().unwrap().len_written()
         }
         len += file_data_len as usize;
         if self.crc_flag() == CrcFlag::WithCrc {
@@ -142,6 +149,11 @@ impl FdPduBase<'_> {
             &mut buf[current_idx..],
         )?;
         Ok(current_idx)
+    }
+
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
     }
 }
 
@@ -201,14 +213,22 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             .calc_pdu_datafield_len(self.file_data.len() as u64)
     }
 
+    #[inline]
     pub fn segment_metadata(&self) -> Option<&SegmentMetadata<'_>> {
         self.common.segment_metadata.as_ref()
     }
 
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        self.common.pdu_header()
+    }
+
+    #[inline]
     pub fn offset(&self) -> u64 {
         self.common.offset
     }
 
+    #[inline]
     pub fn file_data(&self) -> &'file_data [u8] {
         self.file_data
     }
@@ -221,7 +241,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         let mut segment_metadata = None;
         if pdu_header.seg_metadata_flag == SegmentMetadataFlag::Present {
             segment_metadata = Some(SegmentMetadata::from_bytes(&buf[current_idx..])?);
-            current_idx += segment_metadata.as_ref().unwrap().written_len();
+            current_idx += segment_metadata.as_ref().unwrap().len_written();
         }
         let (fss, offset) = read_fss_field(pdu_header.pdu_conf.file_flag, &buf[current_idx..]);
         current_idx += fss;
@@ -241,19 +261,9 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             file_data: &buf[current_idx..full_len_without_crc],
         })
     }
-}
-impl CfdpPdu for FileDataPdu<'_, '_> {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.common.pdu_header
-    }
 
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        None
-    }
-}
-
-impl WritablePduPacket for FileDataPdu<'_, '_> {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         if buf.len() < self.len_written() {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
@@ -271,8 +281,29 @@ impl WritablePduPacket for FileDataPdu<'_, '_> {
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.common.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+impl CfdpPdu for FileDataPdu<'_, '_> {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        &self.common.pdu_header
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        None
+    }
+}
+
+impl WritablePduPacket for FileDataPdu<'_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 

@@ -583,6 +583,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     /// * `sec_header` - Information contained in the secondary header, including the service
     ///   and subservice type
     /// * `app_data_len` - Custom application data length
+    /// * `has_checksum` - Packet should have a CRC-16-CCITT checksum appended at the end
     #[inline]
     pub fn new(
         buf: &'buf mut [u8],
@@ -716,6 +717,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
     }
 }
 
+/// Builder API to create a [PusTcCreator].
 #[derive(Debug)]
 pub struct PusTcBuilder<'a> {
     sp_header: SpHeader,
@@ -813,6 +815,7 @@ impl<'a> PusTcBuilder<'a> {
         )
     }
 
+    #[inline]
     pub fn with_app_data(mut self, app_data: &'a [u8]) -> Self {
         self.app_data = app_data;
         self
@@ -844,10 +847,7 @@ pub struct PusTcReader<'raw_data> {
 
 impl<'raw_data> PusTcReader<'raw_data> {
     /// Create a [PusTcReader] instance from a raw slice. The given packet should have a
-    /// a CRC16-CCITT checksum which is also verified.
-    ///
-    /// On success, it returns a tuple containing the instance and the found byte length of the
-    /// packet. This function also expects a CRC16 checksum and will verify it.
+    /// a CRC-16-CCITT checksum which is also verified.
     pub fn new(slice: &'raw_data [u8]) -> Result<Self, PusError> {
         let pus_tc = Self::new_no_checksum_verification(slice, true)?;
         // Unwrap for CRC16 okay, should always have some value.

@@ -81,22 +81,27 @@ impl AckPdu {
         .unwrap()
     }
 
+    #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    #[inline]
     pub fn directive_code_of_acked_pdu(&self) -> FileDirectiveType {
         self.directive_code_of_acked_pdu
     }
 
+    #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    #[inline]
     pub fn transaction_status(&self) -> TransactionStatus {
         self.transaction_status
     }
 
+    #[inline]
     fn calc_pdu_datafield_len(&self) -> usize {
         if self.crc_flag() == CrcFlag::WithCrc {
             return 5;
@@ -147,20 +152,9 @@ impl AckPdu {
             transaction_status,
         )
     }
-}
 
-impl CfdpPdu for AckPdu {
-    fn pdu_header(&self) -> &PduHeader {
-        &self.pdu_header
-    }
-
-    fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::AckPdu)
-    }
-}
-
-impl WritablePduPacket for AckPdu {
-    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+    /// Write [Self] to the provided buffer and returns the written size.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let expected_len = self.len_written();
         if buf.len() < expected_len {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -188,8 +182,30 @@ impl WritablePduPacket for AckPdu {
         Ok(current_idx)
     }
 
-    fn len_written(&self) -> usize {
+    pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+}
+
+impl CfdpPdu for AckPdu {
+    #[inline]
+    fn pdu_header(&self) -> &PduHeader {
+        self.pdu_header()
+    }
+
+    #[inline]
+    fn file_directive_type(&self) -> Option<FileDirectiveType> {
+        Some(FileDirectiveType::AckPdu)
+    }
+}
+
+impl WritablePduPacket for AckPdu {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
+        self.write_to_bytes(buf)
+    }
+
+    fn len_written(&self) -> usize {
+        self.len_written()
     }
 }
 

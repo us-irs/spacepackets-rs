@@ -37,10 +37,12 @@ impl<'data> MsgToUserTlv<'data> {
         }
     }
 
+    #[inline]
     pub fn is_standard_tlv(&self) -> bool {
         true
     }
 
+    #[inline]
     pub fn tlv_type(&self) -> Option<TlvType> {
         Some(TlvType::MsgToUser)
     }
@@ -83,6 +85,7 @@ impl<'data> MsgToUserTlv<'data> {
         Ok(msg_to_user)
     }
 
+    #[inline]
     pub fn to_tlv(&self) -> Tlv<'data> {
         self.tlv
     }
@@ -91,6 +94,17 @@ impl<'data> MsgToUserTlv<'data> {
     pub fn to_owned(&self) -> TlvOwned {
         self.tlv.to_owned()
     }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_full()
+    }
+
+    delegate!(
+        to self.tlv {
+            pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+        }
+    );
 }
 
 impl<'a> From<MsgToUserTlv<'a>> for Tlv<'a> {
@@ -100,18 +114,18 @@ impl<'a> From<MsgToUserTlv<'a>> for Tlv<'a> {
 }
 
 impl WritableTlv for MsgToUserTlv<'_> {
+    #[inline]
     fn len_written(&self) -> usize {
-        self.len_full()
+        self.len_written()
     }
 
-    delegate!(
-        to self.tlv {
-            fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
-        }
-    );
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.tlv.write_to_bytes(buf)
+    }
 }
 
 impl GenericTlv for MsgToUserTlv<'_> {
+    #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
         self.tlv.tlv_type_field()
     }
