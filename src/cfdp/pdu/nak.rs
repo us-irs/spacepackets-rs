@@ -44,9 +44,6 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
     /// Please note that the start of scope and the end of scope need to be smaller or equal
     /// to [u32::MAX] if the large file flag of the passed PDU configuration is
     /// [LargeFileFlag::Normal].
-    ///
-    /// ## Errrors
-    ///
     pub fn new_no_segment_requests(
         pdu_header: PduHeader,
         start_of_scope: u64,
@@ -138,6 +135,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         self.segment_requests.as_ref()
     }
 
+    #[inline]
     pub fn num_segment_reqs(&self) -> usize {
         match &self.segment_requests {
             Some(seg_reqs) => match seg_reqs {
@@ -255,7 +253,6 @@ impl WritablePduPacket for NakPduCreator<'_> {
         self.write_to_bytes(buf)
     }
 
-    #[inline]
     fn len_written(&self) -> usize {
         self.len_written()
     }
