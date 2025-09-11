@@ -26,6 +26,7 @@ pub trait GenericTlv {
 
     /// Checks whether the type field contains one of the standard types specified in the CFDP
     /// standard and is part of the [TlvType] enum.
+    #[inline]
     fn is_standard_tlv(&self) -> bool {
         if let TlvTypeField::Standard(_) = self.tlv_type_field() {
             return true;
@@ -34,6 +35,7 @@ pub trait GenericTlv {
     }
 
     /// Returns the standard TLV type if the TLV field is not a custom field
+    #[inline]
     fn tlv_type(&self) -> Option<TlvType> {
         if let TlvTypeField::Standard(tlv_type) = self.tlv_type_field() {
             Some(tlv_type)
@@ -47,17 +49,20 @@ pub trait ReadableTlv {
     fn value(&self) -> &[u8];
 
     /// Checks whether the value field is empty.
+    #[inline]
     fn is_empty(&self) -> bool {
         self.value().is_empty()
     }
 
     /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
     /// [Self::value]
+    #[inline]
     fn len_value(&self) -> usize {
         self.value().len()
     }
 
     /// Returns the full raw length, including the length byte.
+    #[inline]
     fn len_full(&self) -> usize {
         self.len_value() + 2
     }
@@ -153,6 +158,8 @@ pub struct Tlv<'data> {
 }
 
 impl<'data> Tlv<'data> {
+    pub const MIN_LEN: usize = MIN_TLV_LEN;
+
     pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv<'_>, TlvLvDataTooLargeError> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Standard(tlv_type),
@@ -196,6 +203,7 @@ impl<'data> Tlv<'data> {
 
     /// If the TLV was generated from a raw bytestream using [Self::from_bytes], the raw start
     /// of the TLV can be retrieved with this method.
+    #[inline]
     pub fn raw_data(&self) -> Option<&[u8]> {
         self.lv.raw_data()
     }
@@ -229,12 +237,15 @@ impl WritableTlv for Tlv<'_> {
         self.lv.write_to_be_bytes_no_len_check(&mut buf[1..]);
         Ok(self.len_full())
     }
+
+    #[inline]
     fn len_written(&self) -> usize {
         self.len_full()
     }
 }
 
 impl GenericTlv for Tlv<'_> {
+    #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
         self.tlv_type_field
     }
@@ -277,6 +288,19 @@ pub mod alloc_mod {
             }
         }
 
+        pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+            generic_len_check_data_serialization(buf, self.data.len(), MIN_TLV_LEN)?;
+            buf[0] = self.tlv_type_field.into();
+            buf[1] = self.data.len() as u8;
+            buf[2..2 + self.data.len()].copy_from_slice(&self.data);
+            Ok(self.len_written())
+        }
+
+        #[inline]
+        fn len_written(&self) -> usize {
+            self.data.len() + 2
+        }
+
         pub fn as_tlv(&self) -> Tlv<'_> {
             Tlv {
                 tlv_type_field: self.tlv_type_field,
@@ -288,6 +312,7 @@ pub mod alloc_mod {
     }
 
     impl ReadableTlv for TlvOwned {
+        #[inline]
         fn value(&self) -> &[u8] {
             &self.data
         }
@@ -295,19 +320,17 @@ pub mod alloc_mod {
 
     impl WritableTlv for TlvOwned {
         fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-            generic_len_check_data_serialization(buf, self.data.len(), MIN_TLV_LEN)?;
-            buf[0] = self.tlv_type_field.into();
-            buf[1] = self.data.len() as u8;
-            buf[2..2 + self.data.len()].copy_from_slice(&self.data);
-            Ok(self.len_written())
+            self.write_to_bytes(buf)
         }
 
+        #[inline]
         fn len_written(&self) -> usize {
-            self.data.len() + 2
+            self.len_written()
         }
     }
 
     impl GenericTlv for TlvOwned {
+        #[inline]
         fn tlv_type_field(&self) -> TlvTypeField {
             self.tlv_type_field
         }
@@ -334,6 +357,7 @@ pub struct EntityIdTlv {
 }
 
 impl EntityIdTlv {
+    #[inline]
     pub fn new(entity_id: UnsignedByteField) -> Self {
         Self { entity_id }
     }
@@ -348,14 +372,17 @@ impl EntityIdTlv {
         Ok(())
     }
 
+    #[inline]
     pub fn entity_id(&self) -> &UnsignedByteField {
         &self.entity_id
     }
 
+    #[inline]
     pub fn len_value(&self) -> usize {
         self.entity_id.size()
     }
 
+    #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.entity_id.size()
     }
@@ -380,9 +407,7 @@ impl EntityIdTlv {
         // Can't fail.
         Ok(Tlv::new(TlvType::EntityId, &buf[2..2 + self.entity_id.size()]).unwrap())
     }
-}
 
-impl WritableTlv for EntityIdTlv {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         Self::len_check(buf)?;
         buf[0] = TlvType::EntityId as u8;
@@ -390,12 +415,25 @@ impl WritableTlv for EntityIdTlv {
         Ok(2 + self.entity_id.write_to_be_bytes(&mut buf[2..])?)
     }
 
+    #[inline]
     fn len_written(&self) -> usize {
         self.len_full()
     }
 }
 
+impl WritableTlv for EntityIdTlv {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
 impl GenericTlv for EntityIdTlv {
+    #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
         TlvTypeField::Standard(TlvType::EntityId)
     }
@@ -440,6 +478,7 @@ impl TryFrom<Tlv<'_>> for EntityIdTlv {
     }
 }
 
+#[inline]
 pub fn fs_request_has_second_filename(action_code: FilestoreActionCode) -> bool {
     if action_code == FilestoreActionCode::RenameFile
         || action_code == FilestoreActionCode::AppendFile
@@ -462,6 +501,7 @@ struct FilestoreTlvBase<'first_name, 'second_name> {
 }
 
 impl FilestoreTlvBase<'_, '_> {
+    #[inline]
     fn base_len_value(&self) -> usize {
         let mut len = 1 + self.first_name.len_full();
         if let Some(second_name) = self.second_name {
@@ -571,22 +611,27 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         })
     }
 
+    #[inline]
     pub fn action_code(&self) -> FilestoreActionCode {
         self.base.action_code
     }
 
+    #[inline]
     pub fn first_name(&self) -> Lv<'first_name> {
         self.base.first_name
     }
 
+    #[inline]
     pub fn second_name(&self) -> Option<Lv<'second_name>> {
         self.base.second_name
     }
 
+    #[inline]
     pub fn len_value(&self) -> usize {
         self.base.base_len_value()
     }
 
+    #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.len_value()
     }
@@ -625,9 +670,7 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
             },
         })
     }
-}
 
-impl WritableTlv for FilestoreRequestTlv<'_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -653,12 +696,25 @@ impl WritableTlv for FilestoreRequestTlv<'_, '_> {
         Ok(current_idx)
     }
 
+    #[inline]
     fn len_written(&self) -> usize {
         self.len_full()
     }
 }
 
+impl WritableTlv for FilestoreRequestTlv<'_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
 impl GenericTlv for FilestoreRequestTlv<'_, '_> {
+    #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
         TlvTypeField::Standard(TlvType::FilestoreRequest)
     }
@@ -733,26 +789,32 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         false
     }
 
+    #[inline]
     pub fn action_code(&self) -> FilestoreActionCode {
         self.base.action_code
     }
 
+    #[inline]
     pub fn status_code(&self) -> u8 {
         self.status_code
     }
 
+    #[inline]
     pub fn first_name(&self) -> Lv<'first_name> {
         self.base.first_name
     }
 
+    #[inline]
     pub fn second_name(&self) -> Option<Lv<'second_name>> {
         self.base.second_name
     }
 
+    #[inline]
     pub fn len_value(&self) -> usize {
         self.base.base_len_value() + self.filestore_message.len_full()
     }
 
+    #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.len_value()
     }
@@ -810,9 +872,7 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
             filestore_message,
         })
     }
-}
 
-impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_full() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -845,7 +905,19 @@ impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
     }
 }
 
+impl WritableTlv for FilestoreResponseTlv<'_, '_, '_> {
+    fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        self.write_to_bytes(buf)
+    }
+
+    #[inline]
+    fn len_written(&self) -> usize {
+        self.len_written()
+    }
+}
+
 impl GenericTlv for FilestoreResponseTlv<'_, '_, '_> {
+    #[inline]
     fn tlv_type_field(&self) -> TlvTypeField {
         TlvTypeField::Standard(TlvType::FilestoreResponse)
     }

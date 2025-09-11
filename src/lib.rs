@@ -203,10 +203,10 @@ impl PacketId {
     }
 
     #[inline]
-    pub const fn new(ptype: PacketType, sec_header: bool, apid: u11) -> Self {
+    pub const fn new(packet_type: PacketType, sec_header_flag: bool, apid: u11) -> Self {
         PacketId {
-            packet_type: ptype,
-            sec_header_flag: sec_header,
+            packet_type,
+            sec_header_flag,
             apid,
         }
     }
@@ -412,6 +412,8 @@ impl Default for SpHeader {
 }
 
 impl SpHeader {
+    pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
+
     #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceControl, data_len: u16) -> Self {
         Self {
@@ -424,8 +426,6 @@ impl SpHeader {
 
     /// This constructor sets the sequence flag field to [SequenceFlags::Unsegmented] and the data
     /// length to 0.
-    ///
-    /// This constructor will panic if the APID exceeds [MAX_APID].
     #[inline]
     pub const fn new_from_apid(apid: u11) -> Self {
         SpHeader {
@@ -439,10 +439,6 @@ impl SpHeader {
         }
     }
 
-    /// This constructor panics if the passed APID exceeds [MAX_APID] or the passed packet sequence
-    /// count exceeds [MAX_SEQ_COUNT].
-    ///
-    /// The checked constructor variants can be used to avoid panics.
     #[inline]
     pub const fn new_from_fields(
         ptype: PacketType,
@@ -460,7 +456,6 @@ impl SpHeader {
         }
     }
 
-    /// This is an unchecked constructor which can panic on invalid input.
     #[inline]
     pub const fn new_for_tm(
         apid: u11,
@@ -471,7 +466,6 @@ impl SpHeader {
         Self::new_from_fields(PacketType::Tm, false, apid, seq_flags, seq_count, data_len)
     }
 
-    /// This is an unchecked constructor which can panic on invalid input.
     #[inline]
     pub const fn new_for_tc(
         apid: u11,
@@ -483,16 +477,12 @@ impl SpHeader {
     }
 
     /// Variant of [SpHeader::new_for_tc] which sets the sequence flag field to [SequenceFlags::Unsegmented].
-    ///
-    /// This is an unchecked constructor which can panic on invalid input.
     #[inline]
     pub const fn new_for_unseg_tc(apid: u11, seq_count: u14, data_len: u16) -> Self {
         Self::new_for_tc(apid, SequenceFlags::Unsegmented, seq_count, data_len)
     }
 
     /// Variant of [SpHeader::new_for_tm] which sets the sequence flag field to [SequenceFlags::Unsegmented].
-    ///
-    /// This is an unchecked constructor which can panic on invalid input.
     #[inline]
     pub const fn new_for_unseg_tm(apid: u11, seq_count: u14, data_len: u16) -> Self {
         Self::new_for_tm(apid, SequenceFlags::Unsegmented, seq_count, data_len)
@@ -508,7 +498,7 @@ impl SpHeader {
     /// Retrieve the total packet size based on the data length field
     #[inline]
     fn packet_len(&self) -> usize {
-        usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
+        usize::from(self.data_len()) + Self::HEADER_LEN + 1
     }
 
     #[inline]
@@ -540,15 +530,15 @@ impl SpHeader {
     /// This function also returns the remaining part of the passed slice starting past the read
     /// CCSDS header.
     pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, &[u8]), ByteConversionError> {
-        if buf.len() < CCSDS_HEADER_LEN {
+        if buf.len() < Self::HEADER_LEN {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
             });
         }
         // Unwrap okay, this can not fail.
-        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..CCSDS_HEADER_LEN]).unwrap();
-        Ok((Self::from(zc_header), &buf[CCSDS_HEADER_LEN..]))
+        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..Self::HEADER_LEN]).unwrap();
+        Ok((Self::from(zc_header), &buf[Self::HEADER_LEN..]))
     }
 
     /// Write the header to a raw buffer using big endian format. This function returns the
@@ -557,7 +547,7 @@ impl SpHeader {
         &self,
         buf: &'a mut [u8],
     ) -> Result<&'a mut [u8], ByteConversionError> {
-        if buf.len() < CCSDS_HEADER_LEN {
+        if buf.len() < Self::HEADER_LEN {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
@@ -565,14 +555,14 @@ impl SpHeader {
         }
         let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
         // Unwrap okay, this can not fail.
-        zc_header.write_to(&mut buf[0..CCSDS_HEADER_LEN]).unwrap();
-        Ok(&mut buf[CCSDS_HEADER_LEN..])
+        zc_header.write_to(&mut buf[0..Self::HEADER_LEN]).unwrap();
+        Ok(&mut buf[Self::HEADER_LEN..])
     }
 
     /// Create a vector containing the CCSDS header.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
-        let mut vec = alloc::vec![0; CCSDS_HEADER_LEN];
+        let mut vec = alloc::vec![0; Self::HEADER_LEN];
         // This can not fail.
         self.write_to_be_bytes(&mut vec[..]).unwrap();
         vec

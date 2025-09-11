@@ -920,8 +920,7 @@ pub struct PusTmReader<'raw_data> {
 }
 
 impl<'raw_data> PusTmReader<'raw_data> {
-    /// Create a [PusTmReader] instance from a raw slice. On success, it returns a tuple containing
-    /// the instance and the found byte length of the packet. The timestamp length needs to be
+    /// Create a [PusTmReader] instance from a raw slice. The timestamp length needs to be
     /// known beforehand.
     ///
     /// This function will verify the CRC-16-CCITT of the PUS packet and will return an appropriate
@@ -957,6 +956,8 @@ impl<'raw_data> PusTmReader<'raw_data> {
         Ok(tc)
     }
 
+    /// Create a [PusTmReader] instance from a raw slice. The timestamp length needs to be
+    /// known beforehand. This variant can be used to parse packets without a checksum.
     pub fn new_no_checksum(slice: &'raw_data [u8], timestamp_len: usize) -> Result<Self, PusError> {
         Self::new_no_checksum_verification(
             slice,
@@ -966,6 +967,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
             },
         )
     }
+
     pub fn new_no_checksum_verification(
         slice: &'raw_data [u8],
         reader_config: ReaderConfig,
@@ -1200,16 +1202,13 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         Some(writer)
     }
 
-    /// Set the sequence count. Returns false and does not update the value if the passed value
-    /// exceeds [MAX_APID].
     #[inline]
-    pub fn set_apid(&mut self, apid: u11) -> bool {
+    pub fn set_apid(&mut self, apid: u11) {
         // Clear APID part of the raw packet ID
         let updated_apid = ((((self.raw_tm[0] as u16) << 8) | self.raw_tm[1] as u16)
             & !MAX_APID.as_u16())
             | apid.as_u16();
         self.raw_tm[0..2].copy_from_slice(&updated_apid.to_be_bytes());
-        true
     }
 
     /// This function sets the message counter in the PUS TM secondary header.
@@ -1243,11 +1242,10 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
     }
 
     #[inline]
-    pub fn set_seq_count(&mut self, seq_count: u14) -> bool {
+    pub fn set_seq_count(&mut self, seq_count: u14) {
         let new_psc = (u16::from_be_bytes(self.raw_tm[2..4].try_into().unwrap()) & 0xC000)
             | seq_count.as_u16();
         self.raw_tm[2..4].copy_from_slice(&new_psc.to_be_bytes());
-        true
     }
 
     /// This method has to be called after modifying fields to ensure the CRC16 of the telemetry
