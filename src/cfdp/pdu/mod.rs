@@ -1,4 +1,5 @@
 //! CFDP Packet Data Unit (PDU) support.
+use crate::cfdp::pdu::nak::InvalidStartOrEndOfScopeError;
 use crate::cfdp::*;
 use crate::crc::CRC_CCITT_FALSE;
 use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
@@ -63,8 +64,8 @@ pub enum PduError {
         found: u8,
         expected: Option<FileDirectiveType>,
     },
-    #[error("invalid start or end of scope value for NAK PDU")]
-    InvalidStartOrEndOfScopeValue,
+    #[error("nak pdu: {0}")]
+    InvalidStartOrEndOfScope(#[from] InvalidStartOrEndOfScopeError),
     /// Invalid condition code. Contains the raw detected value.
     #[error("invalid condition code {0}")]
     InvalidConditionCode(u8),
@@ -388,15 +389,14 @@ impl PduHeader {
         self.header_len() + self.pdu_datafield_len as usize
     }
 
-    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
-        // Internal note: There is currently no way to pass a PDU configuration like this, but
-        // this check is still kept for defensive programming.
-        if self.pdu_conf.source_entity_id.size() != self.pdu_conf.dest_entity_id.size() {
-            return Err(PduError::SourceDestIdLenMissmatch {
-                src_id_len: self.pdu_conf.source_entity_id.size(),
-                dest_id_len: self.pdu_conf.dest_entity_id.size(),
-            });
-        }
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        // The API does not allow passing entity IDs with different sizes, so this should
+        // never happen.
+        assert_eq!(
+            self.pdu_conf.source_entity_id.size(),
+            self.pdu_conf.dest_entity_id.size(),
+            "unexpected missmatch of source and destination entity ID length"
+        );
         if buf.len()
             < FIXED_HEADER_LEN
                 + self.pdu_conf.source_entity_id.size()
@@ -405,8 +405,7 @@ impl PduHeader {
             return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: FIXED_HEADER_LEN,
-            }
-            .into());
+            });
         }
         let mut current_idx = 0;
         buf[current_idx] = (CFDP_VERSION_2 << 5)

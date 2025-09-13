@@ -1,4 +1,4 @@
-all: check build test clippy fmt docs
+all: check build test clippy fmt docs coverage
 
 clippy:
   cargo clippy -- -D warnings
