@@ -8,6 +8,79 @@ use super::{
     PduHeader, WritablePduPacket,
 };
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
+#[error("invalid start or end of scope value for NAK PDU")]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct InvalidStartOrEndOfScopeError((u64, u64));
+
+fn calculate_pdu_datafield_len(pdu_header: &PduHeader, num_segment_reqs: usize) -> usize {
+    let mut datafield_len = 1;
+    if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal {
+        datafield_len += 8;
+        datafield_len += num_segment_reqs * 8;
+    } else {
+        datafield_len += 16;
+        datafield_len += num_segment_reqs * 16;
+    }
+    if pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
+        datafield_len += 2;
+    }
+    datafield_len
+}
+
+fn write_start_and_end_of_scope(
+    buf: &mut [u8],
+    file_flag: LargeFileFlag,
+    mut current_index: usize,
+    start_of_scope: u64,
+    end_of_scope: u64,
+) -> usize {
+    if file_flag == LargeFileFlag::Normal {
+        let start_of_scope = u32::try_from(start_of_scope).unwrap();
+        let end_of_scope = u32::try_from(end_of_scope).unwrap();
+        buf[current_index..current_index + 4].copy_from_slice(&start_of_scope.to_be_bytes());
+        current_index += 4;
+        buf[current_index..current_index + 4].copy_from_slice(&end_of_scope.to_be_bytes());
+        current_index += 4;
+    } else {
+        buf[current_index..current_index + 8].copy_from_slice(&start_of_scope.to_be_bytes());
+        current_index += 8;
+        buf[current_index..current_index + 8].copy_from_slice(&end_of_scope.to_be_bytes());
+        current_index += 8;
+    }
+    current_index
+}
+
+/// This function can be used to retrieve the maximum amount of segment request given a PDU
+/// configuration to stay below a certain maximum packet size. This is useful to calculate how many
+/// NAK PDUs are required inside a NAK sequence.
+pub fn calculate_max_segment_requests(
+    mut max_packet_size: usize,
+    pdu_header: &PduHeader,
+) -> Result<usize, usize> {
+    let mut decrement = pdu_header.header_len() + 1;
+    if pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
+        decrement += 2;
+    }
+    if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal {
+        decrement += 8;
+    } else {
+        decrement += 16;
+    }
+    if max_packet_size < decrement {
+        return Err(max_packet_size);
+    }
+    max_packet_size -= decrement;
+    Ok(
+        if pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal {
+            max_packet_size / 8
+        } else {
+            max_packet_size / 16
+        },
+    )
+}
+
 /// Helper type to encapsulate both normal file size segment requests and large file size segment
 /// requests.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -48,22 +121,22 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         pdu_header: PduHeader,
         start_of_scope: u64,
         end_of_scope: u64,
-    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
-        Self::new_generic(pdu_header, start_of_scope, end_of_scope, None)
+    ) -> Result<NakPduCreator<'seg_reqs>, InvalidStartOrEndOfScopeError> {
+        Self::new(pdu_header, start_of_scope, end_of_scope, None)
     }
 
     /// Default constructor for normal file sizes.
-    pub fn new(
+    pub fn new_normal_file_size(
         pdu_header: PduHeader,
         start_of_scope: u32,
         end_of_scope: u32,
         segment_requests: &'seg_reqs [(u32, u32)],
-    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, InvalidStartOrEndOfScopeError> {
         let mut passed_segment_requests = None;
         if !segment_requests.is_empty() {
             passed_segment_requests = Some(SegmentRequests::U32Pairs(segment_requests));
         }
-        Self::new_generic(
+        Self::new(
             pdu_header,
             start_of_scope.into(),
             end_of_scope.into(),
@@ -76,12 +149,12 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         start_of_scope: u64,
         end_of_scope: u64,
         segment_requests: &'seg_reqs [(u64, u64)],
-    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, InvalidStartOrEndOfScopeError> {
         let mut passed_segment_requests = None;
         if !segment_requests.is_empty() {
             passed_segment_requests = Some(SegmentRequests::U64Pairs(segment_requests));
         }
-        Self::new_generic(
+        Self::new(
             pdu_header,
             start_of_scope,
             end_of_scope,
@@ -89,19 +162,22 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         )
     }
 
-    fn new_generic(
+    fn new(
         mut pdu_header: PduHeader,
         start_of_scope: u64,
         end_of_scope: u64,
         segment_requests: Option<SegmentRequests<'seg_reqs>>,
-    ) -> Result<NakPduCreator<'seg_reqs>, PduError> {
+    ) -> Result<NakPduCreator<'seg_reqs>, InvalidStartOrEndOfScopeError> {
         // Force correct direction flag.
         pdu_header.pdu_conf.direction = Direction::TowardsSender;
         if let Some(ref segment_requests) = segment_requests {
             match segment_requests {
                 SegmentRequests::U32Pairs(_) => {
                     if start_of_scope > u32::MAX as u64 || end_of_scope > u32::MAX as u64 {
-                        return Err(PduError::InvalidStartOrEndOfScopeValue);
+                        return Err(InvalidStartOrEndOfScopeError((
+                            start_of_scope,
+                            end_of_scope,
+                        )));
                     }
                     pdu_header.pdu_conf.file_flag = LargeFileFlag::Normal;
                 }
@@ -152,18 +228,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
-        let mut datafield_len = 1;
-        if self.file_flag() == LargeFileFlag::Normal {
-            datafield_len += 8;
-            datafield_len += self.num_segment_reqs() * 8;
-        } else {
-            datafield_len += 16;
-            datafield_len += self.num_segment_reqs() * 16;
-        }
-        if self.crc_flag() == CrcFlag::WithCrc {
-            datafield_len += 2;
-        }
-        datafield_len
+        calculate_pdu_datafield_len(&self.pdu_header, self.num_segment_reqs())
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
@@ -176,58 +241,48 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
             }
             .into());
         }
-        let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::NakPdu as u8;
-        current_idx += 1;
+        let mut current_index = self.pdu_header.write_to_bytes(buf)?;
+        buf[current_index] = FileDirectiveType::NakPdu as u8;
+        current_index += 1;
 
-        let mut write_start_end_of_scope_normal = || {
-            let start_of_scope = u32::try_from(self.start_of_scope).unwrap();
-            let end_of_scope = u32::try_from(self.end_of_scope).unwrap();
-            buf[current_idx..current_idx + 4].copy_from_slice(&start_of_scope.to_be_bytes());
-            current_idx += 4;
-            buf[current_idx..current_idx + 4].copy_from_slice(&end_of_scope.to_be_bytes());
-            current_idx += 4;
-        };
+        current_index = write_start_and_end_of_scope(
+            buf,
+            self.file_flag(),
+            current_index,
+            self.start_of_scope,
+            self.end_of_scope,
+        );
         if let Some(ref seg_reqs) = self.segment_requests {
             match seg_reqs {
                 SegmentRequests::U32Pairs(pairs) => {
                     // Unwrap is okay here, the API should prevent invalid values which would trigger a
                     // panic here.
-                    write_start_end_of_scope_normal();
                     for (next_start_offset, next_end_offset) in *pairs {
-                        buf[current_idx..current_idx + 4]
+                        buf[current_index..current_index + 4]
                             .copy_from_slice(&next_start_offset.to_be_bytes());
-                        current_idx += 4;
-                        buf[current_idx..current_idx + 4]
+                        current_index += 4;
+                        buf[current_index..current_index + 4]
                             .copy_from_slice(&next_end_offset.to_be_bytes());
-                        current_idx += 4;
+                        current_index += 4;
                     }
                 }
                 SegmentRequests::U64Pairs(pairs) => {
-                    buf[current_idx..current_idx + 8]
-                        .copy_from_slice(&self.start_of_scope.to_be_bytes());
-                    current_idx += 8;
-                    buf[current_idx..current_idx + 8]
-                        .copy_from_slice(&self.end_of_scope.to_be_bytes());
-                    current_idx += 8;
                     for (next_start_offset, next_end_offset) in *pairs {
-                        buf[current_idx..current_idx + 8]
+                        buf[current_index..current_index + 8]
                             .copy_from_slice(&next_start_offset.to_be_bytes());
-                        current_idx += 8;
-                        buf[current_idx..current_idx + 8]
+                        current_index += 8;
+                        buf[current_index..current_index + 8]
                             .copy_from_slice(&next_end_offset.to_be_bytes());
-                        current_idx += 8;
+                        current_index += 8;
                     }
                 }
             }
-        } else {
-            write_start_end_of_scope_normal();
         }
 
         if self.crc_flag() == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(buf, current_idx);
+            current_index = add_pdu_crc(buf, current_index);
         }
-        Ok(current_idx)
+        Ok(current_index)
     }
 
     #[inline]
@@ -258,6 +313,145 @@ impl WritablePduPacket for NakPduCreator<'_> {
     }
 }
 
+// TODO: Docs
+#[derive(Debug)]
+pub struct NakPduCreatorWithReservedSeqReqsBuf<'buf> {
+    pdu_header: PduHeader,
+    num_segment_reqs: usize,
+    param_field_offset: usize,
+    buf: &'buf mut [u8],
+}
+
+impl<'buf> NakPduCreatorWithReservedSeqReqsBuf<'buf> {
+    pub fn calculate_max_segment_requests(
+        max_packet_size: usize,
+        pdu_header: &PduHeader,
+    ) -> Result<usize, usize> {
+        calculate_max_segment_requests(max_packet_size, pdu_header)
+    }
+
+    pub fn new(
+        buf: &'buf mut [u8],
+        mut pdu_header: PduHeader,
+        num_segment_reqs: usize,
+    ) -> Result<Self, ByteConversionError> {
+        pdu_header.pdu_datafield_len =
+            calculate_pdu_datafield_len(&pdu_header, num_segment_reqs) as u16;
+        let written_len = pdu_header.header_len() + pdu_header.pdu_datafield_len as usize;
+        if buf.len() < written_len {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: written_len,
+            });
+        }
+        // Force correct direction flag.
+        pdu_header.pdu_conf.direction = Direction::TowardsSender;
+        let param_field_offset = pdu_header.header_len() + 1;
+        Ok(Self {
+            pdu_header,
+            num_segment_reqs,
+            param_field_offset,
+            buf,
+        })
+    }
+}
+
+impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
+    #[inline]
+    pub fn pdu_header(&self) -> &PduHeader {
+        &self.pdu_header
+    }
+
+    fn calc_pdu_datafield_len(&self) -> usize {
+        calculate_pdu_datafield_len(&self.pdu_header, self.num_segment_reqs)
+    }
+
+    pub fn set_start_and_end_of_scope(
+        &mut self,
+        start_of_scope: u64,
+        end_of_scope: u64,
+    ) -> Result<(), InvalidStartOrEndOfScopeError> {
+        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal
+            && (start_of_scope > u32::MAX as u64 || end_of_scope > u32::MAX as u64)
+        {
+            return Err(InvalidStartOrEndOfScopeError((
+                start_of_scope,
+                end_of_scope,
+            )));
+        }
+        write_start_and_end_of_scope(
+            self.buf,
+            self.pdu_header.common_pdu_conf().file_flag,
+            self.pdu_header.header_len() + 1,
+            start_of_scope,
+            end_of_scope,
+        );
+        Ok(())
+    }
+
+    pub fn len_written(&self) -> usize {
+        self.pdu_header.header_len() + self.calc_pdu_datafield_len()
+    }
+
+    #[inline]
+    fn segment_request_buffer_len(&self) -> usize {
+        self.num_segment_reqs
+            * if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal {
+                8
+            } else {
+                16
+            }
+    }
+
+    fn segment_request_offset(&self) -> usize {
+        self.param_field_offset
+            + if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Normal {
+                8
+            } else {
+                16
+            }
+    }
+
+    #[inline]
+    pub fn segment_request_buffer_mut(&mut self) -> &mut [u8] {
+        let len = self.segment_request_buffer_len();
+        let segment_req_buf_offset = self.segment_request_offset();
+        &mut self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
+    }
+
+    #[inline]
+    pub fn segment_request_buffer(&self) -> &[u8] {
+        let len = self.segment_request_buffer_len();
+        let segment_req_buf_offset = self.segment_request_offset();
+        &self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
+    }
+
+    #[inline]
+    pub fn segment_request_iter(&self) -> SegmentRequestIter<'_> {
+        SegmentRequestIter::new(
+            self.segment_request_buffer(),
+            self.pdu_header.common_pdu_conf().file_flag,
+        )
+    }
+
+    pub fn finish(self) -> usize {
+        let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
+        self.buf[current_idx] = FileDirectiveType::NakPdu as u8;
+        current_idx += 1;
+
+        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
+            current_idx += 16 + self.num_segment_reqs * 16;
+        } else {
+            current_idx += 8 + self.num_segment_reqs * 8;
+        }
+
+        if self.pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(self.buf, current_idx);
+        }
+        current_idx
+    }
+}
+
 /// Special iterator type for the NAK PDU which allows to iterate over both normal and large file
 /// segment requests.
 #[derive(Debug)]
@@ -265,6 +459,16 @@ pub struct SegmentRequestIter<'a> {
     seq_req_raw: &'a [u8],
     large_file: LargeFileFlag,
     current_idx: usize,
+}
+
+impl<'a> SegmentRequestIter<'a> {
+    fn new(seq_req_raw: &'a [u8], large_file: LargeFileFlag) -> SegmentRequestIter<'a> {
+        SegmentRequestIter {
+            seq_req_raw,
+            large_file,
+            current_idx: 0,
+        }
+    }
 }
 
 impl Iterator for SegmentRequestIter<'_> {
@@ -421,6 +625,14 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
                 u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
             current_idx += 8;
         } else {
+            if current_idx + 8 > buf.len() {
+                return Err(PduError::ByteConversion(
+                    ByteConversionError::FromSliceTooSmall {
+                        found: buf.len(),
+                        expected: current_idx + 8,
+                    },
+                ));
+            }
             start_of_scope =
                 u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap()) as u64;
             current_idx += 4;
@@ -460,11 +672,7 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
         if self.seg_reqs_raw.is_empty() {
             return None;
         }
-        Some(SegmentRequestIter {
-            seq_req_raw: self.seg_reqs_raw,
-            current_idx: 0,
-            large_file: self.file_flag(),
-        })
+        Some(SegmentRequestIter::new(self.seg_reqs_raw, self.file_flag()))
     }
 }
 
@@ -569,8 +777,9 @@ mod tests {
     fn test_serialization_two_segments() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        let nak_pdu = NakPduCreator::new(pdu_header, 100, 300, &[(0, 0), (32, 64)])
-            .expect("creating NAK PDU creator failed");
+        let nak_pdu =
+            NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[(0, 0), (32, 64)])
+                .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 64] = [0; 64];
         nak_pdu
             .write_to_bytes(&mut buf)
@@ -663,8 +872,9 @@ mod tests {
     fn test_deserialization_normal_segments() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        let nak_pdu = NakPduCreator::new(pdu_header, 100, 300, &[(50, 100), (200, 300)])
-            .expect("creating NAK PDU creator failed");
+        let nak_pdu =
+            NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[(50, 100), (200, 300)])
+                .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 128] = [0; 128];
         nak_pdu
             .write_to_bytes(&mut buf)
@@ -699,8 +909,8 @@ mod tests {
     fn test_empty_is_empty() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        let nak_pdu_0 =
-            NakPduCreator::new(pdu_header, 100, 300, &[]).expect("creating NAK PDU creator failed");
+        let nak_pdu_0 = NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[])
+            .expect("creating NAK PDU creator failed");
         let nak_pdu_1 = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
             .expect("creating NAK PDU creator failed");
         assert_eq!(nak_pdu_0, nak_pdu_1);
@@ -714,7 +924,7 @@ mod tests {
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
         let u32_list = SegmentRequests::U32Pairs(&[(0, 50), (50, 100)]);
         //let error = NakPduCreator::new_generic(pdu_header, 100, 300, Some(u32_list));
-        let error = NakPduCreator::new_generic(
+        let error = NakPduCreator::new(
             pdu_header,
             u32::MAX as u64 + 1,
             u32::MAX as u64 + 2,
@@ -722,14 +932,10 @@ mod tests {
         );
         assert!(error.is_err());
         let error = error.unwrap_err();
-        if let PduError::InvalidStartOrEndOfScopeValue = error {
-            assert_eq!(
-                error.to_string(),
-                "invalid start or end of scope value for NAK PDU"
-            );
-        } else {
-            panic!("unexpected error {error}");
-        }
+        assert_eq!(
+            error.to_string(),
+            "invalid start or end of scope value for NAK PDU"
+        );
     }
 
     #[test]
@@ -776,5 +982,364 @@ mod tests {
                 u16::from_be_bytes(nak_vec[nak_pdu.len_written() - 2..].try_into().unwrap())
             );
         }
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segment_buf_no_segments_normal_file_0() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
+        assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 9);
+        assert!(nak_pdu.segment_request_buffer().is_empty());
+        assert!(nak_pdu.segment_request_buffer_mut().is_empty());
+        assert_eq!(nak_pdu.segment_request_iter().count(), 0);
+        let pdu_header = *nak_pdu.pdu_header();
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 9, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        current_idx += 4;
+        let end_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        assert_eq!(start_of_scope, 0);
+        assert_eq!(end_of_scope, 0);
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segment_buf_no_segments_normal_file_1() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
+        assert!(nak_pdu.segment_request_buffer().is_empty());
+        assert!(nak_pdu.segment_request_buffer_mut().is_empty());
+        assert_eq!(nak_pdu.segment_request_iter().count(), 0);
+        nak_pdu
+            .set_start_and_end_of_scope(100, 200)
+            .expect("setting start and end of scope failed");
+        let pdu_header = *nak_pdu.pdu_header();
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 1 + 8 + 2, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        current_idx += 4;
+        let end_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        assert_eq!(start_of_scope, 100);
+        assert_eq!(end_of_scope, 200);
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segment_buf_no_segments_large_file_0() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
+        assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 1 + 16);
+        assert!(nak_pdu.segment_request_buffer().is_empty());
+        assert!(nak_pdu.segment_request_buffer_mut().is_empty());
+        assert_eq!(nak_pdu.segment_request_iter().count(), 0);
+        let pdu_header = *nak_pdu.pdu_header();
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 1 + 16, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        current_idx += 8;
+        let end_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        assert_eq!(start_of_scope, 0);
+        assert_eq!(end_of_scope, 0);
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segment_buf_invalid_scope() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 2).unwrap();
+        assert_eq!(
+            nak_pdu
+                .set_start_and_end_of_scope(100, u32::MAX as u64 + 1)
+                .unwrap_err(),
+            InvalidStartOrEndOfScopeError((100, (u32::MAX as u64) + 1))
+        );
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segment_buf_no_segments_large_file_1() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
+        assert!(nak_pdu.segment_request_buffer().is_empty());
+        assert!(nak_pdu.segment_request_buffer_mut().is_empty());
+        assert_eq!(nak_pdu.segment_request_iter().count(), 0);
+        nak_pdu
+            .set_start_and_end_of_scope(100, u32::MAX as u64 + 1)
+            .expect("setting start and end of scope failed");
+        assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 1 + 16);
+        let pdu_header = *nak_pdu.pdu_header();
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 1 + 16, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        current_idx += 8;
+        let end_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        assert_eq!(start_of_scope, 100);
+        assert_eq!(end_of_scope, u32::MAX as u64 + 1);
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segments_buf_two_segments_normal_file() {
+        let num_segments = 2;
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, num_segments).unwrap();
+        nak_pdu
+            .set_start_and_end_of_scope(100, 200)
+            .expect("setting start and end of scope failed");
+        assert_eq!(nak_pdu.segment_request_buffer().len(), num_segments * 8);
+        assert_eq!(nak_pdu.segment_request_buffer_mut().len(), num_segments * 8);
+        let seg_req_buf_mut = nak_pdu.segment_request_buffer_mut();
+        assert_eq!(seg_req_buf_mut.len(), num_segments * 8);
+        // Slice is statically declared here, but the actual purpose is that we can iterate
+        // over the slice and fill the mutable segment request slice during the iteration.
+        let seg_reqs: [(u32, u32); 2] = [(0, 20), (20, 40)];
+        for (i, seg_req) in seg_reqs.iter().enumerate() {
+            let offset = i * 8;
+            seg_req_buf_mut[offset..offset + 4].copy_from_slice(&seg_req.0.to_be_bytes());
+            seg_req_buf_mut[offset + 4..offset + 8].copy_from_slice(&seg_req.1.to_be_bytes());
+        }
+        let pdu_header = *nak_pdu.pdu_header();
+        for (seg1, seg2) in nak_pdu.segment_request_iter().zip(seg_reqs.iter()) {
+            assert_eq!(seg1.0 as u32, seg2.0);
+            assert_eq!(seg1.1 as u32, seg2.1);
+        }
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 1 + 8 + num_segments * 8, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        current_idx += 4;
+        let end_of_scope =
+            u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+        current_idx += 4;
+        assert_eq!(start_of_scope, 100);
+        assert_eq!(end_of_scope, 200);
+        for seg_req in seg_reqs.iter() {
+            let seg_start =
+                u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+            current_idx += 4;
+            let seg_end = u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
+            current_idx += 4;
+            assert_eq!(seg_start, seg_req.0);
+            assert_eq!(seg_end, seg_req.1);
+        }
+    }
+
+    #[test]
+    fn test_with_reserved_lost_segments_buf_two_segments_large_file() {
+        let num_segments = 2;
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
+        let mut buf: [u8; 128] = [0; 128];
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let mut nak_pdu =
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, num_segments).unwrap();
+        nak_pdu
+            .set_start_and_end_of_scope(100, u32::MAX as u64 + 1)
+            .expect("setting start and end of scope failed");
+        assert_eq!(nak_pdu.segment_request_buffer().len(), num_segments * 16);
+        assert_eq!(
+            nak_pdu.segment_request_buffer_mut().len(),
+            num_segments * 16
+        );
+        let seg_req_buf_mut = nak_pdu.segment_request_buffer_mut();
+        assert_eq!(seg_req_buf_mut.len(), num_segments * 16);
+        // Slice is statically declared here, but the actual purpose is that we can iterate
+        // over the slice and fill the mutable segment request slice during the iteration.
+        let seg_reqs: [(u64, u64); 2] = [(0, 20), (20, u32::MAX as u64 + 1)];
+        for (i, seg_req) in seg_reqs.iter().enumerate() {
+            let offset = i * 16;
+            seg_req_buf_mut[offset..offset + 8].copy_from_slice(&seg_req.0.to_be_bytes());
+            seg_req_buf_mut[offset + 8..offset + 16].copy_from_slice(&seg_req.1.to_be_bytes());
+        }
+        let pdu_header = *nak_pdu.pdu_header();
+        for (seg1, seg2) in nak_pdu.segment_request_iter().zip(seg_reqs.iter()) {
+            assert_eq!(seg1.0, seg2.0);
+            assert_eq!(seg1.1, seg2.1);
+        }
+        let len_written = nak_pdu.finish();
+        verify_raw_header(&pdu_header, &buf);
+        let mut current_idx = pdu_header.header_len();
+        assert_eq!(current_idx + 1 + 16 + num_segments * 16, len_written);
+        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        current_idx += 1;
+        let start_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        current_idx += 8;
+        let end_of_scope =
+            u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+        current_idx += 8;
+        assert_eq!(start_of_scope, 100);
+        assert_eq!(end_of_scope, u32::MAX as u64 + 1);
+        for seg_req in seg_reqs.iter() {
+            let seg_start =
+                u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+            current_idx += 8;
+            let seg_end = u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
+            current_idx += 8;
+            assert_eq!(seg_start, seg_req.0);
+            assert_eq!(seg_end, seg_req.1);
+        }
+    }
+
+    #[test]
+    fn test_reserved_lost_segment_finish_buf_too_small() {
+        let mut buf: [u8; 64] = [0; 64];
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        assert_eq!(
+            NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf[0..10], pdu_header, 0).unwrap_err(),
+            ByteConversionError::ToSliceTooSmall {
+                found: 10,
+                expected: pdu_header.header_len() + 1 + 8
+            }
+        );
+    }
+
+    #[test]
+    fn test_max_segment_req_calculator() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+
+        // 7 byte header, 1 byte directive, 8 bytes start and end of segment, leaves 48 bytes for
+        // 6 segment requests (8 bytes each)
+        assert_eq!(6, calculate_max_segment_requests(64, &pdu_header).unwrap());
+        assert_eq!(
+            6,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(64, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(6, calculate_max_segment_requests(65, &pdu_header).unwrap());
+        assert_eq!(
+            6,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(65, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(5, calculate_max_segment_requests(63, &pdu_header).unwrap());
+        assert_eq!(
+            5,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(63, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(7, calculate_max_segment_requests(72, &pdu_header).unwrap());
+        assert_eq!(
+            7,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(72, &pdu_header)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_max_segment_req_calculator_large_file() {
+        let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+
+        // 7 byte header, 1 byte directive, 16 bytes start and end of segment, leaves 48 bytes for
+        // 3 large segment requests (16 bytes each)
+        assert_eq!(3, calculate_max_segment_requests(72, &pdu_header).unwrap());
+        assert_eq!(
+            3,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(72, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(3, calculate_max_segment_requests(73, &pdu_header).unwrap());
+        assert_eq!(
+            3,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(73, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(2, calculate_max_segment_requests(71, &pdu_header).unwrap());
+        assert_eq!(
+            2,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(71, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(4, calculate_max_segment_requests(88, &pdu_header).unwrap());
+        assert_eq!(
+            4,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(88, &pdu_header)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_max_segment_req_calculator_large_file_with_crc() {
+        let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Large);
+        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+
+        // 7 byte header, 1 byte directive, 16 bytes start and end of segment, leaves 48 bytes for
+        // 3 large segment requests (16 bytes each)
+        assert_eq!(3, calculate_max_segment_requests(74, &pdu_header).unwrap());
+        assert_eq!(
+            3,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(74, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(3, calculate_max_segment_requests(75, &pdu_header).unwrap());
+        assert_eq!(
+            3,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(75, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(2, calculate_max_segment_requests(73, &pdu_header).unwrap());
+        assert_eq!(
+            2,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(73, &pdu_header)
+                .unwrap()
+        );
+
+        assert_eq!(4, calculate_max_segment_requests(90, &pdu_header).unwrap());
+        assert_eq!(
+            4,
+            NakPduCreatorWithReservedSeqReqsBuf::calculate_max_segment_requests(90, &pdu_header)
+                .unwrap()
+        );
     }
 }
