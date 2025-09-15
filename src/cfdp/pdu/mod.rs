@@ -1,4 +1,5 @@
 //! CFDP Packet Data Unit (PDU) support.
+use crate::cfdp::pdu::ack::InvalidAckedDirectiveCodeError;
 use crate::cfdp::pdu::nak::InvalidStartOrEndOfScopeError;
 use crate::cfdp::*;
 use crate::crc::CRC_CCITT_FALSE;
@@ -58,7 +59,7 @@ pub enum PduError {
         expected: FileDirectiveType,
     },
     /// The directive type field contained a value not in the range of permitted values. This can
-    /// also happen if an invalid value is passed to the ACK PDU constructor.
+    /// also happen if an invalid value is passed to the ACK PDU reader.
     #[error("invalid directive type, found {found:?}, expected {expected:?}")]
     InvalidDirectiveType {
         found: u8,
@@ -84,6 +85,15 @@ pub enum PduError {
     /// Error handling a TLV field.
     #[error("PDU error: {0}")]
     TlvLv(#[from] TlvLvError),
+}
+
+impl From<InvalidAckedDirectiveCodeError> for PduError {
+    fn from(value: InvalidAckedDirectiveCodeError) -> Self {
+        Self::InvalidDirectiveType {
+            found: value.0 as u8,
+            expected: None,
+        }
+    }
 }
 
 pub trait WritablePduPacket {

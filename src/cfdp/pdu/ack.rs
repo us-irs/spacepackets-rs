@@ -10,6 +10,10 @@ use super::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("invalid directive code of acknowledged PDU")]
+pub struct InvalidAckedDirectiveCodeError(pub FileDirectiveType);
+
 /// ACK PDU abstraction.
 ///
 /// For more information, refer to CFDP chapter 5.2.4.
@@ -29,16 +33,13 @@ impl AckPdu {
         directive_code_of_acked_pdu: FileDirectiveType,
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
-    ) -> Result<Self, PduError> {
+    ) -> Result<Self, InvalidAckedDirectiveCodeError> {
         if directive_code_of_acked_pdu == FileDirectiveType::EofPdu {
             pdu_header.pdu_conf.direction = Direction::TowardsSender;
         } else if directive_code_of_acked_pdu == FileDirectiveType::FinishedPdu {
             pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
         } else {
-            return Err(PduError::InvalidDirectiveType {
-                found: directive_code_of_acked_pdu as u8,
-                expected: None,
-            });
+            return Err(InvalidAckedDirectiveCodeError(directive_code_of_acked_pdu));
         }
         // Force correct direction flag.
         let mut ack_pdu = Self {
@@ -145,12 +146,14 @@ impl AckPdu {
         let condition_code = ConditionCode::try_from((buf[current_idx] >> 4) & 0b1111)
             .map_err(|_| PduError::InvalidConditionCode((buf[current_idx] >> 4) & 0b1111))?;
         let transaction_status = TransactionStatus::try_from(buf[current_idx] & 0b11).unwrap();
-        Self::new(
+        // Unwrap okay, validity of acked directive code was checked.
+        Ok(Self::new(
             pdu_header,
             acked_directive_type,
             condition_code,
             transaction_status,
         )
+        .unwrap())
     }
 
     /// Write [Self] to the provided buffer and returns the written size.
@@ -314,17 +317,16 @@ mod tests {
     fn test_invalid_directive_code_of_acked_pdu() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
-        if let Err(PduError::InvalidDirectiveType { found, expected }) = AckPdu::new(
-            pdu_header,
-            FileDirectiveType::MetadataPdu,
-            ConditionCode::NoError,
-            TransactionStatus::Active,
-        ) {
-            assert!(expected.is_none());
-            assert_eq!(found, FileDirectiveType::MetadataPdu as u8);
-        } else {
-            panic!("ACK PDU construction should have failed");
-        }
+        assert_eq!(
+            AckPdu::new(
+                pdu_header,
+                FileDirectiveType::MetadataPdu,
+                ConditionCode::NoError,
+                TransactionStatus::Active,
+            )
+            .unwrap_err(),
+            InvalidAckedDirectiveCodeError(FileDirectiveType::MetadataPdu)
+        );
     }
 
     #[test]

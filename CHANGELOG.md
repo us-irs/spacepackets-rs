@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## Added
 
+- `cfdp::pdu::ack::InvalidAckedDirectiveCodeError` which is returned by the `AckPdu` constructor.
 - `cfdp::pdu::nak::NakPduCreatorWithReservedSegReqsBuf` constructor which exposes the segment
   request buffer mutably to avoid the need for a separate segment request buffer.
 - `SpHeader::packet_len` direct method.
