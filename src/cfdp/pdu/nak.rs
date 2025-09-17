@@ -313,7 +313,11 @@ impl WritablePduPacket for NakPduCreator<'_> {
     }
 }
 
-// TODO: Docs
+/// This is a NAK PDU constructor which exposes the sequence list as a mutable slice.
+///
+/// This avoids the need of a separate slice for the lost segments. Instead, the lost segments
+/// can be written into the mutable slice directly. The NAK creation has to be finalized using
+/// the [Self::finish] call.
 #[derive(Debug)]
 pub struct NakPduCreatorWithReservedSeqReqsBuf<'buf> {
     pdu_header: PduHeader,
@@ -362,10 +366,13 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         &self.pdu_header
     }
 
-    fn calc_pdu_datafield_len(&self) -> usize {
-        calculate_pdu_datafield_len(&self.pdu_header, self.num_segment_reqs)
+    #[inline]
+    pub fn num_segment_reqs(&self) -> usize {
+        self.num_segment_reqs
     }
 
+    /// This function allows writing the start and end of scope fields in the mutable
+    /// buffer slice directly.
     pub fn set_start_and_end_of_scope(
         &mut self,
         start_of_scope: u64,
@@ -393,6 +400,55 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
 
+    /// Mutable accesss to the segment requests buffer.
+    #[inline]
+    pub fn segment_request_buffer_mut(&mut self) -> &mut [u8] {
+        let len = self.segment_request_buffer_len();
+        let segment_req_buf_offset = self.segment_request_offset();
+        &mut self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
+    }
+
+    /// Shared accesss to the segment requests buffer.
+    #[inline]
+    pub fn segment_request_buffer(&self) -> &[u8] {
+        let len = self.segment_request_buffer_len();
+        let segment_req_buf_offset = self.segment_request_offset();
+        &self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
+    }
+
+    #[inline]
+    pub fn segment_request_iter(&self) -> SegmentRequestIter<'_> {
+        SegmentRequestIter::new(
+            self.segment_request_buffer(),
+            self.pdu_header.common_pdu_conf().file_flag,
+        )
+    }
+
+    /// Finalizes the NAK PDU creation.
+    ///
+    /// It writes all NAK PDU fields which were not written by the dedicated setter methods and
+    /// adding the CRC-16 depending on the PDU header configuration.
+    pub fn finish(self) -> usize {
+        let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
+        self.buf[current_idx] = FileDirectiveType::NakPdu as u8;
+        current_idx += 1;
+
+        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
+            current_idx += 16 + self.num_segment_reqs * 16;
+        } else {
+            current_idx += 8 + self.num_segment_reqs * 8;
+        }
+
+        if self.pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
+            current_idx = add_pdu_crc(self.buf, current_idx);
+        }
+        current_idx
+    }
+
+    fn calc_pdu_datafield_len(&self) -> usize {
+        calculate_pdu_datafield_len(&self.pdu_header, self.num_segment_reqs)
+    }
+
     #[inline]
     fn segment_request_buffer_len(&self) -> usize {
         self.num_segment_reqs
@@ -410,45 +466,6 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
             } else {
                 16
             }
-    }
-
-    #[inline]
-    pub fn segment_request_buffer_mut(&mut self) -> &mut [u8] {
-        let len = self.segment_request_buffer_len();
-        let segment_req_buf_offset = self.segment_request_offset();
-        &mut self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
-    }
-
-    #[inline]
-    pub fn segment_request_buffer(&self) -> &[u8] {
-        let len = self.segment_request_buffer_len();
-        let segment_req_buf_offset = self.segment_request_offset();
-        &self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
-    }
-
-    #[inline]
-    pub fn segment_request_iter(&self) -> SegmentRequestIter<'_> {
-        SegmentRequestIter::new(
-            self.segment_request_buffer(),
-            self.pdu_header.common_pdu_conf().file_flag,
-        )
-    }
-
-    pub fn finish(self) -> usize {
-        let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
-        self.buf[current_idx] = FileDirectiveType::NakPdu as u8;
-        current_idx += 1;
-
-        if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
-            current_idx += 16 + self.num_segment_reqs * 16;
-        } else {
-            current_idx += 8 + self.num_segment_reqs * 8;
-        }
-
-        if self.pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
-            current_idx = add_pdu_crc(self.buf, current_idx);
-        }
-        current_idx
     }
 }
 
