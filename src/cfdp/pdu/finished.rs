@@ -50,12 +50,12 @@ pub struct FinishedPduCreator<'fs_responses> {
 
 impl<'fs_responses> FinishedPduCreator<'fs_responses> {
     /// Default finished PDU: No error (no fault location field) and no filestore responses.
-    pub fn new_default(
+    pub fn new_no_error(
         pdu_header: PduHeader,
         delivery_code: DeliveryCode,
         file_status: FileStatus,
     ) -> Self {
-        Self::new_generic(
+        Self::new(
             pdu_header,
             ConditionCode::NoError,
             delivery_code,
@@ -72,7 +72,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         file_status: FileStatus,
         fault_location: EntityIdTlv,
     ) -> Self {
-        Self::new_generic(
+        Self::new(
             pdu_header,
             condition_code,
             delivery_code,
@@ -82,7 +82,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         )
     }
 
-    pub fn new_generic(
+    pub fn new(
         mut pdu_header: PduHeader,
         condition_code: ConditionCode,
         delivery_code: DeliveryCode,
@@ -440,8 +440,8 @@ mod tests {
         delivery_code: DeliveryCode,
         file_status: FileStatus,
     ) -> FinishedPduCreator<'static> {
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
-        FinishedPduCreator::new_default(pdu_header, delivery_code, file_status)
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_conf(crc_flag, fss), 0);
+        FinishedPduCreator::new_no_error(pdu_header, delivery_code, file_status)
     }
 
     #[test]
@@ -611,8 +611,10 @@ mod tests {
 
     #[test]
     fn test_with_fault_location() {
-        let pdu_header =
-            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let pdu_header = PduHeader::new_for_file_directive(
+            common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal),
+            0,
+        );
         let finished_pdu = FinishedPduCreator::new_with_error(
             pdu_header,
             ConditionCode::NakLimitReached,
@@ -633,8 +635,10 @@ mod tests {
 
     #[test]
     fn test_deserialization_with_fault_location() {
-        let pdu_header =
-            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
+        let pdu_header = PduHeader::new_for_file_directive(
+            common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal),
+            0,
+        );
         let entity_id_tlv = EntityIdTlv::new(TEST_DEST_ID.into());
         let finished_pdu = FinishedPduCreator::new_with_error(
             pdu_header,
@@ -669,9 +673,11 @@ mod tests {
         .unwrap();
         let fs_responses = &[fs_response_0, fs_response_1];
 
-        let pdu_header =
-            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
-        let finished_pdu = FinishedPduCreator::new_generic(
+        let pdu_header = PduHeader::new_for_file_directive(
+            common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal),
+            0,
+        );
+        let finished_pdu = FinishedPduCreator::new(
             pdu_header,
             ConditionCode::NakLimitReached,
             DeliveryCode::Incomplete,
@@ -704,9 +710,11 @@ mod tests {
         .unwrap();
         let fs_responses = &[fs_response_0, fs_response_1];
 
-        let pdu_header =
-            PduHeader::new_no_file_data(common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal), 0);
-        let finished_pdu = FinishedPduCreator::new_generic(
+        let pdu_header = PduHeader::new_for_file_directive(
+            common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal),
+            0,
+        );
+        let finished_pdu = FinishedPduCreator::new(
             pdu_header,
             ConditionCode::NakLimitReached,
             DeliveryCode::Incomplete,

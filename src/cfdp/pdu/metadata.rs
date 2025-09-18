@@ -422,7 +422,7 @@ pub mod tests {
         Lv<'static>,
         MetadataPduCreator<'static, 'static, '_>,
     ) {
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_conf(crc_flag, fss), 0);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_conf(crc_flag, fss), 0);
         let metadata_params = MetadataGenericParams::new(closure_requested, checksum_type, 0x1010);
         let src_filename = Lv::new_from_str(SRC_FILENAME).expect("Generating string LV failed");
         let dest_filename =

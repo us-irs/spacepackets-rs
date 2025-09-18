@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn test_basic() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new(
             pdu_header,
             FileDirectiveType::FinishedPdu,
@@ -264,7 +264,7 @@ mod tests {
         transaction_status: TransactionStatus,
     ) {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_finished_pdu(pdu_header, condition_code, transaction_status);
         let mut buf: [u8; 64] = [0; 64];
         let res = ack_pdu.write_to_bytes(&mut buf);
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn test_serialization_too_small() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new(
             pdu_header,
             FileDirectiveType::FinishedPdu,
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn test_invalid_directive_code_of_acked_pdu() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         assert_eq!(
             AckPdu::new(
                 pdu_header,
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn test_deserialization() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_finished_pdu(
             pdu_header,
             ConditionCode::NoError,
@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn test_with_crc() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_finished_pdu(
             pdu_header,
             ConditionCode::NoError,
@@ -364,7 +364,7 @@ mod tests {
     #[test]
     fn test_for_eof_pdu() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_eof_pdu(
             pdu_header,
             ConditionCode::NoError,
@@ -381,7 +381,7 @@ mod tests {
     #[cfg(feature = "serde")]
     fn test_ack_pdu_serialization() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new_for_eof_pdu(
             pdu_header,
             ConditionCode::NoError,
