@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn test_basic() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 4 + 4);
         verify_state_no_error_no_crc(&eof_pdu, LargeFileFlag::Normal);
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn test_serialization() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
         let res = eof_pdu.write_to_bytes(&mut buf);
@@ -276,7 +276,7 @@ mod tests {
     #[test]
     fn test_deserialization() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
         eof_pdu.write_to_bytes(&mut buf).unwrap();
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_write_to_vec() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
         let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn test_with_crc() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         let mut buf: [u8; 64] = [0; 64];
         let written = eof_pdu.write_to_bytes(&mut buf).unwrap();
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_with_large_file_flag() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         verify_state_no_error_no_crc(&eof_pdu, LargeFileFlag::Large);
         assert_eq!(eof_pdu.len_written(), pdu_header.header_len() + 2 + 8 + 4);
@@ -332,14 +332,14 @@ mod tests {
     #[cfg(feature = "serde")]
     fn test_eof_serde() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new_no_error(pdu_header, 0x01020304, 12);
         generic_serde_test(eof_pdu);
     }
 
     fn generic_test_with_fault_location_and_error(crc: CrcFlag) {
         let pdu_conf = common_pdu_conf(crc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let eof_pdu = EofPdu::new(
             pdu_header,
             ConditionCode::FileChecksumFailure,

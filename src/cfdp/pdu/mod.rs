@@ -350,12 +350,24 @@ impl PduHeader {
             SegmentationControl::NoRecordBoundaryPreservation,
         )
     }
+
     #[inline]
-    pub fn new_no_file_data(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
+    pub fn new_for_file_directive(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         Self::new_generic(
             PduType::FileDirective,
             pdu_conf,
             pdu_datafield_len,
+            SegmentMetadataFlag::NotPresent,
+            SegmentationControl::NoRecordBoundaryPreservation,
+        )
+    }
+
+    #[inline]
+    pub fn from_pdu_conf_for_file_directive(pdu_conf: CommonPduConfig) -> Self {
+        Self::new_generic(
+            PduType::FileDirective,
+            pdu_conf,
+            0,
             SegmentMetadataFlag::NotPresent,
             SegmentationControl::NoRecordBoundaryPreservation,
         )
@@ -746,7 +758,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         assert_eq!(pdu_header.pdu_type(), PduType::FileDirective);
         let common_conf_ref = pdu_header.common_pdu_conf();
         assert_eq!(*common_conf_ref, common_pdu_cfg);
@@ -812,7 +824,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -829,7 +841,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -902,7 +914,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -947,7 +959,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -1030,7 +1042,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -1054,7 +1066,7 @@ mod tests {
         let transaction_id = UnsignedByteFieldU8::new(3);
         let common_pdu_cfg = CommonPduConfig::new_with_byte_fields(src_id, dest_id, transaction_id)
             .expect("common config creation failed");
-        let pdu_header = PduHeader::new_no_file_data(common_pdu_cfg, 5);
+        let pdu_header = PduHeader::new_for_file_directive(common_pdu_cfg, 5);
         let mut buf: [u8; 7] = [0; 7];
         let res = pdu_header.write_to_bytes(&mut buf);
         assert!(res.is_ok());
@@ -1085,5 +1097,13 @@ mod tests {
                 .expect("common config creation failed");
         let common_pdu_cfg_1 = common_pdu_cfg_0;
         assert_eq!(common_pdu_cfg_0, common_pdu_cfg_1);
+    }
+
+    #[test]
+    fn test_ctor_from_pdu_conf() {
+        assert_eq!(
+            PduHeader::from_pdu_conf_for_file_directive(CommonPduConfig::default()),
+            PduHeader::new_for_file_directive(CommonPduConfig::default(), 0)
+        );
     }
 }

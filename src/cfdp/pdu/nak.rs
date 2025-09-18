@@ -752,7 +752,7 @@ mod tests {
     #[test]
     fn test_basic_creator() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 0, 0)
             .expect("creating NAK PDU creator failed");
         assert_eq!(nak_pdu.start_of_scope(), 0);
@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn test_serialization_empty() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
             .expect("creating NAK PDU creator failed");
         assert_eq!(nak_pdu.start_of_scope(), 100);
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn test_serialization_two_segments() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu =
             NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[(0, 0), (32, 64)])
                 .expect("creating NAK PDU creator failed");
@@ -836,7 +836,7 @@ mod tests {
     #[test]
     fn test_deserialization_empty() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
             .expect("creating NAK PDU creator failed");
         let mut buf: [u8; 64] = [0; 64];
@@ -851,7 +851,7 @@ mod tests {
     #[test]
     fn test_deserialization_large_segments() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu =
             NakPduCreator::new_large_file_size(pdu_header, 100, 300, &[(50, 100), (200, 300)])
                 .expect("creating NAK PDU creator failed");
@@ -888,7 +888,7 @@ mod tests {
     #[test]
     fn test_deserialization_normal_segments() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu =
             NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[(50, 100), (200, 300)])
                 .expect("creating NAK PDU creator failed");
@@ -925,7 +925,7 @@ mod tests {
     #[test]
     fn test_empty_is_empty() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu_0 = NakPduCreator::new_normal_file_size(pdu_header, 100, 300, &[])
             .expect("creating NAK PDU creator failed");
         let nak_pdu_1 = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn test_new_generic_invalid_input() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let u32_list = SegmentRequests::U32Pairs(&[(0, 50), (50, 100)]);
         //let error = NakPduCreator::new_generic(pdu_header, 100, 300, Some(u32_list));
         let error = NakPduCreator::new(
@@ -958,7 +958,7 @@ mod tests {
     #[test]
     fn test_target_buf_too_small() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 100, 300)
             .expect("creating NAK PDU creator failed");
         assert_eq!(nak_pdu.start_of_scope(), 100);
@@ -982,7 +982,7 @@ mod tests {
     #[test]
     fn test_with_crc() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let nak_pdu = NakPduCreator::new_no_segment_requests(pdu_header, 0, 0)
             .expect("creating NAK PDU creator failed");
         let mut nak_vec = nak_pdu.to_vec().expect("writing NAK to vector failed");
@@ -1005,7 +1005,7 @@ mod tests {
     fn test_with_reserved_lost_segment_buf_no_segments_normal_file_0() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
         assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 9);
@@ -1032,7 +1032,7 @@ mod tests {
     fn test_with_reserved_lost_segment_buf_no_segments_normal_file_1() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Normal);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
         assert!(nak_pdu.segment_request_buffer().is_empty());
@@ -1061,7 +1061,7 @@ mod tests {
     fn test_with_reserved_lost_segment_buf_no_segments_large_file_0() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
         assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 1 + 16);
@@ -1088,7 +1088,7 @@ mod tests {
     fn test_with_reserved_lost_segment_buf_invalid_scope() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 2).unwrap();
         assert_eq!(
@@ -1103,7 +1103,7 @@ mod tests {
     fn test_with_reserved_lost_segment_buf_no_segments_large_file_1() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, 0).unwrap();
         assert!(nak_pdu.segment_request_buffer().is_empty());
@@ -1134,7 +1134,7 @@ mod tests {
         let num_segments = 2;
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
         let mut buf: [u8; 64] = [0; 64];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, num_segments).unwrap();
         nak_pdu
@@ -1187,7 +1187,7 @@ mod tests {
         let num_segments = 2;
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
         let mut buf: [u8; 128] = [0; 128];
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, num_segments).unwrap();
         nak_pdu
@@ -1242,7 +1242,7 @@ mod tests {
     fn test_reserved_lost_segment_finish_buf_too_small() {
         let mut buf: [u8; 64] = [0; 64];
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         assert_eq!(
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf[0..10], pdu_header, 0).unwrap_err(),
             ByteConversionError::ToSliceTooSmall {
@@ -1255,7 +1255,7 @@ mod tests {
     #[test]
     fn test_max_segment_req_calculator() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Normal);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
 
         // 7 byte header, 1 byte directive, 8 bytes start and end of segment, leaves 48 bytes for
         // 6 segment requests (8 bytes each)
@@ -1291,7 +1291,7 @@ mod tests {
     #[test]
     fn test_max_segment_req_calculator_large_file() {
         let pdu_conf = common_pdu_conf(CrcFlag::NoCrc, LargeFileFlag::Large);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
 
         // 7 byte header, 1 byte directive, 16 bytes start and end of segment, leaves 48 bytes for
         // 3 large segment requests (16 bytes each)
@@ -1327,7 +1327,7 @@ mod tests {
     #[test]
     fn test_max_segment_req_calculator_large_file_with_crc() {
         let pdu_conf = common_pdu_conf(CrcFlag::WithCrc, LargeFileFlag::Large);
-        let pdu_header = PduHeader::new_no_file_data(pdu_conf, 0);
+        let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
 
         // 7 byte header, 1 byte directive, 16 bytes start and end of segment, leaves 48 bytes for
         // 3 large segment requests (16 bytes each)

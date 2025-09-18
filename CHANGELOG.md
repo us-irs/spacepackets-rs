@@ -38,6 +38,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - PUS version raw representation is `u4` now.
 - SC time reference status representation is `u4` now.
 - Renamed `ptype` to `packet_type`
+- Renamed `PduHeader::new_no_file_data` to `PduHeader::new_for_file_directive`
+- Renamd `FinishedPduCreator::new_generic` to `new` and `new_default` to `new_no_error`
 
 ## Removed
 
