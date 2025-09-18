@@ -52,13 +52,21 @@ fn write_start_and_end_of_scope(
     current_index
 }
 
+#[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
+#[error("packet buffer too small for PDU header")]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TooSmallForPduHeaderError;
+
 /// This function can be used to retrieve the maximum amount of segment request given a PDU
 /// configuration to stay below a certain maximum packet size. This is useful to calculate how many
 /// NAK PDUs are required inside a NAK sequence.
+///
+/// Returns an error if the packet buffer can not even hold the PDU header.
 pub fn calculate_max_segment_requests(
     mut max_packet_size: usize,
     pdu_header: &PduHeader,
-) -> Result<usize, usize> {
+) -> Result<usize, TooSmallForPduHeaderError> {
     let mut decrement = pdu_header.header_len() + 1;
     if pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
         decrement += 2;
@@ -69,7 +77,7 @@ pub fn calculate_max_segment_requests(
         decrement += 16;
     }
     if max_packet_size < decrement {
-        return Err(max_packet_size);
+        return Err(TooSmallForPduHeaderError);
     }
     max_packet_size -= decrement;
     Ok(
@@ -332,7 +340,7 @@ impl<'buf> NakPduCreatorWithReservedSeqReqsBuf<'buf> {
     pub fn calculate_max_segment_requests(
         max_packet_size: usize,
         pdu_header: &PduHeader,
-    ) -> Result<usize, usize> {
+    ) -> Result<usize, TooSmallForPduHeaderError> {
         calculate_max_segment_requests(max_packet_size, pdu_header)
     }
 
