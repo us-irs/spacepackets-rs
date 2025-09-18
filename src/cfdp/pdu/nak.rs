@@ -162,7 +162,9 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         )
     }
 
-    fn new(
+    /// The large file flag of the PDU header will be set automatically based on the type of
+    /// [SegmentRequests].
+    pub fn new(
         mut pdu_header: PduHeader,
         start_of_scope: u64,
         end_of_scope: u64,
