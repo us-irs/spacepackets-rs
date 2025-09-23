@@ -383,8 +383,9 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
 
     /// This function allows writing the start and end of scope fields in the mutable
     /// buffer slice directly.
-    pub fn set_start_and_end_of_scope(
+    fn set_start_and_end_of_scope(
         &mut self,
+
         start_of_scope: u64,
         end_of_scope: u64,
     ) -> Result<(), InvalidStartOrEndOfScopeError> {
@@ -436,9 +437,15 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
 
     /// Finalizes the NAK PDU creation.
     ///
-    /// It writes all NAK PDU fields which were not written by the dedicated setter methods and
-    /// adding the CRC-16 depending on the PDU header configuration.
-    pub fn finish(self) -> usize {
+    /// It writes all NAK PDU fields which were not written by the dedicated setter methods,
+    /// in addition to the start and end of scope. It also adds a CRC-16 depending on the PDU
+    /// header configuration.
+    pub fn finish(
+        mut self,
+        start_of_scope: u64,
+        end_of_scope: u64,
+    ) -> Result<usize, InvalidStartOrEndOfScopeError> {
+        self.set_start_and_end_of_scope(start_of_scope, end_of_scope)?;
         let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
         self.buf[current_idx] = FileDirectiveType::NakPdu as u8;
         current_idx += 1;
@@ -452,7 +459,7 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         if self.pdu_header.common_pdu_conf().crc_flag == CrcFlag::WithCrc {
             current_idx = add_pdu_crc(self.buf, current_idx);
         }
-        current_idx
+        Ok(current_idx)
     }
 
     fn calc_pdu_datafield_len(&self) -> usize {
@@ -1023,7 +1030,7 @@ mod tests {
         assert!(nak_pdu.segment_request_buffer_mut().is_empty());
         assert_eq!(nak_pdu.segment_request_iter().count(), 0);
         let pdu_header = *nak_pdu.pdu_header();
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu.finish(0, 0).unwrap();
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 9, len_written);
@@ -1048,11 +1055,8 @@ mod tests {
         assert!(nak_pdu.segment_request_buffer().is_empty());
         assert!(nak_pdu.segment_request_buffer_mut().is_empty());
         assert_eq!(nak_pdu.segment_request_iter().count(), 0);
-        nak_pdu
-            .set_start_and_end_of_scope(100, 200)
-            .expect("setting start and end of scope failed");
         let pdu_header = *nak_pdu.pdu_header();
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu.finish(100, 200).unwrap();
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 8 + 2, len_written);
@@ -1079,7 +1083,7 @@ mod tests {
         assert!(nak_pdu.segment_request_buffer_mut().is_empty());
         assert_eq!(nak_pdu.segment_request_iter().count(), 0);
         let pdu_header = *nak_pdu.pdu_header();
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu.finish(0, 0).unwrap();
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16, len_written);
@@ -1119,12 +1123,11 @@ mod tests {
         assert!(nak_pdu.segment_request_buffer().is_empty());
         assert!(nak_pdu.segment_request_buffer_mut().is_empty());
         assert_eq!(nak_pdu.segment_request_iter().count(), 0);
-        nak_pdu
-            .set_start_and_end_of_scope(100, u32::MAX as u64 + 1)
-            .expect("setting start and end of scope failed");
         assert_eq!(nak_pdu.len_written(), pdu_header.header_len() + 1 + 16);
         let pdu_header = *nak_pdu.pdu_header();
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu
+            .finish(100, u32::MAX as u64 + 1)
+            .expect("setting start and end of scope failed");
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16, len_written);
@@ -1147,9 +1150,6 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let mut nak_pdu =
             NakPduCreatorWithReservedSeqReqsBuf::new(&mut buf, pdu_header, num_segments).unwrap();
-        nak_pdu
-            .set_start_and_end_of_scope(100, 200)
-            .expect("setting start and end of scope failed");
         assert_eq!(nak_pdu.segment_request_buffer().len(), num_segments * 8);
         assert_eq!(nak_pdu.segment_request_buffer_mut().len(), num_segments * 8);
         let seg_req_buf_mut = nak_pdu.segment_request_buffer_mut();
@@ -1167,7 +1167,7 @@ mod tests {
             assert_eq!(seg1.0 as u32, seg2.0);
             assert_eq!(seg1.1 as u32, seg2.1);
         }
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu.finish(0, 40).unwrap();
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 8 + num_segments * 8, len_written);
@@ -1179,8 +1179,8 @@ mod tests {
         let end_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
         current_idx += 4;
-        assert_eq!(start_of_scope, 100);
-        assert_eq!(end_of_scope, 200);
+        assert_eq!(start_of_scope, 0);
+        assert_eq!(end_of_scope, 40);
         for seg_req in seg_reqs.iter() {
             let seg_start =
                 u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -1223,7 +1223,7 @@ mod tests {
             assert_eq!(seg1.0, seg2.0);
             assert_eq!(seg1.1, seg2.1);
         }
-        let len_written = nak_pdu.finish();
+        let len_written = nak_pdu.finish(0, u32::MAX as u64 + 1).unwrap();
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16 + num_segments * 16, len_written);
@@ -1235,7 +1235,7 @@ mod tests {
         let end_of_scope =
             u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
         current_idx += 8;
-        assert_eq!(start_of_scope, 100);
+        assert_eq!(start_of_scope, 0);
         assert_eq!(end_of_scope, u32::MAX as u64 + 1);
         for seg_req in seg_reqs.iter() {
             let seg_start =
