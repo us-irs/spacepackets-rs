@@ -242,6 +242,9 @@ impl From<u16> for PacketId {
     }
 }
 
+#[deprecated(since = "0.16.0", note = "use PacketSequenceControl instead")]
+pub type PacketSequenceCtrl = PacketSequenceControl;
+
 /// Abstraction for the CCSDS Packet Sequence Control (PSC) field which is the
 /// third and the fourth byte in the CCSDS primary header.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -307,6 +310,12 @@ pub trait CcsdsPacket {
     #[inline]
     fn packet_len(&self) -> usize {
         usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
+    }
+
+    #[deprecated(since = "0.16.0", note = "use packet_len instead")]
+    #[inline]
+    fn total_len(&self) -> usize {
+        self.packet_len()
     }
 
     /// Retrieve 13 bit Packet Identification field. Can usually be retrieved with a bitwise AND
