@@ -51,16 +51,14 @@ usage examples.
 
 # Coverage
 
-Coverage was generated using [`grcov`](https://github.com/mozilla/grcov). If you have not done so
-already, install the `llvm-tools-preview`:
+Coverage can be generated using [`llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov). If you have not done so
+already, install the tool:
 
 ```sh
-rustup component add llvm-tools-preview
-cargo install grcov --locked
+cargo +stable install cargo-llvm-cov --locked
 ```
 
-After that, you can simply run `coverage.py` to test the project with coverage. You can optionally
-supply the `--open` flag to open the coverage report in your webbrowser.
+After this, you can run `cargo llvm-cov nextest` to run all the tests and display coverage.
 
 # Miri
 
