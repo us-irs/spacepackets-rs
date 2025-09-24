@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
-# [v0.16.0] 2025-09-10
+# [v0.16.0] 2025-09-24
 
 - Bump Rust MSRV to v1.83
 
