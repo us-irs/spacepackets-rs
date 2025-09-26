@@ -506,7 +506,7 @@ impl SpHeader {
 
     /// Retrieve the total packet size based on the data length field
     #[inline]
-    fn packet_len(&self) -> usize {
+    pub fn packet_len(&self) -> usize {
         usize::from(self.data_len()) + Self::HEADER_LEN + 1
     }
 
@@ -582,6 +582,11 @@ impl CcsdsPacket for SpHeader {
     #[inline]
     fn ccsds_version(&self) -> u3 {
         self.version
+    }
+
+    #[inline]
+    fn packet_len(&self) -> usize {
+        self.packet_len()
     }
 
     #[inline]
