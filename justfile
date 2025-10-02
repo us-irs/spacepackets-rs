@@ -20,12 +20,10 @@ build:
   cargo build --all-features
 
 docs:
-  export RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options"
-  cargo +nightly doc --all-features
+  RUSTDOCFLAGS="--cfg docsrs -Z unstable-options --generate-link-to-definition" cargo +nightly doc --all-features
 
 docs-html:
-  export RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options"
-  cargo +nightly doc --all-features --open
+  RUSTDOCFLAGS="--cfg docsrs -Z unstable-options --generate-link-to-definition" cargo +nightly doc --all-features --open
 
 coverage:
   cargo llvm-cov nextest
