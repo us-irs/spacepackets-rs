@@ -191,230 +191,6 @@ pub trait CdsTimestamp: CdsBase {
     fn len_of_day_seg(&self) -> LengthOfDaySegment;
 }
 
-/// Private trait which serves as an abstraction for different converters.
-trait CdsConverter: CdsBase {}
-
-struct ConversionFromUnix {
-    ccsds_days: u32,
-    ms_of_day: u32,
-    submilis_prec: SubmillisPrecision,
-    submillis: u32,
-}
-
-impl ConversionFromUnix {
-    fn new(
-        unix_seconds: i64,
-        subsec_nanos: u32,
-        precision: SubmillisPrecision,
-    ) -> Result<Self, DateBeforeCcsdsEpochError> {
-        let (unix_days, secs_of_day) = calc_unix_days_and_secs_of_day(unix_seconds);
-        let ccsds_days = unix_to_ccsds_days(unix_days);
-        if ccsds_days == 0 && (secs_of_day > 0 || subsec_nanos > 0) || ccsds_days < 0 {
-            return Err(DateBeforeCcsdsEpochError(
-                UnixTime::new_checked(unix_seconds, subsec_nanos)
-                    .expect("unix timestamp creation failed"),
-            ));
-        }
-        let ms_of_day = secs_of_day * 1000 + subsec_nanos / 10_u32.pow(6);
-
-        let submillis = match precision {
-            SubmillisPrecision::Microseconds => (subsec_nanos / 1_000) % 1000,
-            SubmillisPrecision::Picoseconds => (subsec_nanos % 10_u32.pow(6)) * 1000,
-            _ => 0,
-        };
-        Ok(Self {
-            ccsds_days: unix_to_ccsds_days(unix_days) as u32,
-            ms_of_day,
-            submilis_prec: precision,
-            submillis,
-        })
-    }
-}
-
-impl CdsBase for ConversionFromUnix {
-    #[inline]
-    fn submillis_precision(&self) -> SubmillisPrecision {
-        self.submilis_prec
-    }
-
-    #[inline]
-    fn ms_of_day(&self) -> u32 {
-        self.ms_of_day
-    }
-
-    #[inline]
-    fn ccsds_days_as_u32(&self) -> u32 {
-        self.ccsds_days
-    }
-
-    #[inline]
-    fn submillis(&self) -> u32 {
-        self.submillis
-    }
-}
-
-impl CdsConverter for ConversionFromUnix {}
-
-/// Helper struct which generates fields for the CDS time provider from a datetime.
-#[cfg(feature = "chrono")]
-struct ConversionFromChronoDatetime {
-    unix_conversion: ConversionFromUnix,
-    submillis_prec: SubmillisPrecision,
-    submillis: u32,
-}
-
-#[cfg(feature = "chrono")]
-impl CdsBase for ConversionFromChronoDatetime {
-    #[inline]
-    fn submillis_precision(&self) -> SubmillisPrecision {
-        self.submillis_prec
-    }
-
-    delegate::delegate! {
-        to self.unix_conversion {
-            #[inline]
-            fn ms_of_day(&self) -> u32;
-            #[inline]
-            fn ccsds_days_as_u32(&self) -> u32;
-        }
-    }
-
-    #[inline]
-    fn submillis(&self) -> u32 {
-        self.submillis
-    }
-}
-
-#[cfg(feature = "chrono")]
-impl CdsConverter for ConversionFromChronoDatetime {}
-
-#[inline]
-fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
-    let mut secs_of_day = unix_seconds % SECONDS_PER_DAY as i64;
-    let mut unix_days = (unix_seconds - secs_of_day) / SECONDS_PER_DAY as i64;
-    // Imagine the CCSDS epoch time minus 5 seconds: We now have the last day in the year
-    // 1969 (-1 unix days) shortly before midnight (SECONDS_PER_DAY - 5).
-    if secs_of_day < 0 {
-        unix_days -= 1;
-        secs_of_day += SECONDS_PER_DAY as i64
-    }
-    (unix_days, secs_of_day as u32)
-}
-
-#[cfg(feature = "chrono")]
-impl ConversionFromChronoDatetime {
-    fn new(dt: &chrono::DateTime<chrono::Utc>) -> Result<Self, DateBeforeCcsdsEpochError> {
-        Self::new_generic(dt, SubmillisPrecision::Absent)
-    }
-
-    fn new_with_submillis_us_prec(
-        dt: &chrono::DateTime<chrono::Utc>,
-    ) -> Result<Self, DateBeforeCcsdsEpochError> {
-        Self::new_generic(dt, SubmillisPrecision::Microseconds)
-    }
-
-    fn new_with_submillis_ps_prec(
-        dt: &chrono::DateTime<chrono::Utc>,
-    ) -> Result<Self, DateBeforeCcsdsEpochError> {
-        Self::new_generic(dt, SubmillisPrecision::Picoseconds)
-    }
-
-    fn new_generic(
-        dt: &chrono::DateTime<chrono::Utc>,
-        prec: SubmillisPrecision,
-    ) -> Result<Self, DateBeforeCcsdsEpochError> {
-        // The CDS timestamp does not support timestamps before the CCSDS epoch.
-        if dt.year() < 1958 {
-            return Err(DateBeforeCcsdsEpochError(UnixTime::from(*dt)));
-        }
-        // The contained values in the conversion should be all positive now
-        let unix_conversion =
-            ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_nanos(), prec)?;
-        let mut submillis = 0;
-        match prec {
-            SubmillisPrecision::Microseconds => {
-                submillis = dt.timestamp_subsec_micros() % 1000;
-            }
-            SubmillisPrecision::Picoseconds => {
-                submillis = (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000;
-            }
-            _ => (),
-        }
-        Ok(Self {
-            unix_conversion,
-            submillis_prec: prec,
-            submillis,
-        })
-    }
-}
-
-#[cfg(feature = "std")]
-struct ConversionFromNow {
-    unix_conversion: ConversionFromUnix,
-    submillis_prec: SubmillisPrecision,
-    submillis: u32,
-}
-
-#[cfg(feature = "std")]
-impl ConversionFromNow {
-    fn new() -> Result<Self, SystemTimeError> {
-        Self::new_generic(SubmillisPrecision::Absent)
-    }
-
-    fn new_with_submillis_us_prec() -> Result<Self, SystemTimeError> {
-        Self::new_generic(SubmillisPrecision::Microseconds)
-    }
-
-    fn new_with_submillis_ps_prec() -> Result<Self, SystemTimeError> {
-        Self::new_generic(SubmillisPrecision::Picoseconds)
-    }
-
-    fn new_generic(prec: SubmillisPrecision) -> Result<Self, SystemTimeError> {
-        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-        let epoch = now.as_secs();
-        // This should always return a value with valid (non-negative) CCSDS days,
-        // so it is okay to unwrap
-        let unix_conversion =
-            ConversionFromUnix::new(epoch as i64, now.subsec_nanos(), prec).unwrap();
-        let mut submillis = 0;
-
-        match prec {
-            SubmillisPrecision::Microseconds => {
-                submillis = now.subsec_micros() % 1000;
-            }
-            SubmillisPrecision::Picoseconds => {
-                submillis = (now.subsec_nanos() % 10_u32.pow(6)) * 1000;
-            }
-            _ => (),
-        }
-        Ok(Self {
-            unix_conversion,
-            submillis_prec: prec,
-            submillis,
-        })
-    }
-}
-
-#[cfg(feature = "std")]
-impl CdsBase for ConversionFromNow {
-    fn submillis_precision(&self) -> SubmillisPrecision {
-        self.submillis_prec
-    }
-    delegate::delegate! {
-        to self.unix_conversion {
-            fn ms_of_day(&self) -> u32;
-            fn ccsds_days_as_u32(&self) -> u32;
-        }
-    }
-
-    fn submillis(&self) -> u32 {
-        self.submillis
-    }
-}
-
-#[cfg(feature = "std")]
-impl CdsConverter for ConversionFromNow {}
-
 #[cfg(feature = "alloc")]
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
 #[cfg(feature = "alloc")]
@@ -972,93 +748,6 @@ impl CdsTime<DaysLen16Bits> {
     }
 }
 
-fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
-    time_provider: &CdsTime<T>,
-    max_days_val: u32,
-    duration: Duration,
-) -> (u32, u32, u32) {
-    let mut next_ccsds_days = time_provider.ccsds_days_as_u32();
-    let mut next_ms_of_day = time_provider.ms_of_day;
-    // Increment CCSDS days by a certain amount while also accounting for overflow.
-    let increment_days = |ccsds_days: &mut u32, days_inc: u32| {
-        let days_addition: u64 = *ccsds_days as u64 + days_inc as u64;
-        if days_addition > max_days_val as u64 {
-            *ccsds_days = (days_addition - max_days_val as u64) as u32;
-        } else {
-            *ccsds_days += days_inc;
-        }
-    };
-    // Increment MS of day by a certain amount while also accounting for overflow, where
-    // the new value exceeds the MS of a day.
-    let increment_ms_of_day = |ms_of_day: &mut u32, ms_inc: u32, ccsds_days: &mut u32| {
-        *ms_of_day += ms_inc;
-        if *ms_of_day >= MS_PER_DAY {
-            *ms_of_day -= MS_PER_DAY;
-            // Re-use existing closure to always amount for overflow.
-            increment_days(ccsds_days, 1);
-        }
-    };
-    let mut submillis = time_provider.submillis();
-    match time_provider.submillis_precision() {
-        SubmillisPrecision::Microseconds => {
-            let subsec_micros = duration.subsec_micros();
-            let subsec_millis = subsec_micros / 1000;
-            let submilli_micros = subsec_micros % 1000;
-            submillis += submilli_micros;
-            if submillis >= 1000 {
-                let carryover_us = submillis - 1000;
-                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                submillis = carryover_us;
-            }
-            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
-        }
-        SubmillisPrecision::Picoseconds => {
-            let subsec_nanos = duration.subsec_nanos();
-            let subsec_millis = subsec_nanos / 10_u32.pow(6);
-            // 1 ms as ns is 1e6.
-            let submilli_nanos = subsec_nanos % 10_u32.pow(6);
-            // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
-            // is 1e9. The amount ps can now have is always less than 2e9.
-            submillis += submilli_nanos * 1000;
-            if submillis >= 10_u32.pow(9) {
-                let carry_over_ps = submillis - 10_u32.pow(9);
-                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
-                submillis = carry_over_ps;
-            }
-            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
-        }
-        _ => {
-            increment_ms_of_day(
-                &mut next_ms_of_day,
-                duration.subsec_millis(),
-                &mut next_ccsds_days,
-            );
-        }
-    }
-    // The subsecond millisecond were already handled.
-    let full_seconds = duration.as_secs();
-    let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
-    let ms_of_day = secs_of_day * 1000;
-    increment_ms_of_day(&mut next_ms_of_day, ms_of_day, &mut next_ccsds_days);
-    increment_days(
-        &mut next_ccsds_days,
-        (full_seconds as u32 - secs_of_day) / SECONDS_PER_DAY,
-    );
-    (next_ccsds_days, next_ms_of_day, submillis)
-}
-
-impl CdsTimestamp for CdsTime<DaysLen16Bits> {
-    fn len_of_day_seg(&self) -> LengthOfDaySegment {
-        LengthOfDaySegment::Short16Bits
-    }
-}
-
-impl CdsTimestamp for CdsTime<DaysLen24Bits> {
-    fn len_of_day_seg(&self) -> LengthOfDaySegment {
-        LengthOfDaySegment::Long24Bits
-    }
-}
-
 /// Allows adding an duration in form of an offset. Please note that the CCSDS days will rollover
 /// when they overflow, because addition needs to be infallible. The user needs to check for a
 /// days overflow when this is a possibility and might be a problem.
@@ -1298,6 +987,317 @@ impl TryFrom<CdsTime<DaysLen24Bits>> for CdsTime<DaysLen16Bits> {
             ccsds_days as u16,
             value.ms_of_day(),
         ))
+    }
+}
+
+/// Private trait which serves as an abstraction for different converters.
+trait CdsConverter: CdsBase {}
+
+struct ConversionFromUnix {
+    ccsds_days: u32,
+    ms_of_day: u32,
+    submilis_prec: SubmillisPrecision,
+    submillis: u32,
+}
+
+impl ConversionFromUnix {
+    fn new(
+        unix_seconds: i64,
+        subsec_nanos: u32,
+        precision: SubmillisPrecision,
+    ) -> Result<Self, DateBeforeCcsdsEpochError> {
+        let (unix_days, secs_of_day) = calc_unix_days_and_secs_of_day(unix_seconds);
+        let ccsds_days = unix_to_ccsds_days(unix_days);
+        if ccsds_days == 0 && (secs_of_day > 0 || subsec_nanos > 0) || ccsds_days < 0 {
+            return Err(DateBeforeCcsdsEpochError(
+                UnixTime::new_checked(unix_seconds, subsec_nanos)
+                    .expect("unix timestamp creation failed"),
+            ));
+        }
+        let ms_of_day = secs_of_day * 1000 + subsec_nanos / 10_u32.pow(6);
+
+        let submillis = match precision {
+            SubmillisPrecision::Microseconds => (subsec_nanos / 1_000) % 1000,
+            SubmillisPrecision::Picoseconds => (subsec_nanos % 10_u32.pow(6)) * 1000,
+            _ => 0,
+        };
+        Ok(Self {
+            ccsds_days: unix_to_ccsds_days(unix_days) as u32,
+            ms_of_day,
+            submilis_prec: precision,
+            submillis,
+        })
+    }
+}
+
+impl CdsBase for ConversionFromUnix {
+    #[inline]
+    fn submillis_precision(&self) -> SubmillisPrecision {
+        self.submilis_prec
+    }
+
+    #[inline]
+    fn ms_of_day(&self) -> u32 {
+        self.ms_of_day
+    }
+
+    #[inline]
+    fn ccsds_days_as_u32(&self) -> u32 {
+        self.ccsds_days
+    }
+
+    #[inline]
+    fn submillis(&self) -> u32 {
+        self.submillis
+    }
+}
+
+impl CdsConverter for ConversionFromUnix {}
+
+/// Helper struct which generates fields for the CDS time provider from a datetime.
+#[cfg(feature = "chrono")]
+struct ConversionFromChronoDatetime {
+    unix_conversion: ConversionFromUnix,
+    submillis_prec: SubmillisPrecision,
+    submillis: u32,
+}
+
+#[cfg(feature = "chrono")]
+impl CdsBase for ConversionFromChronoDatetime {
+    #[inline]
+    fn submillis_precision(&self) -> SubmillisPrecision {
+        self.submillis_prec
+    }
+
+    delegate::delegate! {
+        to self.unix_conversion {
+            #[inline]
+            fn ms_of_day(&self) -> u32;
+            #[inline]
+            fn ccsds_days_as_u32(&self) -> u32;
+        }
+    }
+
+    #[inline]
+    fn submillis(&self) -> u32 {
+        self.submillis
+    }
+}
+
+#[cfg(feature = "chrono")]
+impl CdsConverter for ConversionFromChronoDatetime {}
+
+#[inline]
+fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
+    let mut secs_of_day = unix_seconds % SECONDS_PER_DAY as i64;
+    let mut unix_days = (unix_seconds - secs_of_day) / SECONDS_PER_DAY as i64;
+    // Imagine the CCSDS epoch time minus 5 seconds: We now have the last day in the year
+    // 1969 (-1 unix days) shortly before midnight (SECONDS_PER_DAY - 5).
+    if secs_of_day < 0 {
+        unix_days -= 1;
+        secs_of_day += SECONDS_PER_DAY as i64
+    }
+    (unix_days, secs_of_day as u32)
+}
+
+#[cfg(feature = "chrono")]
+impl ConversionFromChronoDatetime {
+    fn new(dt: &chrono::DateTime<chrono::Utc>) -> Result<Self, DateBeforeCcsdsEpochError> {
+        Self::new_generic(dt, SubmillisPrecision::Absent)
+    }
+
+    fn new_with_submillis_us_prec(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, DateBeforeCcsdsEpochError> {
+        Self::new_generic(dt, SubmillisPrecision::Microseconds)
+    }
+
+    fn new_with_submillis_ps_prec(
+        dt: &chrono::DateTime<chrono::Utc>,
+    ) -> Result<Self, DateBeforeCcsdsEpochError> {
+        Self::new_generic(dt, SubmillisPrecision::Picoseconds)
+    }
+
+    fn new_generic(
+        dt: &chrono::DateTime<chrono::Utc>,
+        prec: SubmillisPrecision,
+    ) -> Result<Self, DateBeforeCcsdsEpochError> {
+        // The CDS timestamp does not support timestamps before the CCSDS epoch.
+        if dt.year() < 1958 {
+            return Err(DateBeforeCcsdsEpochError(UnixTime::from(*dt)));
+        }
+        // The contained values in the conversion should be all positive now
+        let unix_conversion =
+            ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_nanos(), prec)?;
+        let mut submillis = 0;
+        match prec {
+            SubmillisPrecision::Microseconds => {
+                submillis = dt.timestamp_subsec_micros() % 1000;
+            }
+            SubmillisPrecision::Picoseconds => {
+                submillis = (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000;
+            }
+            _ => (),
+        }
+        Ok(Self {
+            unix_conversion,
+            submillis_prec: prec,
+            submillis,
+        })
+    }
+}
+
+#[cfg(feature = "std")]
+struct ConversionFromNow {
+    unix_conversion: ConversionFromUnix,
+    submillis_prec: SubmillisPrecision,
+    submillis: u32,
+}
+
+#[cfg(feature = "std")]
+impl ConversionFromNow {
+    fn new() -> Result<Self, SystemTimeError> {
+        Self::new_generic(SubmillisPrecision::Absent)
+    }
+
+    fn new_with_submillis_us_prec() -> Result<Self, SystemTimeError> {
+        Self::new_generic(SubmillisPrecision::Microseconds)
+    }
+
+    fn new_with_submillis_ps_prec() -> Result<Self, SystemTimeError> {
+        Self::new_generic(SubmillisPrecision::Picoseconds)
+    }
+
+    fn new_generic(prec: SubmillisPrecision) -> Result<Self, SystemTimeError> {
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+        let epoch = now.as_secs();
+        // This should always return a value with valid (non-negative) CCSDS days,
+        // so it is okay to unwrap
+        let unix_conversion =
+            ConversionFromUnix::new(epoch as i64, now.subsec_nanos(), prec).unwrap();
+        let mut submillis = 0;
+
+        match prec {
+            SubmillisPrecision::Microseconds => {
+                submillis = now.subsec_micros() % 1000;
+            }
+            SubmillisPrecision::Picoseconds => {
+                submillis = (now.subsec_nanos() % 10_u32.pow(6)) * 1000;
+            }
+            _ => (),
+        }
+        Ok(Self {
+            unix_conversion,
+            submillis_prec: prec,
+            submillis,
+        })
+    }
+}
+
+#[cfg(feature = "std")]
+impl CdsBase for ConversionFromNow {
+    fn submillis_precision(&self) -> SubmillisPrecision {
+        self.submillis_prec
+    }
+    delegate::delegate! {
+        to self.unix_conversion {
+            fn ms_of_day(&self) -> u32;
+            fn ccsds_days_as_u32(&self) -> u32;
+        }
+    }
+
+    fn submillis(&self) -> u32 {
+        self.submillis
+    }
+}
+
+#[cfg(feature = "std")]
+impl CdsConverter for ConversionFromNow {}
+
+fn add_for_max_ccsds_days_val<T: ProvidesDaysLength>(
+    time_provider: &CdsTime<T>,
+    max_days_val: u32,
+    duration: Duration,
+) -> (u32, u32, u32) {
+    let mut next_ccsds_days = time_provider.ccsds_days_as_u32();
+    let mut next_ms_of_day = time_provider.ms_of_day;
+    // Increment CCSDS days by a certain amount while also accounting for overflow.
+    let increment_days = |ccsds_days: &mut u32, days_inc: u32| {
+        let days_addition: u64 = *ccsds_days as u64 + days_inc as u64;
+        if days_addition > max_days_val as u64 {
+            *ccsds_days = (days_addition - max_days_val as u64) as u32;
+        } else {
+            *ccsds_days += days_inc;
+        }
+    };
+    // Increment MS of day by a certain amount while also accounting for overflow, where
+    // the new value exceeds the MS of a day.
+    let increment_ms_of_day = |ms_of_day: &mut u32, ms_inc: u32, ccsds_days: &mut u32| {
+        *ms_of_day += ms_inc;
+        if *ms_of_day >= MS_PER_DAY {
+            *ms_of_day -= MS_PER_DAY;
+            // Re-use existing closure to always amount for overflow.
+            increment_days(ccsds_days, 1);
+        }
+    };
+    let mut submillis = time_provider.submillis();
+    match time_provider.submillis_precision() {
+        SubmillisPrecision::Microseconds => {
+            let subsec_micros = duration.subsec_micros();
+            let subsec_millis = subsec_micros / 1000;
+            let submilli_micros = subsec_micros % 1000;
+            submillis += submilli_micros;
+            if submillis >= 1000 {
+                let carryover_us = submillis - 1000;
+                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                submillis = carryover_us;
+            }
+            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
+        }
+        SubmillisPrecision::Picoseconds => {
+            let subsec_nanos = duration.subsec_nanos();
+            let subsec_millis = subsec_nanos / 10_u32.pow(6);
+            // 1 ms as ns is 1e6.
+            let submilli_nanos = subsec_nanos % 10_u32.pow(6);
+            // No overflow risk: The maximum value of an u32 is ~4.294e9, and one ms as ps
+            // is 1e9. The amount ps can now have is always less than 2e9.
+            submillis += submilli_nanos * 1000;
+            if submillis >= 10_u32.pow(9) {
+                let carry_over_ps = submillis - 10_u32.pow(9);
+                increment_ms_of_day(&mut next_ms_of_day, 1, &mut next_ccsds_days);
+                submillis = carry_over_ps;
+            }
+            increment_ms_of_day(&mut next_ms_of_day, subsec_millis, &mut next_ccsds_days);
+        }
+        _ => {
+            increment_ms_of_day(
+                &mut next_ms_of_day,
+                duration.subsec_millis(),
+                &mut next_ccsds_days,
+            );
+        }
+    }
+    // The subsecond millisecond were already handled.
+    let full_seconds = duration.as_secs();
+    let secs_of_day = (full_seconds % SECONDS_PER_DAY as u64) as u32;
+    let ms_of_day = secs_of_day * 1000;
+    increment_ms_of_day(&mut next_ms_of_day, ms_of_day, &mut next_ccsds_days);
+    increment_days(
+        &mut next_ccsds_days,
+        (full_seconds as u32 - secs_of_day) / SECONDS_PER_DAY,
+    );
+    (next_ccsds_days, next_ms_of_day, submillis)
+}
+
+impl CdsTimestamp for CdsTime<DaysLen16Bits> {
+    fn len_of_day_seg(&self) -> LengthOfDaySegment {
+        LengthOfDaySegment::Short16Bits
+    }
+}
+
+impl CdsTimestamp for CdsTime<DaysLen24Bits> {
+    fn len_of_day_seg(&self) -> LengthOfDaySegment {
+        LengthOfDaySegment::Long24Bits
     }
 }
 
