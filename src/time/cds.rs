@@ -50,6 +50,7 @@ pub trait ProvidesDaysLength: Sealed + Clone {
         + Eq
         + TryFrom<i32>
         + TryFrom<u32>
+        + TryFrom<i64>
         + From<u16>
         + Into<u32>
         + Into<i64>;
@@ -173,15 +174,12 @@ pub struct CdsTime<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
     ccsds_days: DaysLen::FieldType,
     ms_of_day: u32,
     submillis: u32,
-    /// This is not strictly necessary but still cached because it significantly simplifies the
-    /// calculation of [`DateTime<Utc>`].
-    unix_time: UnixTime,
 }
 
-/// Common properties for all CDS time providers.
+/// Base properties for all CDS time providers.
 ///
 /// Also exists to encapsulate properties used by private converters.
-pub trait CdsCommon {
+pub trait CdsBase {
     fn submillis_precision(&self) -> SubmillisPrecision;
     fn submillis(&self) -> u32;
     fn ms_of_day(&self) -> u32;
@@ -189,23 +187,18 @@ pub trait CdsCommon {
 }
 
 /// Generic properties for all CDS time providers.
-pub trait CdsTimestamp: CdsCommon {
+pub trait CdsTimestamp: CdsBase {
     fn len_of_day_seg(&self) -> LengthOfDaySegment;
 }
 
 /// Private trait which serves as an abstraction for different converters.
-trait CdsConverter: CdsCommon {
-    fn unix_days_seconds(&self) -> i64;
-}
+trait CdsConverter: CdsBase {}
 
 struct ConversionFromUnix {
     ccsds_days: u32,
     ms_of_day: u32,
     submilis_prec: SubmillisPrecision,
     submillis: u32,
-    /// This is a side-product of the calculation of the CCSDS days. It is useful for
-    /// re-calculating the datetime at a later point and therefore supplied as well.
-    unix_days_seconds: i64,
 }
 
 impl ConversionFromUnix {
@@ -232,14 +225,13 @@ impl ConversionFromUnix {
         Ok(Self {
             ccsds_days: unix_to_ccsds_days(unix_days) as u32,
             ms_of_day,
-            unix_days_seconds: unix_days * SECONDS_PER_DAY as i64,
             submilis_prec: precision,
             submillis,
         })
     }
 }
 
-impl CdsCommon for ConversionFromUnix {
+impl CdsBase for ConversionFromUnix {
     #[inline]
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submilis_prec
@@ -261,12 +253,7 @@ impl CdsCommon for ConversionFromUnix {
     }
 }
 
-impl CdsConverter for ConversionFromUnix {
-    #[inline]
-    fn unix_days_seconds(&self) -> i64 {
-        self.unix_days_seconds
-    }
-}
+impl CdsConverter for ConversionFromUnix {}
 
 /// Helper struct which generates fields for the CDS time provider from a datetime.
 #[cfg(feature = "chrono")]
@@ -277,7 +264,7 @@ struct ConversionFromChronoDatetime {
 }
 
 #[cfg(feature = "chrono")]
-impl CdsCommon for ConversionFromChronoDatetime {
+impl CdsBase for ConversionFromChronoDatetime {
     #[inline]
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
@@ -299,12 +286,7 @@ impl CdsCommon for ConversionFromChronoDatetime {
 }
 
 #[cfg(feature = "chrono")]
-impl CdsConverter for ConversionFromChronoDatetime {
-    delegate::delegate! {to self.unix_conversion {
-        #[inline]
-        fn unix_days_seconds(&self) -> i64;
-    }}
-}
+impl CdsConverter for ConversionFromChronoDatetime {}
 
 #[inline]
 fn calc_unix_days_and_secs_of_day(unix_seconds: i64) -> (i64, u32) {
@@ -414,7 +396,7 @@ impl ConversionFromNow {
 }
 
 #[cfg(feature = "std")]
-impl CdsCommon for ConversionFromNow {
+impl CdsBase for ConversionFromNow {
     fn submillis_precision(&self) -> SubmillisPrecision {
         self.submillis_prec
     }
@@ -431,9 +413,7 @@ impl CdsCommon for ConversionFromNow {
 }
 
 #[cfg(feature = "std")]
-impl CdsConverter for ConversionFromNow {
-    delegate::delegate! {to self.unix_conversion { fn unix_days_seconds(&self) -> i64; }}
-}
+impl CdsConverter for ConversionFromNow {}
 
 #[cfg(feature = "alloc")]
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
@@ -493,7 +473,7 @@ pub fn get_dyn_time_provider_from_bytes(
     }
 }
 
-impl<ProvidesDaysLen: ProvidesDaysLength> CdsCommon for CdsTime<ProvidesDaysLen> {
+impl<ProvidesDaysLen: ProvidesDaysLength> CdsBase for CdsTime<ProvidesDaysLen> {
     fn submillis_precision(&self) -> SubmillisPrecision {
         precision_from_pfield(self.pfield)
     }
@@ -623,12 +603,14 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         init_len
     }
 
-    fn setup(&mut self, unix_days_seconds: i64, ms_of_day: u32) {
-        self.calc_unix_seconds(unix_days_seconds, ms_of_day);
-    }
-
     #[inline]
-    fn calc_unix_seconds(&mut self, mut unix_days_seconds: i64, ms_of_day: u32) {
+    fn calc_unix_seconds(&self) -> UnixTime {
+        let unix_days_seconds =
+            ccsds_to_unix_days(i64::try_from(self.ccsds_days()).unwrap()) * SECONDS_PER_DAY as i64;
+        self.calc_unix_seconds_internal(unix_days_seconds, self.ms_of_day())
+    }
+    #[inline]
+    fn calc_unix_seconds_internal(&self, mut unix_days_seconds: i64, ms_of_day: u32) -> UnixTime {
         let seconds_of_day = (ms_of_day / 1000) as i64;
         if unix_days_seconds < 0 {
             unix_days_seconds -= seconds_of_day;
@@ -639,7 +621,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         if let Some(precision) = self.precision_as_ns() {
             subsec_nanos += precision;
         }
-        self.unix_time = UnixTime::new(unix_days_seconds, subsec_nanos);
+        UnixTime::new(unix_days_seconds, subsec_nanos)
     }
 
     fn length_check(&self, buf: &[u8], len_as_bytes: usize) -> Result<(), ByteConversionError> {
@@ -660,15 +642,12 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     where
         i64: From<ProvidesDaysLen::FieldType>,
     {
-        let mut provider = Self {
+        let provider = Self {
             pfield: Self::generate_p_field(days_len, SubmillisPrecision::Absent),
             ccsds_days,
             ms_of_day,
-            unix_time: Default::default(),
             submillis: 0,
         };
-        let unix_days_seconds = ccsds_to_unix_days(i64::from(ccsds_days)) * SECONDS_PER_DAY as i64;
-        provider.setup(unix_days_seconds, ms_of_day);
         Ok(provider)
     }
 
@@ -738,14 +717,12 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
             .ccsds_days_as_u32()
             .try_into()
             .map_err(|_| CdsError::InvalidCcsdsDays(converter.ccsds_days_as_u32().into()))?;
-        let mut provider = Self {
+        let provider = Self {
             pfield: Self::generate_p_field(days_len, converter.submillis_precision()),
             ccsds_days,
             ms_of_day: converter.ms_of_day(),
-            unix_time: Default::default(),
             submillis: converter.submillis(),
         };
-        provider.setup(converter.unix_days_seconds(), converter.ms_of_day());
         Ok(provider)
     }
 
@@ -786,10 +763,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
             })?;
         self.ccsds_days = ccsds_days;
         self.ms_of_day = conversion_from_now.unix_conversion.ms_of_day;
-        self.setup(
-            conversion_from_now.unix_conversion.unix_days_seconds,
-            conversion_from_now.unix_conversion.ms_of_day,
-        );
         Ok(())
     }
 }
@@ -1186,30 +1159,24 @@ impl TryFrom<chrono::DateTime<chrono::Utc>> for CdsTime<DaysLen24Bits> {
 }
 
 impl<ProvidesDaysLen: ProvidesDaysLength> CcsdsTimeProvider for CdsTime<ProvidesDaysLen> {
+    #[inline]
     fn len_as_bytes(&self) -> usize {
         Self::calc_stamp_len(self.pfield)
     }
 
+    #[inline]
     fn p_field(&self) -> (usize, [u8; 2]) {
         (1, [self.pfield, 0])
     }
 
+    #[inline]
     fn ccdsd_time_code(&self) -> CcsdsTimeCode {
         CcsdsTimeCode::Cds
     }
 
     #[inline]
-    fn unix_secs(&self) -> i64 {
-        self.unix_time.secs
-    }
-    #[inline]
-    fn subsec_nanos(&self) -> u32 {
-        self.unix_time.subsec_nanos
-    }
-
-    #[inline]
     fn unix_time(&self) -> UnixTime {
-        self.unix_time
+        self.calc_unix_seconds()
     }
 }
 

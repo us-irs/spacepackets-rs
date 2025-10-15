@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- `CdsCommon` renamed to `CdsBase`
+- Simplified CDS short timestamp, contains one less field which reduced serialization length.
+
 # [v0.16.1] 2025-09-26
 
 ## Fixed

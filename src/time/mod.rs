@@ -183,8 +183,13 @@ pub trait CcsdsTimeProvider {
     fn p_field(&self) -> (usize, [u8; 2]);
     fn ccdsd_time_code(&self) -> CcsdsTimeCode;
 
-    fn unix_secs(&self) -> i64;
-    fn subsec_nanos(&self) -> u32;
+    fn unix_secs(&self) -> i64 {
+        self.unix_time().secs
+    }
+
+    fn subsec_nanos(&self) -> u32 {
+        self.unix_time().subsec_nanos
+    }
 
     fn subsec_millis(&self) -> u16 {
         (self.subsec_nanos() / 1_000_000) as u16
