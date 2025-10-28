@@ -119,6 +119,7 @@ impl SequenceCounter for SequenceCounterCcsdsSimple {
     }
 }
 
+#[cfg(target_has_atomic = "8")]
 impl SequenceCounter for core::sync::atomic::AtomicU8 {
     type Raw = u8;
 
@@ -133,6 +134,7 @@ impl SequenceCounter for core::sync::atomic::AtomicU8 {
     }
 }
 
+#[cfg(target_has_atomic = "16")]
 impl SequenceCounter for core::sync::atomic::AtomicU16 {
     type Raw = u16;
 
@@ -147,6 +149,7 @@ impl SequenceCounter for core::sync::atomic::AtomicU16 {
     }
 }
 
+#[cfg(target_has_atomic = "32")]
 impl SequenceCounter for core::sync::atomic::AtomicU32 {
     type Raw = u32;
 
@@ -245,6 +248,12 @@ impl<T: SequenceCounter + ?Sized> SequenceCounter for &T {
     }
 }
 
+#[cfg(any(
+    target_has_atomic = "8",
+    target_has_atomic = "16",
+    target_has_atomic = "32",
+    target_has_atomic = "64"
+))]
 macro_rules! sync_clonable_seq_counter_impl {
     ($ty: ident) => {
         paste::paste! {
