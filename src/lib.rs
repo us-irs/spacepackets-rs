@@ -978,6 +978,41 @@ impl CcsdsPacket for CcsdsPacketCreatorWithReservedData<'_> {
     }
 }
 
+/// Identifier for CCSDS packets.
+///
+/// This struct simply combines the [PacketId] and [PacketSequenceControl] fields from the
+/// CCSDS packet.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CcsdsPacketId {
+    pub packet_id: PacketId,
+    pub psc: PacketSequenceControl,
+}
+
+impl Hash for CcsdsPacketId {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.packet_id.hash(state);
+        self.psc.raw().hash(state);
+    }
+}
+
+impl CcsdsPacketId {
+    #[inline]
+    pub const fn new(packet_id: PacketId, psc: PacketSequenceControl) -> Self {
+        Self { packet_id, psc }
+    }
+
+    /// Extract the CCSDS packet ID from the given [CcsdsPacket].
+    #[inline]
+    pub fn new_from_ccsds_packet<P: CcsdsPacket>(packet: &P) -> Self {
+        Self {
+            packet_id: packet.packet_id(),
+            psc: packet.psc(),
+        }
+    }
+}
+
 /// CCSDS packet creator with optional support for a CRC16 CCITT checksum appended to the
 /// end of the packet.
 #[derive(Debug)]
@@ -2105,5 +2140,15 @@ pub(crate) mod tests {
             PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0))
         );
         assert_eq!(sph.data_len(), 0);
+    }
+
+    #[test]
+    fn ccsds_packet_id() {
+        let packet_id = PacketId::new_for_tc(false, u11::new(0x5));
+        let psc = PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0));
+        let sph = SpacePacketHeader::new(packet_id, psc, 0);
+        let id = CcsdsPacketId::new_from_ccsds_packet(&sph);
+        assert_eq!(id.packet_id, packet_id);
+        assert_eq!(id.psc, psc);
     }
 }

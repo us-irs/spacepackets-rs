@@ -402,24 +402,28 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "portable-atomic")]
     fn test_portable_atomic_counter_u8() {
         let mut sync_u8_counter = portable_atomic::AtomicU8::new(0);
         common_counter_test(&mut sync_u8_counter);
     }
 
     #[test]
+    #[cfg(feature = "portable-atomic")]
     fn test_portable_atomic_counter_u16() {
         let mut sync_u16_counter = portable_atomic::AtomicU16::new(0);
         common_counter_test(&mut sync_u16_counter);
     }
 
     #[test]
+    #[cfg(feature = "portable-atomic")]
     fn test_portable_atomic_counter_u32() {
         let mut sync_u32_counter = portable_atomic::AtomicU32::new(0);
         common_counter_test(&mut sync_u32_counter);
     }
 
     #[test]
+    #[cfg(feature = "portable-atomic")]
     fn test_portable_atomic_counter_u64() {
         let mut sync_u64_counter = portable_atomic::AtomicU64::new(0);
         common_counter_test(&mut sync_u64_counter);
@@ -439,6 +443,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "portable-atomic")]
     fn test_portable_atomic_u8_counter_overflow() {
         let sync_u8_counter = portable_atomic::AtomicU8::new(0);
         common_overflow_test_u8(&sync_u8_counter);
