@@ -71,6 +71,8 @@ use zerocopy::{FromBytes, IntoBytes};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::crc::CRC_CCITT_FALSE;
+
 pub mod cfdp;
 pub mod crc;
 pub mod ecss;
@@ -83,14 +85,21 @@ mod private {
     pub trait Sealed {}
 }
 
+/// Length of the CCSDS header.
 pub const CCSDS_HEADER_LEN: usize = core::mem::size_of::<crate::zc::SpHeader>();
 
+/// Maximum allowed value for the 11-bit APID.
 pub const MAX_APID: u11 = u11::MAX;
+/// Maximum allowed value for the 14-bit APID.
 pub const MAX_SEQ_COUNT: u14 = u14::MAX;
 
-#[inline]
-pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
-    PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
+/// Checksum types currently provided by the CCSDS packet support.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[non_exhaustive]
+pub enum ChecksumType {
+    Crc16CcittFalse,
 }
 
 /// Generic error type when converting to and from raw byte slices.
@@ -118,6 +127,23 @@ pub enum ZeroCopyError {
     ZeroCopyFromError,
 }
 
+/// Invalid payload length which is bounded by [u16::MAX]
+#[derive(thiserror::Error, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[error("invalid payload length: {0}")]
+pub struct InvalidPayloadLengthError(usize);
+
+#[derive(thiserror::Error, Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CcsdsPacketCreationError {
+    #[error("byte conversion: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    #[error("invalid payload length: {0}")]
+    InvalidPayloadLength(#[from] InvalidPayloadLengthError),
+}
+
 /// CCSDS packet type enumeration.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -139,6 +165,41 @@ pub enum SequenceFlags {
     FirstSegment = 0b01,
     LastSegment = 0b10,
     Unsegmented = 0b11,
+}
+
+#[inline]
+pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
+    PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
+}
+
+/// Calculate the full CCSDS packet length for a given user data length and optional checksum type.
+///
+/// Returns [None] if the calculated length allowed by the CCSDS data length field.
+#[inline]
+pub const fn ccsds_packet_len_for_user_data_len(
+    data_len: usize,
+    checksum: Option<ChecksumType>,
+) -> Option<usize> {
+    // Special case: A value of zero is not allowed for the data length field.
+    if data_len == 0 {
+        return Some(7);
+    }
+    let checksum_len = match checksum {
+        Some(ChecksumType::Crc16CcittFalse) => 2,
+        None => 0,
+    };
+    let len = data_len
+        .saturating_add(CCSDS_HEADER_LEN)
+        .saturating_add(checksum_len);
+    if len - CCSDS_HEADER_LEN - 1 > u16::MAX as usize {
+        return None;
+    }
+    Some(len)
+}
+
+#[inline]
+pub fn ccsds_packet_len_for_user_data_len_with_checksum(data_len: usize) -> Option<usize> {
+    ccsds_packet_len_for_user_data_len(data_len, Some(ChecksumType::Crc16CcittFalse))
 }
 
 /// Abstraction for the CCSDS Packet ID, which forms the last thirteen bits
@@ -219,6 +280,7 @@ impl PacketId {
         self.apid = apid;
     }
 
+    /// 11-bit CCSDS Application Process ID (APID) field.
     #[inline]
     pub const fn apid(&self) -> u11 {
         self.apid
@@ -394,16 +456,16 @@ pub trait CcsdsPrimaryHeader {
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct SpHeader {
+pub struct SpacePacketHeader {
     pub version: u3,
     pub packet_id: PacketId,
     pub psc: PacketSequenceControl,
     pub data_len: u16,
 }
 
-pub type SpacePacketHeader = SpHeader;
+pub type SpHeader = SpacePacketHeader;
 
-impl Default for SpHeader {
+impl Default for SpacePacketHeader {
     /// The default function sets the sequence flag field to [SequenceFlags::Unsegmented] and the
     /// data length to 0.
     #[inline]
@@ -420,8 +482,8 @@ impl Default for SpHeader {
     }
 }
 
-impl SpHeader {
-    pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
+impl SpacePacketHeader {
+    pub const LENGTH: usize = CCSDS_HEADER_LEN;
 
     #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceControl, data_len: u16) -> Self {
@@ -437,7 +499,7 @@ impl SpHeader {
     /// length to 0.
     #[inline]
     pub const fn new_from_apid(apid: u11) -> Self {
-        SpHeader {
+        Self {
             version: u3::new(0b000),
             packet_id: PacketId::new(PacketType::Tm, false, apid),
             psc: PacketSequenceControl {
@@ -507,7 +569,7 @@ impl SpHeader {
     /// Retrieve the total packet size based on the data length field
     #[inline]
     pub fn packet_len(&self) -> usize {
-        usize::from(self.data_len()) + Self::HEADER_LEN + 1
+        usize::from(self.data_len()) + Self::LENGTH + 1
     }
 
     #[inline]
@@ -539,15 +601,15 @@ impl SpHeader {
     /// This function also returns the remaining part of the passed slice starting past the read
     /// CCSDS header.
     pub fn from_be_bytes(buf: &[u8]) -> Result<(Self, &[u8]), ByteConversionError> {
-        if buf.len() < Self::HEADER_LEN {
+        if buf.len() < Self::LENGTH {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
             });
         }
         // Unwrap okay, this can not fail.
-        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..Self::HEADER_LEN]).unwrap();
-        Ok((Self::from(zc_header), &buf[Self::HEADER_LEN..]))
+        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..Self::LENGTH]).unwrap();
+        Ok((Self::from(zc_header), &buf[Self::LENGTH..]))
     }
 
     /// Write the header to a raw buffer using big endian format. This function returns the
@@ -556,56 +618,61 @@ impl SpHeader {
         &self,
         buf: &'a mut [u8],
     ) -> Result<&'a mut [u8], ByteConversionError> {
-        if buf.len() < Self::HEADER_LEN {
-            return Err(ByteConversionError::FromSliceTooSmall {
+        if buf.len() < Self::LENGTH {
+            return Err(ByteConversionError::ToSliceTooSmall {
                 found: buf.len(),
                 expected: CCSDS_HEADER_LEN,
             });
         }
         let zc_header: zc::SpHeader = zc::SpHeader::from(*self);
         // Unwrap okay, this can not fail.
-        zc_header.write_to(&mut buf[0..Self::HEADER_LEN]).unwrap();
-        Ok(&mut buf[Self::HEADER_LEN..])
+        zc_header.write_to(&mut buf[0..Self::LENGTH]).unwrap();
+        Ok(&mut buf[Self::LENGTH..])
     }
 
     /// Create a vector containing the CCSDS header.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
-        let mut vec = alloc::vec![0; Self::HEADER_LEN];
+        let mut vec = alloc::vec![0; Self::LENGTH];
         // This can not fail.
         self.write_to_be_bytes(&mut vec[..]).unwrap();
         vec
     }
 }
 
-impl CcsdsPacket for SpHeader {
+impl CcsdsPacket for SpacePacketHeader {
+    /// CCSDS version field.
     #[inline]
     fn ccsds_version(&self) -> u3 {
         self.version
     }
 
+    /// Full packet length.
     #[inline]
     fn packet_len(&self) -> usize {
         self.packet_len()
     }
 
+    /// CCSDS packet ID field.
     #[inline]
     fn packet_id(&self) -> PacketId {
         self.packet_id
     }
 
+    /// CCSDS packet sequence control.
     #[inline]
     fn psc(&self) -> PacketSequenceControl {
         self.psc
     }
 
+    /// CCSDS data length field.
     #[inline]
     fn data_len(&self) -> u16 {
         self.data_len
     }
 }
 
-impl CcsdsPrimaryHeader for SpHeader {
+impl CcsdsPrimaryHeader for SpacePacketHeader {
     #[inline]
     fn from_composite_fields(
         packet_id: PacketId,
@@ -663,21 +730,25 @@ pub mod zc {
     }
 
     impl CcsdsPacket for SpHeader {
+        /// CCSDS version field.
         #[inline]
         fn ccsds_version(&self) -> u3 {
             u3::new(((self.version_packet_id.get() >> 13) as u8) & 0b111)
         }
 
+        /// CCSDS packet ID field.
         #[inline]
         fn packet_id(&self) -> PacketId {
             PacketId::from(self.packet_id_raw())
         }
 
+        /// CCSDS packet sequence control field.
         #[inline]
         fn psc(&self) -> PacketSequenceControl {
             PacketSequenceControl::from(self.psc_raw())
         }
 
+        /// CCSDS data length field.
         #[inline]
         fn data_len(&self) -> u16 {
             self.data_len.get()
@@ -708,20 +779,490 @@ pub mod zc {
     sph_from_other!(SpHeader, crate::SpHeader);
 }
 
+/// CCSDS packet creator with optional support for a CRC16 CCITT checksum appended to the
+/// end of the packet and support for copying into the user buffer directly.
+///
+/// This packet creator variant reserves memory based on the required user data length specified
+/// by the user and then provides mutable or shared access to that memory. This is useful
+/// to avoid an additional slice for the user data and allow copying data directly
+/// into the packet.
+///
+/// Please note that packet creation has to be completed using the [Self::finish] call.
+#[derive(Debug)]
+pub struct CcsdsPacketCreatorWithReservedData<'buf> {
+    sp_header: SpHeader,
+    buf: &'buf mut [u8],
+    checksum: Option<ChecksumType>,
+}
+
+impl<'buf> CcsdsPacketCreatorWithReservedData<'buf> {
+    pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
+
+    #[inline]
+    pub fn packet_len_for_user_data_with_checksum(user_data_len: usize) -> Option<usize> {
+        ccsds_packet_len_for_user_data_len(user_data_len, Some(ChecksumType::Crc16CcittFalse))
+    }
+
+    /// Generic constructor.
+    pub fn new(
+        mut sp_header: SpacePacketHeader,
+        packet_type: PacketType,
+        packet_data_len: usize,
+        buf: &'buf mut [u8],
+        checksum: Option<ChecksumType>,
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        let full_packet_len = match checksum {
+            Some(crc_type) => match crc_type {
+                ChecksumType::Crc16CcittFalse => CCSDS_HEADER_LEN + packet_data_len + 2,
+            },
+            None => {
+                // Special case: At least one byte of user data is required.
+                if packet_data_len == 0 {
+                    CCSDS_HEADER_LEN + 1
+                } else {
+                    CCSDS_HEADER_LEN + packet_data_len
+                }
+            }
+        };
+        if full_packet_len > buf.len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: full_packet_len,
+            }
+            .into());
+        }
+        if full_packet_len - CCSDS_HEADER_LEN - 1 > u16::MAX as usize {
+            return Err(InvalidPayloadLengthError(packet_data_len).into());
+        }
+        sp_header.data_len = (full_packet_len - CCSDS_HEADER_LEN - 1) as u16;
+        sp_header.packet_id.packet_type = packet_type;
+
+        Ok(Self {
+            sp_header,
+            buf: buf[0..full_packet_len].as_mut(),
+            checksum,
+        })
+    }
+
+    /// Constructor which always appends a CRC16 checksum at the packet end.
+    pub fn new_with_checksum(
+        sp_header: SpHeader,
+        packet_type: PacketType,
+        payload_len: usize,
+        buf: &'buf mut [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            packet_type,
+            payload_len,
+            buf,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+
+    /// Constructor for telemetry packets which always appends a CRC16 checksum at the packet end.
+    pub fn new_tm_with_checksum(
+        sp_header: SpHeader,
+        payload_len: usize,
+        buf: &'buf mut [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            PacketType::Tm,
+            payload_len,
+            buf,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+
+    /// Constructor for telecommand packets which always appends a CRC16 checksum at the packet
+    /// end.
+    pub fn new_tc_with_checksum(
+        sp_header: SpHeader,
+        payload_len: usize,
+        buf: &'buf mut [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            PacketType::Tc,
+            payload_len,
+            buf,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+}
+
+impl CcsdsPacketCreatorWithReservedData<'_> {
+    #[inline]
+    pub fn raw_buffer(&self) -> &[u8] {
+        self.buf
+    }
+
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        <Self as CcsdsPacket>::packet_len(self)
+    }
+
+    /// Space pacekt header.
+    #[inline]
+    pub fn sp_header(&self) -> &SpHeader {
+        &self.sp_header
+    }
+
+    /// Mutable access to the packet data field.
+    #[inline]
+    pub fn packet_data_mut(&mut self) -> &mut [u8] {
+        let len = self.packet_len();
+        match self.checksum {
+            Some(ChecksumType::Crc16CcittFalse) => &mut self.buf[CCSDS_HEADER_LEN..len - 2],
+            None => &mut self.buf[CCSDS_HEADER_LEN..len],
+        }
+    }
+
+    /// Read-only access to the packet data field.
+    #[inline]
+    pub fn packet_data(&mut self) -> &[u8] {
+        let len = self.packet_len();
+        match self.checksum {
+            Some(ChecksumType::Crc16CcittFalse) => &self.buf[CCSDS_HEADER_LEN..len - 2],
+            None => &self.buf[CCSDS_HEADER_LEN..len],
+        }
+    }
+
+    /// Finish the packet generation process.
+    ///
+    /// This packet writes the space packet header. It also calculates and appends the CRC
+    /// checksum when configured to do so.
+    pub fn finish(self) -> usize {
+        self.sp_header
+            .write_to_be_bytes(&mut self.buf[0..CCSDS_HEADER_LEN])
+            .unwrap();
+        let len = self.packet_len();
+        match self.checksum {
+            Some(ChecksumType::Crc16CcittFalse) => {
+                let crc16 = CRC_CCITT_FALSE.checksum(&self.buf[0..len - 2]);
+                self.buf[len - 2..len].copy_from_slice(&crc16.to_be_bytes());
+            }
+            None => (),
+        };
+        len
+    }
+}
+
+impl CcsdsPacket for CcsdsPacketCreatorWithReservedData<'_> {
+    /// CCSDS version field.
+    #[inline]
+    fn ccsds_version(&self) -> arbitrary_int::u3 {
+        self.sp_header.ccsds_version()
+    }
+
+    /// CCSDS packet ID field.
+    #[inline]
+    fn packet_id(&self) -> PacketId {
+        self.sp_header.packet_id()
+    }
+
+    /// CCSDS packet sequence control field.
+    #[inline]
+    fn psc(&self) -> PacketSequenceControl {
+        self.sp_header.psc()
+    }
+
+    /// CCSDS data length field.
+    #[inline]
+    fn data_len(&self) -> u16 {
+        self.sp_header.data_len()
+    }
+}
+
+/// CCSDS packet creator with optional support for a CRC16 CCITT checksum appended to the
+/// end of the packet.
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CcsdsPacketCreator<'app_data> {
+    sp_header: SpHeader,
+    packet_data: &'app_data [u8],
+    checksum: Option<ChecksumType>,
+}
+
+impl<'app_data> CcsdsPacketCreator<'app_data> {
+    pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
+
+    /// Helper function which can be used to determine the full packet length from the user
+    /// data length, assuming there is a CRC16 appended at the packet.
+    #[inline]
+    pub fn packet_len_for_user_data_with_checksum(user_data_len: usize) -> Option<usize> {
+        ccsds_packet_len_for_user_data_len(user_data_len, Some(ChecksumType::Crc16CcittFalse))
+    }
+
+    /// Generic constructor.
+    pub fn new(
+        mut sp_header: SpHeader,
+        packet_type: PacketType,
+        packet_data: &'app_data [u8],
+        checksum: Option<ChecksumType>,
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        sp_header.data_len = (packet_data.len()
+            + match checksum {
+                Some(ChecksumType::Crc16CcittFalse) => 2,
+                None => 0,
+            }
+            - 1) as u16;
+        let full_packet_len = match checksum {
+            Some(crc_type) => match crc_type {
+                ChecksumType::Crc16CcittFalse => CCSDS_HEADER_LEN + packet_data.len() + 2,
+            },
+            None => {
+                // Special case: At least one byte of user data is required.
+                if packet_data.is_empty() {
+                    CCSDS_HEADER_LEN + 1
+                } else {
+                    CCSDS_HEADER_LEN + packet_data.len()
+                }
+            }
+        };
+        if full_packet_len - CCSDS_HEADER_LEN - 1 > u16::MAX as usize {
+            return Err(InvalidPayloadLengthError(packet_data.len()).into());
+        }
+        sp_header.data_len = (full_packet_len - CCSDS_HEADER_LEN - 1) as u16;
+        sp_header.packet_id.packet_type = packet_type;
+        Ok(Self {
+            sp_header,
+            packet_data,
+            checksum,
+        })
+    }
+
+    /// Constructor which always appends a CRC16 checksum at the packet end.
+    pub fn new_with_checksum(
+        sp_header: SpHeader,
+        packet_type: PacketType,
+        app_data: &'app_data [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            packet_type,
+            app_data,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+
+    /// Constructor for telemetry which always appends a CRC16 checksum at the packet end.
+    pub fn new_tm_with_checksum(
+        sp_header: SpHeader,
+        app_data: &'app_data [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            PacketType::Tm,
+            app_data,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+
+    /// Constructor for telecommands which always appends a CRC16 checksum at the packet end.
+    pub fn new_tc_with_checksum(
+        sp_header: SpHeader,
+        app_data: &'app_data [u8],
+    ) -> Result<Self, CcsdsPacketCreationError> {
+        Self::new(
+            sp_header,
+            PacketType::Tc,
+            app_data,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+    }
+}
+
+impl CcsdsPacketCreator<'_> {
+    /// Full length when written to bytes.
+    pub fn len_written(&self) -> usize {
+        ccsds_packet_len_for_user_data_len(self.packet_data.len(), self.checksum).unwrap()
+    }
+
+    /// Write the CCSDS packet to the provided buffer.
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+        let len_written = self.len_written();
+        if len_written > buf.len() {
+            return Err(ByteConversionError::ToSliceTooSmall {
+                found: buf.len(),
+                expected: len_written,
+            });
+        }
+        self.sp_header
+            .write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
+        buf[CCSDS_HEADER_LEN..CCSDS_HEADER_LEN + self.packet_data.len()]
+            .copy_from_slice(self.packet_data);
+        match self.checksum {
+            Some(ChecksumType::Crc16CcittFalse) => {
+                let crc16 = CRC_CCITT_FALSE.checksum(&buf[0..len_written - 2]);
+                buf[len_written - 2..len_written].copy_from_slice(&crc16.to_be_bytes());
+            }
+            None => (),
+        };
+        Ok(len_written)
+    }
+
+    pub fn sp_header(&self) -> &SpHeader {
+        &self.sp_header
+    }
+
+    /// Create a CCSDS packet as a vector.
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        let mut vec = alloc::vec![0u8; self.len_written()];
+        // Can not fail, unless we messed up the len_written method..
+        self.write_to_bytes(&mut vec).unwrap();
+        vec
+    }
+}
+
+#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CcsdsPacketReadError {
+    #[error("byte conversion: {0}")]
+    ByteConversion(#[from] ByteConversionError),
+    #[error("CRC error")]
+    CrcError,
+}
+
+/// CCSDS packet reader structure.
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CcsdsPacketReader<'buf> {
+    sp_header: SpHeader,
+    packet_data: &'buf [u8],
+}
+
+impl<'buf> CcsdsPacketReader<'buf> {
+    pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
+
+    pub fn new_with_checksum(
+        buf: &'buf [u8],
+    ) -> Result<CcsdsPacketReader<'buf>, CcsdsPacketReadError> {
+        Self::new(buf, Some(ChecksumType::Crc16CcittFalse))
+    }
+
+    pub fn new(
+        buf: &'buf [u8],
+        checksum: Option<ChecksumType>,
+    ) -> Result<Self, CcsdsPacketReadError> {
+        let sp_header = SpHeader::from_be_bytes(&buf[0..CCSDS_HEADER_LEN])?.0;
+        if sp_header.packet_len() > buf.len() {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: sp_header.packet_len(),
+                expected: buf.len(),
+            }
+            .into());
+        }
+        let user_data = match checksum {
+            Some(ChecksumType::Crc16CcittFalse) => {
+                if CRC_CCITT_FALSE.checksum(&buf[0..sp_header.packet_len()]) != 0 {
+                    return Err(CcsdsPacketReadError::CrcError);
+                }
+                &buf[CCSDS_HEADER_LEN..sp_header.packet_len() - 2]
+            }
+            None => &buf[CCSDS_HEADER_LEN..sp_header.packet_len()],
+        };
+        Ok(Self {
+            sp_header,
+            packet_data: user_data,
+        })
+    }
+}
+
+impl CcsdsPacketReader<'_> {
+    /// Space pacekt header.
+    #[inline]
+    pub fn sp_header(&self) -> &SpHeader {
+        &self.sp_header
+    }
+
+    /// CCSDS packet type.
+    #[inline]
+    pub fn packet_type(&self) -> PacketType {
+        self.sp_header.packet_id.packet_type
+    }
+
+    /// Read-only access to the packet data field.
+    #[inline]
+    pub fn packet_data(&self) -> &[u8] {
+        self.packet_data
+    }
+
+    /// 11-bit Application Process ID field.
+    #[inline]
+    pub fn apid(&self) -> u11 {
+        self.sp_header.apid()
+    }
+
+    /// CCSDS packet ID field.
+    #[inline]
+    pub fn packet_id(&self) -> PacketId {
+        self.sp_header.packet_id()
+    }
+
+    /// Packet sequence control field.
+    #[inline]
+    pub fn psc(&self) -> PacketSequenceControl {
+        self.sp_header.psc()
+    }
+
+    /// Full packet length with the CCSDS header.
+    #[inline]
+    pub fn packet_len(&self) -> usize {
+        <Self as CcsdsPacket>::packet_len(self)
+    }
+
+    /// Packet data length field.
+    #[inline]
+    pub fn data_len(&self) -> u16 {
+        self.sp_header.data_len()
+    }
+}
+
+impl CcsdsPacket for CcsdsPacketReader<'_> {
+    /// CCSDS version field.
+    #[inline]
+    fn ccsds_version(&self) -> arbitrary_int::u3 {
+        self.sp_header.ccsds_version()
+    }
+
+    /// Packet ID field.
+    #[inline]
+    fn packet_id(&self) -> PacketId {
+        self.packet_id()
+    }
+
+    /// Packet sequence control field.
+    #[inline]
+    fn psc(&self) -> PacketSequenceControl {
+        self.psc()
+    }
+
+    /// Packet data length without the CCSDS header.
+    #[inline]
+    fn data_len(&self) -> u16 {
+        self.data_len()
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 pub(crate) mod tests {
     use std::collections::HashSet;
 
+    use super::*;
+    use crate::crc::CRC_CCITT_FALSE;
     #[allow(unused_imports)]
     use crate::ByteConversionError;
     #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
-    use crate::{
-        packet_type_in_raw_packet_id, zc, CcsdsPacket, PacketId, PacketSequenceControl, PacketType,
-    };
     use crate::{SequenceFlags, SpHeader};
     use alloc::vec;
-    use arbitrary_int::{prelude::*, u11, u14};
+    use arbitrary_int::{u11, u14};
     #[cfg(feature = "serde")]
     use core::fmt::Debug;
     #[cfg(feature = "serde")]
@@ -1057,5 +1598,509 @@ pub(crate) mod tests {
             .expect("Error reading back SP header")
             .0;
         assert_eq!(sp_header, sp_header_read_back);
+    }
+
+    #[test]
+    fn test_ccsds_size_function() {
+        assert_eq!(ccsds_packet_len_for_user_data_len(1, None).unwrap(), 7);
+        // Special case: One dummy byte is required.
+        assert_eq!(ccsds_packet_len_for_user_data_len(0, None).unwrap(), 7);
+        assert_eq!(
+            ccsds_packet_len_for_user_data_len(1, Some(ChecksumType::Crc16CcittFalse)).unwrap(),
+            9
+        );
+        assert_eq!(
+            ccsds_packet_len_for_user_data_len_with_checksum(1).unwrap(),
+            9
+        );
+    }
+
+    #[test]
+    fn test_ccsds_size_function_invalid_size_no_checksum() {
+        // This works, because the data field is the user data length minus 1.
+        assert!(ccsds_packet_len_for_user_data_len(u16::MAX as usize + 1, None).is_some());
+        // This does not work, data field length exceeded.
+        assert!(ccsds_packet_len_for_user_data_len(u16::MAX as usize + 2, None).is_none());
+    }
+
+    #[test]
+    fn test_ccsds_size_function_invalid_size_with_checksum() {
+        // 2 less bytes available because of the checksum.
+        assert!(ccsds_packet_len_for_user_data_len(
+            u16::MAX as usize - 1,
+            Some(ChecksumType::Crc16CcittFalse)
+        )
+        .is_some());
+        // This is too much.
+        assert!(ccsds_packet_len_for_user_data_len(
+            u16::MAX as usize,
+            Some(ChecksumType::Crc16CcittFalse)
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_ccsds_creator_api() {
+        let mut buf: [u8; 32] = [0; 32];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+        .unwrap();
+        assert_eq!(packet_creator.packet_len(), 12);
+        assert_eq!(packet_creator.raw_buffer().len(), 12);
+        assert_eq!(packet_creator.data_len(), 5);
+        assert_eq!(packet_creator.apid().value(), 0x1);
+        assert_eq!(packet_creator.packet_data_mut(), &mut [0, 0, 0, 0]);
+        assert_eq!(packet_creator.packet_data(), &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_ccsds_creator_api_no_checksum() {
+        let mut buf: [u8; 32] = [0; 32];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+            None,
+        )
+        .unwrap();
+        assert_eq!(packet_creator.packet_len(), 10);
+        assert_eq!(packet_creator.data_len(), 3);
+        assert_eq!(packet_creator.apid().value(), 0x1);
+        assert_eq!(packet_creator.packet_data_mut(), &mut [0, 0, 0, 0]);
+        assert_eq!(packet_creator.packet_data(), &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_with_reserved_data_alt_ctor() {
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+        )
+        .unwrap();
+        packet_creator.packet_data_mut().copy_from_slice(&data);
+        let written_len = packet_creator.finish();
+        assert_eq!(
+            CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
+            written_len
+        );
+        assert_eq!(CRC_CCITT_FALSE.checksum(&buf[0..written_len]), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &buf[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(buf[6], 1);
+        assert_eq!(buf[7], 2);
+        assert_eq!(buf[8], 3);
+        assert_eq!(buf[9], 4);
+        assert_eq!(buf[12], 0);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_with_reserved_data() {
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+        .unwrap();
+        packet_creator.packet_data_mut().copy_from_slice(&data);
+        let written_len = packet_creator.finish();
+        assert_eq!(
+            CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
+            written_len
+        );
+        assert_eq!(CRC_CCITT_FALSE.checksum(&buf[0..written_len]), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &buf[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
+        assert_eq!(buf[6], 1);
+        assert_eq!(buf[7], 2);
+        assert_eq!(buf[8], 3);
+        assert_eq!(buf[9], 4);
+        assert_eq!(buf[12], 0);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_empty_user_data_no_checksum() {
+        let mut buf: [u8; 32] = [0; 32];
+        let packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            0,
+            &mut buf,
+            None,
+        )
+        .unwrap();
+        // Special case.
+        assert_eq!(packet_creator.packet_len(), 7);
+        packet_creator.finish();
+        let reader = CcsdsPacketReader::new(&buf[0..7], None).unwrap();
+        // Enforced 1 byte packet length.
+        assert_eq!(reader.packet_data(), &[0]);
+        assert_eq!(reader.packet_len(), 7);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_buf_too_small() {
+        let mut buf: [u8; 8] = [0; 8];
+        let packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+            None,
+        );
+        assert!(packet_creator.is_err());
+        matches!(
+            packet_creator.unwrap_err(),
+            CcsdsPacketCreationError::ByteConversion(ByteConversionError::ToSliceTooSmall {
+                found: 8,
+                expected: 10
+            })
+        );
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_with_reserved_data_tc_api() {
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new_tc_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            4,
+            &mut buf,
+        )
+        .unwrap();
+        packet_creator.packet_data_mut().copy_from_slice(&data);
+        let written_len = packet_creator.finish();
+        assert_eq!(
+            CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
+            written_len
+        );
+        assert_eq!(CRC_CCITT_FALSE.checksum(&buf[0..written_len]), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &buf[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
+        assert_eq!(buf[6], 1);
+        assert_eq!(buf[7], 2);
+        assert_eq!(buf[8], 3);
+        assert_eq!(buf[9], 4);
+        assert_eq!(buf[12], 0);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_with_reserved_data_tm_api() {
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new_tm_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            4,
+            &mut buf,
+        )
+        .unwrap();
+        packet_creator.packet_data_mut().copy_from_slice(&data);
+        let written_len = packet_creator.finish();
+        assert_eq!(
+            CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
+            written_len
+        );
+        assert_eq!(CRC_CCITT_FALSE.checksum(&buf[0..written_len]), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &buf[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tm);
+        assert_eq!(buf[6], 1);
+        assert_eq!(buf[7], 2);
+        assert_eq!(buf[8], 3);
+        assert_eq!(buf[9], 4);
+        assert_eq!(buf[12], 0);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_with_reserved_data_no_checksum() {
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            4,
+            &mut buf,
+            None,
+        )
+        .unwrap();
+        packet_creator.packet_data_mut().copy_from_slice(&data);
+        let written_len = packet_creator.finish();
+        assert_eq!(written_len, 10);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &buf[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(buf[6], 1);
+        assert_eq!(buf[7], 2);
+        assert_eq!(buf[8], 3);
+        assert_eq!(buf[9], 4);
+        assert_eq!(buf[10], 0);
+        assert_eq!(buf[11], 0);
+    }
+    fn generic_ccsds_creator_test(alt_api: bool) {
+        let data = [1, 2, 3, 4];
+        let packet_creator = if alt_api {
+            CcsdsPacketCreator::new(
+                SpacePacketHeader::new_from_apid(u11::new(0x1)),
+                PacketType::Tc,
+                &data,
+                Some(ChecksumType::Crc16CcittFalse),
+            )
+            .unwrap()
+        } else {
+            CcsdsPacketCreator::new_with_checksum(
+                SpacePacketHeader::new_from_apid(u11::new(0x1)),
+                PacketType::Tc,
+                &data,
+            )
+            .unwrap()
+        };
+        let packet_raw = packet_creator.to_vec();
+        assert_eq!(CRC_CCITT_FALSE.checksum(&packet_raw), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &packet_raw[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
+        assert_eq!(packet_raw[6], 1);
+        assert_eq!(packet_raw[7], 2);
+        assert_eq!(packet_raw[8], 3);
+        assert_eq!(packet_raw[9], 4);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation() {
+        generic_ccsds_creator_test(false);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_alt() {
+        generic_ccsds_creator_test(true);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_alt_tc() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new_tc_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            &data,
+        )
+        .unwrap();
+        let packet_raw = packet_creator.to_vec();
+        assert_eq!(CRC_CCITT_FALSE.checksum(&packet_raw), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &packet_raw[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tc);
+        assert_eq!(packet_raw[6], 1);
+        assert_eq!(packet_raw[7], 2);
+        assert_eq!(packet_raw[8], 3);
+        assert_eq!(packet_raw[9], 4);
+    }
+
+    #[test]
+    fn test_ccsds_creator_creation_alt_tm() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new_tm_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            &data,
+        )
+        .unwrap();
+        let packet_raw = packet_creator.to_vec();
+        assert_eq!(CRC_CCITT_FALSE.checksum(&packet_raw), 0);
+        let sp_header = SpacePacketHeader::from_be_bytes(
+            &packet_raw[0..CcsdsPacketCreatorWithReservedData::HEADER_LEN],
+        )
+        .unwrap()
+        .0;
+        assert_eq!(sp_header.apid().value(), 0x1);
+        assert_eq!(sp_header.packet_type(), PacketType::Tm);
+        assert_eq!(packet_raw[6], 1);
+        assert_eq!(packet_raw[7], 2);
+        assert_eq!(packet_raw[8], 3);
+        assert_eq!(packet_raw[9], 4);
+    }
+
+    fn generic_ccsds_reader_test(packet_type: PacketType) {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            packet_type,
+            &data,
+            Some(ChecksumType::Crc16CcittFalse),
+        )
+        .unwrap();
+        let packet_raw = packet_creator.to_vec();
+        assert_eq!(
+            CcsdsPacketCreator::packet_len_for_user_data_with_checksum(4).unwrap(),
+            packet_raw.len()
+        );
+        let reader = CcsdsPacketReader::new_with_checksum(&packet_raw).unwrap();
+        assert_eq!(reader.sp_header(), packet_creator.sp_header());
+        assert_eq!(reader.packet_data(), &data);
+        assert_eq!(reader.apid(), u11::new(0x1));
+        assert_eq!(
+            reader.packet_id(),
+            PacketId::new(packet_type, false, u11::new(0x1))
+        );
+        assert_eq!(
+            reader.psc(),
+            PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0x0))
+        );
+        assert_eq!(reader.packet_len(), packet_raw.len());
+        assert_eq!(reader.packet_type(), packet_type);
+        assert_eq!(reader.data_len() as usize, packet_raw.len() - 7);
+    }
+
+    #[test]
+    fn test_ccsds_reader_tc() {
+        generic_ccsds_reader_test(PacketType::Tc);
+    }
+
+    #[test]
+    fn test_ccsds_reader_tm() {
+        generic_ccsds_reader_test(PacketType::Tm);
+    }
+
+    #[test]
+    fn test_ccsds_reader_no_checksum() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            &data,
+            None,
+        )
+        .unwrap();
+        let packet_raw = packet_creator.to_vec();
+        let reader = CcsdsPacketReader::new(&packet_raw, None).unwrap();
+        assert_eq!(reader.sp_header(), packet_creator.sp_header());
+        assert_eq!(reader.packet_data(), &data);
+        assert_eq!(reader.apid(), u11::new(0x1));
+        assert_eq!(
+            reader.packet_id(),
+            PacketId::new(PacketType::Tc, false, u11::new(0x1))
+        );
+        assert_eq!(
+            reader.psc(),
+            PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0x0))
+        );
+        assert_eq!(reader.packet_len(), packet_raw.len());
+        assert_eq!(reader.packet_type(), PacketType::Tc);
+        assert_eq!(reader.data_len() as usize, packet_raw.len() - 7);
+    }
+
+    #[test]
+    fn test_ccsds_reader_buf_too_small() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            &data,
+            None,
+        )
+        .unwrap();
+        let packet_raw = packet_creator.to_vec();
+        let reader_error = CcsdsPacketReader::new(&packet_raw[0..8], None);
+        assert!(reader_error.is_err());
+        let error = reader_error.unwrap_err();
+        matches!(
+            error,
+            CcsdsPacketReadError::ByteConversion(ByteConversionError::FromSliceTooSmall {
+                found: 8,
+                expected: 10
+            })
+        );
+    }
+
+    #[test]
+    fn test_ccsds_checksum_error() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreator::new_tc_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            &data,
+        )
+        .unwrap();
+        let mut packet_raw = packet_creator.to_vec();
+        *packet_raw.last_mut().unwrap() = 0;
+        let reader_error = CcsdsPacketReader::new_with_checksum(&packet_raw);
+        assert!(reader_error.is_err());
+        assert_eq!(reader_error.unwrap_err(), CcsdsPacketReadError::CrcError);
+    }
+
+    #[test]
+    fn sp_header_to_buf_too_small() {
+        let sph = SpacePacketHeader::new_from_apid(u11::new(0x01));
+        let mut buf: [u8; 5] = [0; 5];
+        assert_eq!(
+            sph.write_to_be_bytes(&mut buf).unwrap_err(),
+            ByteConversionError::ToSliceTooSmall {
+                found: 5,
+                expected: 6
+            }
+        );
+    }
+
+    #[test]
+    fn sp_header_from_buf_too_small() {
+        let buf: [u8; 5] = [0; 5];
+        let sph = SpacePacketHeader::from_be_bytes(&buf);
+        assert_eq!(
+            sph.unwrap_err(),
+            ByteConversionError::FromSliceTooSmall {
+                found: 5,
+                expected: 6
+            }
+        );
+    }
+
+    #[test]
+    fn sp_header_default() {
+        let sph = SpacePacketHeader::default();
+        assert_eq!(sph.packet_id(), PacketId::default());
+        assert_eq!(sph.apid().value(), 0);
+        assert_eq!(
+            sph.psc(),
+            PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0))
+        );
+        assert_eq!(sph.data_len(), 0);
     }
 }

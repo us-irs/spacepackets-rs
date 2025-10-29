@@ -1,3 +1,8 @@
+//! # Sequence counter module.
+//!
+//! CCSDS and ECSS packet standard oftentimes use sequence counters, for example to allow detecting
+//! packet gaps. This module provides basic abstractions and helper components to implement
+//! sequence counters.
 use crate::MAX_SEQ_COUNT;
 use arbitrary_int::traits::Integer;
 use core::cell::Cell;

@@ -1,3 +1,7 @@
+//! # CRC checksum support.
+//!
+//! Thin wrapper around the [crc] crate.
+
 /// CRC algorithm used by the PUS standard, the CCSDS TC standard and the CFDP standard, using
 /// a [crc::NoTable] as the CRC implementation.
 pub const CRC_CCITT_FALSE_NO_TABLE: crc::Crc<u16, crc::NoTable> =
