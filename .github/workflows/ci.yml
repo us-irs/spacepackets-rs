@@ -39,12 +39,13 @@ jobs:
       matrix:
         target:
           - armv7-unknown-linux-gnueabihf
+          - thumbv6m-none-eabi
           - thumbv7em-none-eabihf
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: "armv7-unknown-linux-gnueabihf, thumbv7em-none-eabihf"
+          targets: "armv7-unknown-linux-gnueabihf, thumbv7em-none-eabihf, thumbv6m-none-eabi"
       - run: cargo check --release --target=${{matrix.target}} --no-default-features
 
   fmt:

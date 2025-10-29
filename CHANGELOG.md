@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.17.0] 2025-10-29
+
 ## Changed
 
 - `CdsCommon` renamed to `CdsBase`
@@ -17,6 +19,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Added `CcsdsPacketCreator`, `CcsdsPacketReader` and `CcsdsPacketCreatorWithReservedData`
   which simplify the process of creating full CCSDS space packets.
+
+## Fixed
+
+- All `core::sync::Atomic?` usages are feature gated properly to allow compilation on systems
+  without atomic CAS.
 
 # [v0.16.1] 2025-09-26
 
@@ -660,7 +667,8 @@ The timestamp of `PusTm` is now optional. See Added and Changed section for deta
 Initial release with CCSDS Space Packet Primary Header implementation and basic PUS TC and TM
 implementations.
 
-[unreleased]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.1...HEAD
+[unreleased]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.17.0...HEAD
+[v0.17.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.1...v0.17.0
 [v0.16.1]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.16.0...v0.16.1
 [v0.16.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.15.0...v0.16.0
 [v0.15.0]: https://egit.irs.uni-stuttgart.de/rust/spacepackets/compare/v0.14.0...v0.15.0
