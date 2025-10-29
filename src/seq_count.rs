@@ -184,59 +184,63 @@ impl SequenceCounter for core::sync::atomic::AtomicU64 {
     }
 }
 
+#[cfg(feature = "portable-atomic")]
 impl SequenceCounter for portable_atomic::AtomicU8 {
     type Raw = u8;
 
     const MAX_BIT_WIDTH: usize = 8;
 
     fn get(&self) -> Self::Raw {
-        self.load(core::sync::atomic::Ordering::Relaxed)
+        self.load(portable_atomic::Ordering::Relaxed)
     }
 
     fn increment(&self) {
-        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        self.fetch_add(1, portable_atomic::Ordering::Relaxed);
     }
 }
 
+#[cfg(feature = "portable-atomic")]
 impl SequenceCounter for portable_atomic::AtomicU16 {
     type Raw = u16;
 
     const MAX_BIT_WIDTH: usize = 16;
 
     fn get(&self) -> Self::Raw {
-        self.load(core::sync::atomic::Ordering::Relaxed)
+        self.load(portable_atomic::Ordering::Relaxed)
     }
 
     fn increment(&self) {
-        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        self.fetch_add(1, portable_atomic::Ordering::Relaxed);
     }
 }
 
+#[cfg(feature = "portable-atomic")]
 impl SequenceCounter for portable_atomic::AtomicU32 {
     type Raw = u32;
 
     const MAX_BIT_WIDTH: usize = 32;
 
     fn get(&self) -> Self::Raw {
-        self.load(core::sync::atomic::Ordering::Relaxed)
+        self.load(portable_atomic::Ordering::Relaxed)
     }
 
     fn increment(&self) {
-        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        self.fetch_add(1, portable_atomic::Ordering::Relaxed);
     }
 }
 
+#[cfg(feature = "portable-atomic")]
 impl SequenceCounter for portable_atomic::AtomicU64 {
     type Raw = u64;
 
     const MAX_BIT_WIDTH: usize = 64;
 
     fn get(&self) -> Self::Raw {
-        self.load(core::sync::atomic::Ordering::Relaxed)
+        self.load(portable_atomic::Ordering::Relaxed)
     }
 
     fn increment(&self) {
-        self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        self.fetch_add(1, portable_atomic::Ordering::Relaxed);
     }
 }
 

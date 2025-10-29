@@ -11,6 +11,7 @@ check:
 
 embedded:
   cargo build --target thumbv7em-none-eabihf --no-default-features
+  cargo build --target thumbv6m-none-eabi --no-default-features
 
 test:
   cargo nextest r --all-features

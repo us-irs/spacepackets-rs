@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Added `CcsdsPacketCreator`, `CcsdsPacketReader` and `CcsdsPacketCreatorWithReservedData`
   which simplify the process of creating full CCSDS space packets.
+- Added new optional `portable-atomic` because portable atomics might not work on every
+  architecture in addition to requiring atomic CAS support enabled inside for the crate.
 
 ## Fixed
 
