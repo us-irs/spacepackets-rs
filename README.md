@@ -43,6 +43,9 @@ Currently, this includes the following components:
  - [`timelib`](https://crates.io/crates/time): Add basic support for the `time` time library.
  - [`defmt`](https://defmt.ferrous-systems.com/): Add support for the `defmt` by adding the
    [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on many types.
+ - [`portable-atomic`](https://github.com/taiki-e/portable-atomic): Basic support for `portable-atomic`
+   crate in addition to the support for core atomic types. This support requires atomic CAS support
+   enabled in the portable atomic crate.
 
 # Examples
 
