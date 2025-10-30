@@ -1011,6 +1011,21 @@ impl CcsdsPacketId {
             psc: packet.psc(),
         }
     }
+
+    #[inline]
+    pub const fn raw(&self) -> u32 {
+        ((self.packet_id.raw() as u32) << 16) | self.psc.raw() as u32
+    }
+}
+
+impl From<SpacePacketHeader> for CcsdsPacketId {
+    #[inline]
+    fn from(header: SpacePacketHeader) -> Self {
+        Self {
+            packet_id: header.packet_id,
+            psc: header.psc,
+        }
+    }
 }
 
 /// CCSDS packet creator with optional support for a CRC16 CCITT checksum appended to the
@@ -2150,5 +2165,11 @@ pub(crate) mod tests {
         let id = CcsdsPacketId::new_from_ccsds_packet(&sph);
         assert_eq!(id.packet_id, packet_id);
         assert_eq!(id.psc, psc);
+        assert_eq!(
+            id.raw(),
+            ((id.packet_id.raw() as u32) << 16) | id.psc.raw() as u32
+        );
+        let id_from = CcsdsPacketId::from(sph);
+        assert_eq!(id_from, id);
     }
 }
