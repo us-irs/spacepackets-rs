@@ -5,18 +5,18 @@
 //!
 //! ```rust
 //! use spacepackets::SpHeader;
-//! use spacepackets::ecss::tc::{PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
+//! use spacepackets::ecss::tc::{MessageTypeId, PusTcCreator, PusTcReader, PusTcSecondaryHeader, CreatorConfig};
 //! use arbitrary_int::u11;
 //!
 //! // Create a ping telecommand with no user application data
 //! let pus_tc = PusTcCreator::new_no_app_data(
 //!     SpHeader::new_from_apid(u11::new(0x02)),
-//!     PusTcSecondaryHeader::new_simple(17, 1),
+//!     PusTcSecondaryHeader::new_simple(MessageTypeId::new(17, 1)),
 //!     CreatorConfig::default()
 //! );
 //! println!("{:?}", pus_tc);
-//! assert_eq!(pus_tc.service(), 17);
-//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.service_type_id(), 17);
+//! assert_eq!(pus_tc.message_subtype_id(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
 //!
 //! // Serialize TC into a raw buffer
@@ -29,25 +29,25 @@
 //!
 //! // Deserialize from the raw byte representation
 //! let pus_tc_deserialized = PusTcReader::new(&test_buf).expect("Deserialization failed");
-//! assert_eq!(pus_tc.service(), 17);
-//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.service_type_id(), 17);
+//! assert_eq!(pus_tc.message_subtype_id(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
 //!
 //! // Alternative builder API
 //! let pus_tc_by_builder = PusTcCreator::builder()
-//!     .with_service(17)
-//!     .with_subservice(1)
+//!     .with_service_type_id(17)
+//!     .with_message_subtype_id(1)
 //!     .with_apid(u11::new(0x02))
 //!     .build();
 //! assert_eq!(pus_tc_by_builder, pus_tc);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
-pub use crate::ecss::CreatorConfig;
 use crate::ecss::{
     crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
+pub use crate::ecss::{CreatorConfig, MessageTypeId};
 use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
 use crate::{PacketId, PacketSequenceControl, SpHeader};
 use arbitrary_int::{u11, u14, u3, u4};
@@ -74,6 +74,7 @@ const PUS_VERSION: PusVersion = PusVersion::PusC;
 /// Marker trait for PUS telecommand structures.
 pub trait IsPusTelecommand {}
 
+/// Acknowledgement flags for PUS telecommands.
 #[bitbybit::bitfield(u4, default = 0b0000, debug, defmt_bitfields(feature = "defmt"))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq)]
@@ -88,6 +89,7 @@ pub struct AckFlags {
     completion: bool,
 }
 
+/// Constant to acknowledge all TC handling phases.
 pub const ACK_ALL: AckFlags = AckFlags::builder()
     .with_acceptance(true)
     .with_start(true)
@@ -100,16 +102,31 @@ impl AckFlags {
 }
 
 pub trait GenericPusTcSecondaryHeader {
+    /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
+    /// Acknowledgement flags.
     fn ack_flags(&self) -> AckFlags;
-    fn service(&self) -> u8;
-    fn subservice(&self) -> u8;
+    /// Message type ID.
+    fn message_type_id(&self) -> MessageTypeId;
+    /// Source ID.
     fn source_id(&self) -> u16;
+
+    /// Service type ID.
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.message_type_id().type_id
+    }
+
+    /// Message subtype ID.
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.message_type_id().subtype_id
+    }
 }
 
 pub mod zc {
     use crate::ecss::tc::{AckFlags, GenericPusTcSecondaryHeader};
-    use crate::ecss::{PusError, PusVersion};
+    use crate::ecss::{MessageTypeId, PusError, PusVersion};
     use arbitrary_int::traits::Integer;
     use arbitrary_int::u4;
     use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
@@ -118,8 +135,8 @@ pub mod zc {
     #[repr(C)]
     pub struct PusTcSecondaryHeader {
         version_ack: u8,
-        service: u8,
-        subservice: u8,
+        service_type_id: u8,
+        message_subtype_id: u8,
         source_id: U16<NetworkEndian>,
     }
 
@@ -131,8 +148,8 @@ pub mod zc {
             }
             Ok(PusTcSecondaryHeader {
                 version_ack: ((value.version as u8) << 4) | value.ack_flags.raw_value().as_u8(),
-                service: value.service,
-                subservice: value.subservice,
+                service_type_id: value.service_type_id(),
+                message_subtype_id: value.message_subtype_id(),
                 source_id: U16::from(value.source_id),
             })
         }
@@ -150,13 +167,22 @@ pub mod zc {
         }
 
         #[inline]
-        fn service(&self) -> u8 {
-            self.service
+        /// Message type ID.
+        fn message_type_id(&self) -> MessageTypeId {
+            MessageTypeId {
+                type_id: self.service_type_id,
+                subtype_id: self.message_subtype_id,
+            }
         }
 
         #[inline]
-        fn subservice(&self) -> u8 {
-            self.subservice
+        fn service_type_id(&self) -> u8 {
+            self.service_type_id
+        }
+
+        #[inline]
+        fn message_subtype_id(&self) -> u8 {
+            self.message_subtype_id
         }
 
         #[inline]
@@ -170,8 +196,7 @@ pub mod zc {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcSecondaryHeader {
-    pub service: u8,
-    pub subservice: u8,
+    pub message_type_id: MessageTypeId,
     pub source_id: u16,
     pub ack_flags: AckFlags,
     pub version: PusVersion,
@@ -189,13 +214,8 @@ impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
     }
 
     #[inline]
-    fn service(&self) -> u8 {
-        self.service
-    }
-
-    #[inline]
-    fn subservice(&self) -> u8 {
-        self.subservice
+    fn message_type_id(&self) -> MessageTypeId {
+        self.message_type_id
     }
 
     #[inline]
@@ -209,8 +229,7 @@ impl TryFrom<zc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
 
     fn try_from(value: zc::PusTcSecondaryHeader) -> Result<Self, Self::Error> {
         Ok(PusTcSecondaryHeader {
-            service: value.service(),
-            subservice: value.subservice(),
+            message_type_id: value.message_type_id(),
             source_id: value.source_id(),
             ack_flags: value.ack_flags(),
             version: PUS_VERSION,
@@ -222,10 +241,9 @@ impl PusTcSecondaryHeader {
     pub const HEADER_LEN: usize = PUC_TC_SECONDARY_HEADER_LEN;
 
     #[inline]
-    pub fn new_simple(service: u8, subservice: u8) -> Self {
+    pub fn new_simple(message_type_id: MessageTypeId) -> Self {
         PusTcSecondaryHeader {
-            service,
-            subservice,
+            message_type_id,
             ack_flags: ACK_ALL,
             source_id: 0,
             version: PusVersion::PusC,
@@ -233,10 +251,9 @@ impl PusTcSecondaryHeader {
     }
 
     #[inline]
-    pub fn new(service: u8, subservice: u8, ack_flags: AckFlags, source_id: u16) -> Self {
+    pub fn new(message_type_id: MessageTypeId, ack_flags: AckFlags, source_id: u16) -> Self {
         PusTcSecondaryHeader {
-            service,
-            subservice,
+            message_type_id,
             ack_flags,
             source_id,
             version: PusVersion::PusC,
@@ -299,14 +316,13 @@ impl<'app_data> PusTcCreator<'app_data> {
     #[inline]
     pub fn new_simple(
         sph: SpHeader,
-        service: u8,
-        subservice: u8,
+        message_type_id: MessageTypeId,
         app_data: &'app_data [u8],
         packet_config: CreatorConfig,
     ) -> Self {
         Self::new(
             sph,
-            PusTcSecondaryHeader::new(service, subservice, ACK_ALL, 0),
+            PusTcSecondaryHeader::new(message_type_id, ACK_ALL, 0),
             app_data,
             packet_config,
         )
@@ -336,13 +352,13 @@ impl<'app_data> PusTcCreator<'app_data> {
     }
 
     #[inline]
-    pub fn service(&self) -> u8 {
-        self.sec_header.service
+    pub fn service_type_id(&self) -> u8 {
+        self.sec_header.service_type_id()
     }
 
     #[inline]
-    pub fn subservice(&self) -> u8 {
-        self.sec_header.subservice
+    pub fn message_subtype_id(&self) -> u8 {
+        self.sec_header.message_subtype_id()
     }
 
     #[inline]
@@ -513,9 +529,11 @@ impl PusPacket for PusTcCreator<'_> {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
     });
 
     #[inline]
@@ -541,9 +559,11 @@ impl GenericPusTcSecondaryHeader for PusTcCreator<'_> {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
         #[inline]
         fn source_id(&self) -> u16;
         #[inline]
@@ -734,7 +754,7 @@ impl PusTcBuilder<'_> {
                 PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0)),
                 0,
             ),
-            sec_header: PusTcSecondaryHeader::new(0, 0, ACK_ALL, 0),
+            sec_header: PusTcSecondaryHeader::new(MessageTypeId::new(0, 0), ACK_ALL, 0),
             app_data: &[],
             has_checksum: true,
         }
@@ -760,14 +780,20 @@ impl PusTcBuilder<'_> {
     }
 
     #[inline]
-    pub fn with_service(mut self, service: u8) -> Self {
-        self.sec_header.service = service;
+    pub fn with_message_type_id(mut self, message_type: MessageTypeId) -> Self {
+        self.sec_header.message_type_id = message_type;
         self
     }
 
     #[inline]
-    pub fn with_subservice(mut self, service: u8) -> Self {
-        self.sec_header.subservice = service;
+    pub fn with_service_type_id(mut self, service: u8) -> Self {
+        self.sec_header.message_type_id.type_id = service;
+        self
+    }
+
+    #[inline]
+    pub fn with_message_subtype_id(mut self, subtype_id: u8) -> Self {
+        self.sec_header.message_type_id.subtype_id = subtype_id;
         self
     }
 
@@ -974,9 +1000,11 @@ impl PusPacket for PusTcReader<'_> {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
     });
 
     fn has_checksum(&self) -> bool {
@@ -999,9 +1027,11 @@ impl GenericPusTcSecondaryHeader for PusTcReader<'_> {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
         #[inline]
         fn source_id(&self) -> u16;
         #[inline]
@@ -1042,13 +1072,13 @@ mod tests {
 
     fn base_ping_tc_full_ctor() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
-        let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+        let tc_header = PusTcSecondaryHeader::new_simple(MessageTypeId::new(17, 1));
         PusTcCreator::new_no_app_data(sph, tc_header, CreatorConfig::default())
     }
 
     fn base_ping_tc_full_ctor_no_checksum() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
-        let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+        let tc_header = PusTcSecondaryHeader::new_simple(MessageTypeId::new(17, 1));
         PusTcCreator::new_no_app_data(
             sph,
             tc_header,
@@ -1061,21 +1091,26 @@ mod tests {
 
     fn base_ping_tc_simple_ctor() -> PusTcCreator<'static> {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
-        PusTcCreator::new_simple(sph, 17, 1, &[], CreatorConfig::default())
+        PusTcCreator::new_simple(
+            sph,
+            MessageTypeId::new(17, 1),
+            &[],
+            CreatorConfig::default(),
+        )
     }
 
     fn base_ping_tc_with_builder(alt_api: bool) -> PusTcCreator<'static> {
         if alt_api {
             return PusTcCreator::builder()
-                .with_service(17)
-                .with_subservice(1)
+                .with_service_type_id(17)
+                .with_message_subtype_id(1)
                 .with_apid(u11::new(0x02))
                 .with_sequence_count(u14::new(0x34))
                 .build();
         }
         PusTcBuilder::new()
-            .with_service(17)
-            .with_subservice(1)
+            .with_service_type_id(17)
+            .with_message_subtype_id(1)
             .with_apid(u11::new(0x02))
             .with_sequence_count(u14::new(0x34))
             .build()
@@ -1085,8 +1120,7 @@ mod tests {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(
             sph,
-            17,
-            1,
+            MessageTypeId::new(17, 1),
             &[],
             CreatorConfig {
                 set_ccsds_len: true,
@@ -1102,8 +1136,7 @@ mod tests {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         PusTcCreator::new_simple(
             sph,
-            17,
-            1,
+            MessageTypeId::new(17, 1),
             app_data,
             CreatorConfig {
                 set_ccsds_len: true,
@@ -1234,7 +1267,7 @@ mod tests {
     #[test]
     fn test_deserialization_alt_ctor() {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
-        let tc_header = PusTcSecondaryHeader::new_simple(17, 1);
+        let tc_header = PusTcSecondaryHeader::new_simple(MessageTypeId::new(17, 1));
         let mut test_buf: [u8; 32] = [0; 32];
         let mut pus_tc =
             PusTcCreatorWithReservedAppData::new(&mut test_buf, sph, tc_header, 0, true).unwrap();
@@ -1289,8 +1322,7 @@ mod tests {
         let sph = SpHeader::new_for_unseg_tc(u11::new(0x02), u14::new(0x34), 0);
         let mut tc = PusTcCreator::new_simple(
             sph,
-            17,
-            1,
+            MessageTypeId::new(17, 1),
             &[],
             CreatorConfig {
                 set_ccsds_len: false,
@@ -1517,10 +1549,10 @@ mod tests {
     }
 
     fn verify_test_tc_generic(tc: &(impl PusPacket + GenericPusTcSecondaryHeader)) {
-        assert_eq!(PusPacket::service(tc), 17);
-        assert_eq!(GenericPusTcSecondaryHeader::service(tc), 17);
-        assert_eq!(PusPacket::subservice(tc), 1);
-        assert_eq!(GenericPusTcSecondaryHeader::subservice(tc), 1);
+        assert_eq!(PusPacket::service_type_id(tc), 17);
+        assert_eq!(GenericPusTcSecondaryHeader::service_type_id(tc), 17);
+        assert_eq!(PusPacket::message_subtype_id(tc), 1);
+        assert_eq!(GenericPusTcSecondaryHeader::message_subtype_id(tc), 1);
         assert!(tc.sec_header_flag());
         assert_eq!(PusPacket::pus_version(tc).unwrap(), PusC);
         assert_eq!(tc.seq_count().value(), 0x34);
@@ -1650,8 +1682,8 @@ mod tests {
                 SequenceFlags::Unsegmented,
                 u14::new(0x34),
             ))
-            .with_service(17)
-            .with_subservice(1)
+            .with_service_type_id(17)
+            .with_message_subtype_id(1)
             .with_ack_flags(AckFlags::new_with_raw_value(u4::new(0b1010)))
             .with_source_id(0x2f2f)
             .with_checksum(false)
@@ -1660,7 +1692,7 @@ mod tests {
         assert_eq!(tc.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(tc.apid().value(), 0x02);
         assert_eq!(tc.packet_type(), PacketType::Tc);
-        assert_eq!(tc.service(), 17);
-        assert_eq!(tc.subservice(), 1);
+        assert_eq!(tc.service_type_id(), 17);
+        assert_eq!(tc.message_subtype_id(), 1);
     }
 }
