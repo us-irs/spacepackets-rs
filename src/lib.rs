@@ -106,8 +106,10 @@ pub const MAX_SEQ_COUNT: u14 = u14::MAX;
 pub enum ChecksumType {
     /// Check the default CRC16-CCITT checksum.
     WithCrc16,
-    /// Packet has a CRC16 which should be ignored.
-    WithCrc16Ignored,
+    /// Packet has a CRC16 which should be ignored. 
+    ///
+    /// It is either not generated for packet creation or ignored when reading a packet.
+    WithCrc16ButIgnored,
 }
 
 /// Generic error type when converting to and from raw byte slices.
@@ -216,7 +218,7 @@ pub const fn ccsds_packet_len_for_user_data_len(
     }
     let checksum_len = match checksum {
         Some(ChecksumType::WithCrc16) => 2,
-        Some(ChecksumType::WithCrc16Ignored) => 2,
+        Some(ChecksumType::WithCrc16ButIgnored) => 2,
         None => 0,
     };
     let len = data_len
@@ -895,7 +897,7 @@ impl<'buf> CcsdsPacketCreatorWithReservedData<'buf> {
     ) -> Result<Self, CcsdsPacketCreationError> {
         let full_packet_len = match checksum {
             Some(crc_type) => match crc_type {
-                ChecksumType::WithCrc16 | ChecksumType::WithCrc16Ignored => {
+                ChecksumType::WithCrc16 | ChecksumType::WithCrc16ButIgnored => {
                     CCSDS_HEADER_LEN + packet_data_len + 2
                 }
             },
@@ -1006,7 +1008,7 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
     pub fn packet_data_mut(&mut self) -> &mut [u8] {
         let len = self.packet_len();
         match self.checksum {
-            Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16Ignored) => {
+            Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16ButIgnored) => {
                 &mut self.buf[CCSDS_HEADER_LEN..len - 2]
             }
             None => &mut self.buf[CCSDS_HEADER_LEN..len],
@@ -1018,7 +1020,7 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
     pub fn packet_data(&mut self) -> &[u8] {
         let len = self.packet_len();
         match self.checksum {
-            Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16Ignored) => {
+            Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16ButIgnored) => {
                 &self.buf[CCSDS_HEADER_LEN..len - 2]
             }
             None => &self.buf[CCSDS_HEADER_LEN..len],
@@ -1039,7 +1041,7 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
                 let crc16 = CRC_CCITT_FALSE.checksum(&self.buf[0..len - 2]);
                 self.buf[len - 2..len].copy_from_slice(&crc16.to_be_bytes());
             }
-            None | Some(ChecksumType::WithCrc16Ignored) => (),
+            None | Some(ChecksumType::WithCrc16ButIgnored) => (),
         };
         len
     }
@@ -1162,13 +1164,13 @@ impl CcsdsPacketCreatorCommon {
     ) -> Result<usize, InvalidPayloadLengthError> {
         let sp_data_len = (packet_data_len
             + match checksum {
-                Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16Ignored) => 2,
+                Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16ButIgnored) => 2,
                 None => 0,
             }
             - 1) as u16;
         let full_packet_len = match checksum {
             Some(crc_type) => match crc_type {
-                ChecksumType::WithCrc16 | ChecksumType::WithCrc16Ignored => {
+                ChecksumType::WithCrc16 | ChecksumType::WithCrc16ButIgnored => {
                     CCSDS_HEADER_LEN + packet_data_len + 2
                 }
             },
@@ -1222,7 +1224,7 @@ impl CcsdsPacketCreatorCommon {
                 let crc16 = CRC_CCITT_FALSE.checksum(&buf[0..len_written - 2]);
                 buf[len_written - 2..len_written].copy_from_slice(&crc16.to_be_bytes());
             }
-            None | Some(ChecksumType::WithCrc16Ignored) => (),
+            None | Some(ChecksumType::WithCrc16ButIgnored) => (),
         };
         Ok(len_written)
     }
@@ -1557,7 +1559,7 @@ impl<'buf> CcsdsPacketReader<'buf> {
                 }
                 &buf[CCSDS_HEADER_LEN..sp_header.packet_len() - 2]
             }
-            Some(ChecksumType::WithCrc16Ignored) => {
+            Some(ChecksumType::WithCrc16ButIgnored) => {
                 &buf[CCSDS_HEADER_LEN..sp_header.packet_len() - 2]
             }
             None => &buf[CCSDS_HEADER_LEN..sp_header.packet_len()],
@@ -2185,7 +2187,7 @@ pub(crate) mod tests {
             PacketType::Tc,
             data.len(),
             &mut buf,
-            Some(ChecksumType::WithCrc16Ignored),
+            Some(ChecksumType::WithCrc16ButIgnored),
         )
         .unwrap();
         packet_creator.packet_data_mut().copy_from_slice(&data);
@@ -2193,7 +2195,7 @@ pub(crate) mod tests {
         assert_eq!(packet_creator.packet_len(), 13);
         packet_creator.finish();
         let reader =
-            CcsdsPacketReader::new(&buf[0..13], Some(ChecksumType::WithCrc16Ignored)).unwrap();
+            CcsdsPacketReader::new(&buf[0..13], Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
         // Enforced 1 byte packet length.
         assert_eq!(reader.packet_data(), &data);
         assert_eq!(reader.packet_len(), 13);
@@ -2393,12 +2395,12 @@ pub(crate) mod tests {
             sp_header,
             PacketType::Tc,
             &data,
-            Some(ChecksumType::WithCrc16Ignored),
+            Some(ChecksumType::WithCrc16ButIgnored),
         )
         .unwrap()
         .to_vec();
         let reader =
-            CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16Ignored)).unwrap();
+            CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
         assert_eq!(reader.packet_data(), data);
     }
 
@@ -2687,7 +2689,7 @@ pub(crate) mod tests {
         let mut packet_raw = packet_creator.to_vec();
         *packet_raw.last_mut().unwrap() = 0;
         let reader =
-            CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16Ignored)).unwrap();
+            CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
         assert_eq!(reader.packet_data(), data);
     }
 
