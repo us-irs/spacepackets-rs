@@ -984,10 +984,16 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
         <Self as CcsdsPacket>::packet_len(self)
     }
 
-    /// Space pacekt header.
+    /// Space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
+    }
+
+    /// [CcsdsPacketIdAndPsc] structure for this packet.
+    #[inline]
+    pub fn ccsds_packet_id_and_psc(&self) -> CcsdsPacketIdAndPsc {
+        CcsdsPacketIdAndPsc::new_from_ccsds_packet(self)
     }
 
     /// Mutable access to the packet data field.
@@ -1056,28 +1062,29 @@ impl CcsdsPacket for CcsdsPacketCreatorWithReservedData<'_> {
     }
 }
 
-/// Identifier for CCSDS packets.
+/// Simple combination of [PacketId] and [PacketSequenceControl] field of this packet.
 ///
-/// This struct simply combines the [PacketId] and [PacketSequenceControl] fields from the
-/// CCSDS packet.
+/// This is not a standardized structure and should not be confused with the [PacketId] field.
+/// It can be used for something like CCSDS packet identification in a hashmap or supplying
+/// the ID of a telecommand for verifiation purposes.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct CcsdsPacketId {
+pub struct CcsdsPacketIdAndPsc {
     /// CCSDS Packet ID.
     pub packet_id: PacketId,
     /// CCSDS Packet Sequence Control.
     pub psc: PacketSequenceControl,
 }
 
-impl Hash for CcsdsPacketId {
+impl Hash for CcsdsPacketIdAndPsc {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.packet_id.hash(state);
         self.psc.raw().hash(state);
     }
 }
 
-impl CcsdsPacketId {
+impl CcsdsPacketIdAndPsc {
     /// Generic constructor.
     #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceControl) -> Self {
@@ -1100,9 +1107,19 @@ impl CcsdsPacketId {
     }
 }
 
-impl From<SpacePacketHeader> for CcsdsPacketId {
+impl From<SpacePacketHeader> for CcsdsPacketIdAndPsc {
     #[inline]
     fn from(header: SpacePacketHeader) -> Self {
+        Self {
+            packet_id: header.packet_id,
+            psc: header.psc,
+        }
+    }
+}
+
+impl From<&SpacePacketHeader> for CcsdsPacketIdAndPsc {
+    #[inline]
+    fn from(header: &SpacePacketHeader) -> Self {
         Self {
             packet_id: header.packet_id,
             psc: header.psc,
@@ -1122,6 +1139,12 @@ impl CcsdsPacketCreatorCommon {
     #[inline]
     pub fn len_written(&self, packet_data_len: usize) -> usize {
         ccsds_packet_len_for_user_data_len(packet_data_len, self.checksum).unwrap()
+    }
+
+    /// [CcsdsPacketIdAndPsc] structure for this packet.
+    #[inline]
+    pub fn ccsds_packet_id_and_psc(&self) -> CcsdsPacketIdAndPsc {
+        CcsdsPacketIdAndPsc::from(self.sp_header)
     }
 
     pub fn calculate_data_len_field(
@@ -1300,6 +1323,12 @@ impl CcsdsPacketCreator<'_> {
         &self.common.sp_header
     }
 
+    /// [CcsdsPacketIdAndPsc] of this packet.
+    #[inline]
+    pub fn ccsds_packet_id_and_psc(&self) -> CcsdsPacketIdAndPsc {
+        self.common.ccsds_packet_id_and_psc()
+    }
+
     /// Create a CCSDS packet as a vector.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
@@ -1422,6 +1451,12 @@ impl CcsdsPacketCreatorOwned {
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.common.sp_header
+    }
+
+    /// [CcsdsPacketIdAndPsc] of this packet.
+    #[inline]
+    pub fn ccsds_packet_id_and_psc(&self) -> CcsdsPacketIdAndPsc {
+        self.common.ccsds_packet_id_and_psc()
     }
 
     /// Create a CCSDS packet as a vector.
@@ -2221,7 +2256,12 @@ pub(crate) mod tests {
             None,
         )
         .unwrap();
+        let sph = *packet_creator.sp_header();
         packet_creator.packet_data_mut().copy_from_slice(&data);
+        assert_eq!(
+            packet_creator.ccsds_packet_id_and_psc(),
+            CcsdsPacketIdAndPsc::from(sph)
+        );
         let written_len = packet_creator.finish();
         assert_eq!(written_len, 10);
         let sp_header = SpacePacketHeader::from_be_bytes(
@@ -2474,6 +2514,7 @@ pub(crate) mod tests {
         assert_eq!(reader.packet_type(), PacketType::Tc);
         assert_eq!(reader.data_len() as usize, packet_raw.len() - 7);
     }
+
     #[test]
     fn test_ccsds_reader_no_checksum() {
         let data = [1, 2, 3, 4];
@@ -2485,6 +2526,14 @@ pub(crate) mod tests {
         )
         .unwrap();
         let sp_header = packet_creator.sp_header();
+        assert_eq!(
+            packet_creator.ccsds_packet_id_and_psc(),
+            CcsdsPacketIdAndPsc::from(*sp_header)
+        );
+        assert_eq!(
+            packet_creator.ccsds_packet_id_and_psc(),
+            CcsdsPacketIdAndPsc::from(sp_header)
+        );
         let packet_raw = packet_creator.to_vec();
         generic_test_no_checksum(&packet_raw, &data, *sp_header);
     }
@@ -2500,6 +2549,14 @@ pub(crate) mod tests {
         )
         .unwrap();
         let sp_header = packet_creator.sp_header();
+        assert_eq!(
+            packet_creator.ccsds_packet_id_and_psc(),
+            CcsdsPacketIdAndPsc::from(*sp_header)
+        );
+        assert_eq!(
+            packet_creator.ccsds_packet_id_and_psc(),
+            CcsdsPacketIdAndPsc::from(sp_header)
+        );
         let packet_raw = packet_creator.to_vec();
         generic_test_no_checksum(&packet_raw, &data, *sp_header);
     }
@@ -2608,7 +2665,7 @@ pub(crate) mod tests {
         let packet_id = PacketId::new_for_tc(false, u11::new(0x5));
         let psc = PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0));
         let sph = SpacePacketHeader::new(packet_id, psc, 0);
-        let id = CcsdsPacketId::new_from_ccsds_packet(&sph);
+        let id = CcsdsPacketIdAndPsc::new_from_ccsds_packet(&sph);
 
         assert_eq!(id.packet_id, packet_id);
         assert_eq!(id.psc, psc);
@@ -2616,7 +2673,7 @@ pub(crate) mod tests {
             id.raw(),
             ((id.packet_id.raw() as u32) << 16) | id.psc.raw() as u32
         );
-        let id_from = CcsdsPacketId::from(sph);
+        let id_from = CcsdsPacketIdAndPsc::from(sph);
         assert_eq!(id_from, id);
 
         // ID is hashable.
