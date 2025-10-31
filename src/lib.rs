@@ -1578,6 +1578,12 @@ impl CcsdsPacketReader<'_> {
         &self.sp_header
     }
 
+    /// [CcsdsPacketIdAndPsc] structure for this packet.
+    #[inline]
+    pub fn ccsds_packet_id_and_psc(&self) -> CcsdsPacketIdAndPsc {
+        CcsdsPacketIdAndPsc::new_from_ccsds_packet(self)
+    }
+
     /// CCSDS packet type.
     #[inline]
     pub fn packet_type(&self) -> PacketType {
