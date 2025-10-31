@@ -6,7 +6,7 @@
 //! ```rust
 //! use spacepackets::time::cds::CdsTime;
 //! use spacepackets::SpHeader;
-//! use spacepackets::ecss::tm::{PusTmCreator, PusTmReader, PusTmSecondaryHeader, CreatorConfig};
+//! use spacepackets::ecss::tm::{MessageTypeId, PusTmCreator, PusTmReader, PusTmSecondaryHeader, CreatorConfig};
 //! use arbitrary_int::u11;
 //!
 //! let mut time_buf: [u8; 7] = [0; 7];
@@ -17,12 +17,12 @@
 //! // Create a ping telemetry with no user source data
 //! let ping_tm = PusTmCreator::new_no_source_data(
 //!     SpHeader::new_from_apid(u11::new(0x02)),
-//!     PusTmSecondaryHeader::new_simple(17, 2, &time_buf),
+//!     PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), &time_buf),
 //!     CreatorConfig::default()
 //! );
 //! println!("{:?}", ping_tm);
-//! assert_eq!(ping_tm.service(), 17);
-//! assert_eq!(ping_tm.subservice(), 2);
+//! assert_eq!(ping_tm.service_type_id(), 17);
+//! assert_eq!(ping_tm.message_subtype_id(), 2);
 //! assert_eq!(ping_tm.apid().value(), 0x02);
 //!
 //! // Serialize TM into a raw buffer
@@ -36,27 +36,27 @@
 //! // Deserialize from the raw byte representation
 //! let ping_tm_reader = PusTmReader::new(&test_buf, 7).expect("Deserialization failed");
 //! assert_eq!(written_size, ping_tm_reader.packet_len());
-//! assert_eq!(ping_tm_reader.service(), 17);
-//! assert_eq!(ping_tm_reader.subservice(), 2);
+//! assert_eq!(ping_tm_reader.service_type_id(), 17);
+//! assert_eq!(ping_tm_reader.message_subtype_id(), 2);
 //! assert_eq!(ping_tm_reader.apid().value(), 0x02);
 //! assert_eq!(ping_tm_reader.timestamp(), &time_buf);
 //!
 //! // Alternative builder API
 //! let pus_tm_by_builder = PusTmCreator::builder()
-//!     .with_service(17)
-//!     .with_subservice(2)
+//!     .with_service_type_id(17)
+//!     .with_message_subtype_id(2)
 //!     .with_apid(u11::new(0x02))
 //!     .with_timestamp(&time_buf)
 //!     .build();
 //! assert_eq!(pus_tm_by_builder, ping_tm);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
-pub use crate::ecss::CreatorConfig;
 use crate::ecss::{
     calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
+pub use crate::ecss::{CreatorConfig, MessageTypeId};
 use crate::{
     ByteConversionError, CcsdsPacket, PacketId, PacketSequenceControl, PacketType, SequenceFlags,
     SpHeader, CCSDS_HEADER_LEN, MAX_APID,
@@ -85,17 +85,34 @@ pub const PUS_TM_MIN_SEC_HEADER_LEN: usize = 7;
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize = CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN;
 
 pub trait GenericPusTmSecondaryHeader {
+    /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
+    /// Spacecraft time reference status.
     fn sc_time_ref_status(&self) -> u4;
-    fn service(&self) -> u8;
-    fn subservice(&self) -> u8;
-    fn msg_counter(&self) -> u16;
+    /// Message type ID.
+    fn message_type_id(&self) -> MessageTypeId;
+    /// Message counter for the message type.
+    fn msg_type_counter(&self) -> u16;
+
+    /// Destination ID.
     fn dest_id(&self) -> u16;
+
+    /// Service type ID.
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.message_type_id().type_id
+    }
+
+    /// Message subtype ID.
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.message_type_id().subtype_id
+    }
 }
 
 pub mod zc {
     use super::GenericPusTmSecondaryHeader;
-    use crate::ecss::{PusError, PusVersion};
+    use crate::ecss::{MessageTypeId, PusError, PusVersion};
     use arbitrary_int::{traits::Integer as _, u4};
     use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
@@ -103,8 +120,8 @@ pub mod zc {
     #[repr(C)]
     pub struct PusTmSecHeaderWithoutTimestamp {
         pus_version_and_sc_time_ref_status: u8,
-        service: u8,
-        subservice: u8,
+        service_type_id: u8,
+        message_subtype_id: u8,
         msg_counter: U16<NetworkEndian>,
         dest_id: U16<NetworkEndian>,
     }
@@ -125,8 +142,8 @@ pub mod zc {
             Ok(PusTmSecHeaderWithoutTimestamp {
                 pus_version_and_sc_time_ref_status: ((header.pus_version as u8) << 4)
                     | header.sc_time_ref_status.as_u8(),
-                service: header.service,
-                subservice: header.subservice,
+                service_type_id: header.service_type_id(),
+                message_subtype_id: header.message_subtype_id(),
                 msg_counter: U16::from(header.msg_counter),
                 dest_id: U16::from(header.dest_id),
             })
@@ -146,18 +163,27 @@ pub mod zc {
             u4::new(self.pus_version_and_sc_time_ref_status & 0b1111)
         }
 
+        /// Message type ID.
         #[inline]
-        fn service(&self) -> u8 {
-            self.service
+        fn message_type_id(&self) -> MessageTypeId {
+            MessageTypeId {
+                type_id: self.service_type_id,
+                subtype_id: self.message_subtype_id,
+            }
         }
 
         #[inline]
-        fn subservice(&self) -> u8 {
-            self.subservice
+        fn service_type_id(&self) -> u8 {
+            self.service_type_id
         }
 
         #[inline]
-        fn msg_counter(&self) -> u16 {
+        fn message_subtype_id(&self) -> u8 {
+            self.message_subtype_id
+        }
+
+        #[inline]
+        fn msg_type_counter(&self) -> u16 {
             self.msg_counter.get()
         }
 
@@ -174,8 +200,7 @@ pub mod zc {
 pub struct PusTmSecondaryHeader<'stamp> {
     pus_version: PusVersion,
     pub sc_time_ref_status: u4,
-    pub service: u8,
-    pub subservice: u8,
+    pub message_type_id: MessageTypeId,
     pub msg_counter: u16,
     pub dest_id: u16,
     pub timestamp: &'stamp [u8],
@@ -183,20 +208,19 @@ pub struct PusTmSecondaryHeader<'stamp> {
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
     #[inline]
-    pub fn new_simple(service: u8, subservice: u8, timestamp: &'stamp [u8]) -> Self {
-        Self::new(service, subservice, 0, 0, timestamp)
+    pub fn new_simple(message_type_id: MessageTypeId, timestamp: &'stamp [u8]) -> Self {
+        Self::new(message_type_id, 0, 0, timestamp)
     }
 
     /// Like [Self::new_simple] but without a timestamp.
     #[inline]
-    pub fn new_simple_no_timestamp(service: u8, subservice: u8) -> Self {
-        Self::new(service, subservice, 0, 0, &[])
+    pub fn new_simple_no_timestamp(message_type_id: MessageTypeId) -> Self {
+        Self::new(message_type_id, 0, 0, &[])
     }
 
     #[inline]
     pub fn new(
-        service: u8,
-        subservice: u8,
+        message_type_id: MessageTypeId,
         msg_counter: u16,
         dest_id: u16,
         timestamp: &'stamp [u8],
@@ -204,8 +228,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         PusTmSecondaryHeader {
             pus_version: PusVersion::PusC,
             sc_time_ref_status: u4::new(0),
-            service,
-            subservice,
+            message_type_id,
             msg_counter,
             dest_id,
             timestamp,
@@ -225,17 +248,12 @@ impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
     }
 
     #[inline]
-    fn service(&self) -> u8 {
-        self.service
+    fn message_type_id(&self) -> MessageTypeId {
+        self.message_type_id
     }
 
     #[inline]
-    fn subservice(&self) -> u8 {
-        self.subservice
-    }
-
-    #[inline]
-    fn msg_counter(&self) -> u16 {
+    fn msg_type_counter(&self) -> u16 {
         self.msg_counter
     }
 
@@ -257,9 +275,8 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
         Ok(PusTmSecondaryHeader {
             pus_version: version.unwrap(),
             sc_time_ref_status: sec_header.zc_header.sc_time_ref_status(),
-            service: sec_header.zc_header.service(),
-            subservice: sec_header.zc_header.subservice(),
-            msg_counter: sec_header.zc_header.msg_counter(),
+            message_type_id: sec_header.zc_header.message_type_id(),
+            msg_counter: sec_header.zc_header.msg_type_counter(),
             dest_id: sec_header.zc_header.dest_id(),
             timestamp: sec_header.timestamp,
         })
@@ -329,8 +346,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     #[inline]
     pub fn new_simple(
         sp_header: SpHeader,
-        service: u8,
-        subservice: u8,
+        message_type_id: MessageTypeId,
         time_provider: &impl TimeWriter,
         stamp_buf: &'time mut [u8],
         source_data: &'src_data [u8],
@@ -338,7 +354,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     ) -> Result<Self, TimestampError> {
         let stamp_size = time_provider.write_to_bytes(stamp_buf)?;
         let sec_header =
-            PusTmSecondaryHeader::new_simple(service, subservice, &stamp_buf[0..stamp_size]);
+            PusTmSecondaryHeader::new_simple(message_type_id, &stamp_buf[0..stamp_size]);
         Ok(Self::new(sp_header, sec_header, source_data, packet_config))
     }
 
@@ -371,13 +387,13 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
     }
 
     #[inline]
-    pub fn service(&self) -> u8 {
-        self.sec_header.service
+    pub fn service_type_id(&self) -> u8 {
+        self.sec_header.service_type_id()
     }
 
     #[inline]
-    pub fn subservice(&self) -> u8 {
-        self.sec_header.subservice
+    pub fn message_subtype_id(&self) -> u8 {
+        self.sec_header.message_subtype_id()
     }
 
     #[inline]
@@ -567,9 +583,7 @@ impl PusPacket for PusTmCreator<'_, '_> {
 
     delegate!(to self.sec_header {
         #[inline]
-        fn service(&self) -> u8;
-        #[inline]
-        fn subservice(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
     });
 
     #[inline]
@@ -590,14 +604,21 @@ impl GenericPusTmSecondaryHeader for PusTmCreator<'_, '_> {
     delegate!(to self.sec_header {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
+        /// Message type ID.
+        fn message_type_id(&self) -> MessageTypeId;
+
+        /// Service type ID.
         #[inline]
-        fn service(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+
+        /// Message subtype ID.
         #[inline]
-        fn subservice(&self) -> u8;
+        fn message_subtype_id(&self) -> u8;
+
         #[inline]
         fn dest_id(&self) -> u16;
         #[inline]
-        fn msg_counter(&self) -> u16;
+        fn msg_type_counter(&self) -> u16;
         #[inline]
         fn sc_time_ref_status(&self) -> u4;
     });
@@ -627,7 +648,15 @@ impl PusTmBuilder<'_, '_> {
                 PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0)),
                 0,
             ),
-            sec_header: PusTmSecondaryHeader::new(0, 0, 0, 0, &[]),
+            sec_header: PusTmSecondaryHeader::new(
+                MessageTypeId {
+                    type_id: 0,
+                    subtype_id: 0,
+                },
+                0,
+                0,
+                &[],
+            ),
             source_data: &[],
             has_checksum: true,
         }
@@ -659,14 +688,20 @@ impl PusTmBuilder<'_, '_> {
     }
 
     #[inline]
-    pub fn with_service(mut self, service: u8) -> Self {
-        self.sec_header.service = service;
+    pub fn with_message_type_id(mut self, message_type_id: MessageTypeId) -> Self {
+        self.sec_header.message_type_id = message_type_id;
         self
     }
 
     #[inline]
-    pub fn with_subservice(mut self, service: u8) -> Self {
-        self.sec_header.subservice = service;
+    pub fn with_service_type_id(mut self, type_id: u8) -> Self {
+        self.sec_header.message_type_id.type_id = type_id;
+        self
+    }
+
+    #[inline]
+    pub fn with_message_subtype_id(mut self, subtype_id: u8) -> Self {
+        self.sec_header.message_type_id.subtype_id = subtype_id;
         self
     }
 
@@ -1040,13 +1075,13 @@ impl<'raw_data> PusTmReader<'raw_data> {
     }
 
     #[inline]
-    pub fn service(&self) -> u8 {
-        self.sec_header.service
+    pub fn service_type_id(&self) -> u8 {
+        self.sec_header.service_type_id()
     }
 
     #[inline]
-    pub fn subservice(&self) -> u8 {
-        self.sec_header.subservice
+    pub fn message_subtype_id(&self) -> u8 {
+        self.sec_header.message_subtype_id()
     }
 
     #[inline]
@@ -1102,10 +1137,15 @@ impl PusPacket for PusTmReader<'_> {
     delegate!(to self.sec_header {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
+
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
+
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
     });
 
     #[inline]
@@ -1129,13 +1169,15 @@ impl GenericPusTmSecondaryHeader for PusTmReader<'_> {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
         #[inline]
-        fn service(&self) -> u8;
+        fn message_type_id(&self) -> MessageTypeId;
         #[inline]
-        fn subservice(&self) -> u8;
+        fn service_type_id(&self) -> u8;
+        #[inline]
+        fn message_subtype_id(&self) -> u8;
         #[inline]
         fn dest_id(&self) -> u16;
         #[inline]
-        fn msg_counter(&self) -> u16;
+        fn msg_type_counter(&self) -> u16;
         #[inline]
         fn sc_time_ref_status(&self) -> u4;
     });
@@ -1257,6 +1299,24 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
             self.raw_tm[slice_len - 2..].copy_from_slice(&crc16.to_be_bytes());
         }
     }
+
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.raw_tm[7]
+    }
+
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.raw_tm[8]
+    }
+
+    #[inline]
+    fn message_type_id(&self) -> MessageTypeId {
+        MessageTypeId {
+            type_id: self.service_type_id(),
+            subtype_id: self.message_subtype_id(),
+        }
+    }
 }
 
 impl CcsdsPacket for PusTmZeroCopyWriter<'_> {
@@ -1288,18 +1348,23 @@ impl PusPacket for PusTmZeroCopyWriter<'_> {
     }
 
     #[inline]
-    fn service(&self) -> u8 {
-        self.raw_tm[7]
-    }
-
-    #[inline]
     fn has_checksum(&self) -> bool {
         self.has_checksum
     }
 
     #[inline]
-    fn subservice(&self) -> u8 {
-        self.raw_tm[8]
+    fn service_type_id(&self) -> u8 {
+        self.service_type_id()
+    }
+
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.message_subtype_id()
+    }
+
+    #[inline]
+    fn message_type_id(&self) -> MessageTypeId {
+        self.message_type_id()
     }
 
     #[inline]
@@ -1334,20 +1399,25 @@ impl GenericPusTmSecondaryHeader for PusTmZeroCopyWriter<'_> {
             #[inline]
             fn sc_time_ref_status(&self) -> u4;
             #[inline]
-            fn msg_counter(&self) -> u16;
+            fn msg_type_counter(&self) -> u16;
             #[inline]
             fn dest_id(&self) -> u16;
         }
     }
 
     #[inline]
-    fn service(&self) -> u8 {
-        PusPacket::service(self)
+    fn service_type_id(&self) -> u8 {
+        self.service_type_id()
     }
 
     #[inline]
-    fn subservice(&self) -> u8 {
-        PusPacket::subservice(self)
+    fn message_subtype_id(&self) -> u8 {
+        self.message_subtype_id()
+    }
+
+    #[inline]
+    fn message_type_id(&self) -> MessageTypeId {
+        self.message_type_id()
     }
 }
 
@@ -1367,7 +1437,7 @@ mod tests {
 
     fn base_ping_reply_full_ctor<'a, 'b>(timestamp: &'a [u8]) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         PusTmCreator::new_no_source_data(sph, tm_header, CreatorConfig::default())
     }
 
@@ -1379,23 +1449,23 @@ mod tests {
             return PusTmCreator::builder()
                 .with_apid(u11::new(0x123))
                 .with_sequence_count(u14::new(0x234))
-                .with_service(17)
-                .with_subservice(2)
+                .with_service_type_id(17)
+                .with_message_subtype_id(2)
                 .with_timestamp(timestamp)
                 .build();
         }
         PusTmBuilder::new()
             .with_apid(u11::new(0x123))
             .with_sequence_count(u14::new(0x234))
-            .with_service(17)
-            .with_subservice(2)
+            .with_service_type_id(17)
+            .with_message_subtype_id(2)
             .with_timestamp(timestamp)
             .build()
     }
 
     fn base_ping_reply_full_ctor_no_checksum<'a, 'b>(timestamp: &'a [u8]) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         PusTmCreator::new_no_source_data(
             sph,
             tm_header,
@@ -1407,13 +1477,13 @@ mod tests {
     }
     fn ping_reply_with_data<'a, 'b>(timestamp: &'a [u8]) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         PusTmCreator::new(sph, tm_header, DUMMY_DATA, CreatorConfig::default())
     }
 
     fn base_hk_reply<'a, 'b>(timestamp: &'a [u8], src_data: &'b [u8]) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
+        let tc_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(3, 5), timestamp);
         PusTmCreator::new(sph, tc_header, src_data, CreatorConfig::default())
     }
 
@@ -1422,7 +1492,7 @@ mod tests {
         src_data: &'b [u8],
     ) -> PusTmCreator<'a, 'b> {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, timestamp);
+        let tc_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(3, 5), timestamp);
         PusTmCreator::new(
             sph,
             tc_header,
@@ -1459,8 +1529,7 @@ mod tests {
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm = PusTmCreator::new_simple(
             sph,
-            17,
-            2,
+            MessageTypeId::new(17, 2),
             &time_provider,
             &mut stamp_buf,
             &[],
@@ -1486,7 +1555,7 @@ mod tests {
     fn test_serialization_no_source_data_alt_ctor() {
         let timestamp = dummy_timestamp();
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let mut pus_tm =
             PusTmCreatorWithReservedSourceData::new(&mut buf, sph, tm_header, 0, true).unwrap();
@@ -1502,7 +1571,7 @@ mod tests {
     fn test_serialization_no_source_data_alt_ctor_no_checksum_verification() {
         let timestamp = dummy_timestamp();
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let mut pus_tm =
             PusTmCreatorWithReservedSourceData::new(&mut buf, sph, tm_header, 0, true).unwrap();
@@ -1520,7 +1589,7 @@ mod tests {
     fn test_serialization_no_source_data_alt_ctor_no_checksum() {
         let timestamp = dummy_timestamp();
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tm_header = PusTmSecondaryHeader::new_simple(17, 2, timestamp);
+        let tm_header = PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), timestamp);
         let mut buf: [u8; 32] = [0; 32];
         let mut pus_tm =
             PusTmCreatorWithReservedSourceData::new(&mut buf, sph, tm_header, 0, false).unwrap();
@@ -1596,7 +1665,8 @@ mod tests {
         let src_data = &[1, 2, 3];
         let mut buf: [u8; 32] = [0; 32];
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, dummy_timestamp());
+        let tc_header =
+            PusTmSecondaryHeader::new_simple(MessageTypeId::new(3, 5), dummy_timestamp());
         let mut hk_reply_unwritten =
             PusTmCreatorWithReservedSourceData::new(&mut buf, sph, tc_header, 3, true).unwrap();
         assert_eq!(hk_reply_unwritten.source_data_len(), 3);
@@ -1616,7 +1686,8 @@ mod tests {
         let src_data = &[1, 2, 3];
         let mut buf: [u8; 32] = [0; 32];
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tc_header = PusTmSecondaryHeader::new_simple(3, 5, dummy_timestamp());
+        let tc_header =
+            PusTmSecondaryHeader::new_simple(MessageTypeId::new(3, 5), dummy_timestamp());
         let mut hk_reply_unwritten =
             PusTmCreatorWithReservedSourceData::new(&mut buf, sph, tc_header, 3, true).unwrap();
         assert_eq!(hk_reply_unwritten.source_data_len(), 3);
@@ -1640,7 +1711,7 @@ mod tests {
         pus_tm.set_msg_counter(0x1f1f);
         assert_eq!(pus_tm.sc_time_ref_status().value(), 0b1010);
         assert_eq!(pus_tm.dest_id(), 0x7fff);
-        assert_eq!(pus_tm.msg_counter(), 0x1f1f);
+        assert_eq!(pus_tm.msg_type_counter(), 0x1f1f);
         pus_tm.set_apid(u11::new(0x7ff));
         assert_eq!(pus_tm.apid().value(), 0x7ff);
     }
@@ -1772,7 +1843,8 @@ mod tests {
     #[test]
     fn test_manual_field_update() {
         let sph = SpHeader::new_for_unseg_tm(u11::new(0x123), u14::new(0x234), 0);
-        let tc_header = PusTmSecondaryHeader::new_simple(17, 2, dummy_timestamp());
+        let tc_header =
+            PusTmSecondaryHeader::new_simple(MessageTypeId::new(17, 2), dummy_timestamp());
         let mut tm = PusTmCreator::new_no_source_data(
             sph,
             tc_header,
@@ -1928,10 +2000,10 @@ mod tests {
         exp_full_len: usize,
     ) {
         assert!(tm.is_tm());
-        assert_eq!(PusPacket::service(tm), 17);
-        assert_eq!(GenericPusTmSecondaryHeader::service(tm), 17);
-        assert_eq!(PusPacket::subservice(tm), 2);
-        assert_eq!(GenericPusTmSecondaryHeader::subservice(tm), 2);
+        assert_eq!(PusPacket::service_type_id(tm), 17);
+        assert_eq!(GenericPusTmSecondaryHeader::service_type_id(tm), 17);
+        assert_eq!(PusPacket::message_subtype_id(tm), 2);
+        assert_eq!(GenericPusTmSecondaryHeader::message_subtype_id(tm), 2);
         assert!(tm.sec_header_flag());
         if has_user_data {
             assert!(!tm.user_data().is_empty());
@@ -1946,7 +2018,7 @@ mod tests {
         );
         assert_eq!(tm.data_len(), exp_full_len as u16 - 7);
         assert_eq!(tm.dest_id(), 0x0000);
-        assert_eq!(tm.msg_counter(), 0x0000);
+        assert_eq!(tm.msg_type_counter(), 0x0000);
         assert_eq!(tm.sc_time_ref_status().value(), 0b0000);
     }
 
@@ -1984,7 +2056,7 @@ mod tests {
         // This performs all necessary checks, including the CRC check.
         let tm_read_back = PusTmReader::new(&buf, 7).expect("Re-creating PUS TM failed");
         assert_eq!(tm_read_back.packet_len(), tm_size);
-        assert_eq!(tm_read_back.msg_counter(), 100);
+        assert_eq!(tm_read_back.msg_type_counter(), 100);
         assert_eq!(tm_read_back.dest_id(), 55);
         assert_eq!(tm_read_back.seq_count(), MAX_SEQ_COUNT);
         assert_eq!(tm_read_back.apid(), MAX_APID);
@@ -2003,8 +2075,8 @@ mod tests {
         writer.set_msg_count(100);
         writer.set_seq_count(MAX_SEQ_COUNT);
         writer.set_apid(MAX_APID);
-        assert_eq!(PusPacket::service(&writer), 17);
-        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(PusPacket::service_type_id(&writer), 17);
+        assert_eq!(PusPacket::message_subtype_id(&writer), 2);
         assert_eq!(writer.apid(), MAX_APID);
         assert_eq!(writer.seq_count(), MAX_SEQ_COUNT);
     }
@@ -2023,12 +2095,15 @@ mod tests {
         writer.set_msg_count(100);
         writer.set_seq_count(MAX_SEQ_COUNT);
         writer.set_apid(MAX_APID);
-        assert_eq!(PusPacket::service(&writer), 17);
-        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(PusPacket::service_type_id(&writer), 17);
+        assert_eq!(PusPacket::message_subtype_id(&writer), 2);
         assert_eq!(writer.dest_id(), 55);
-        assert_eq!(writer.msg_counter(), 100);
+        assert_eq!(writer.msg_type_counter(), 100);
         assert_eq!(writer.sec_header_without_timestamp().dest_id(), 55);
-        assert_eq!(writer.sec_header_without_timestamp().msg_counter(), 100);
+        assert_eq!(
+            writer.sec_header_without_timestamp().msg_type_counter(),
+            100
+        );
         assert_eq!(writer.user_data(), DUMMY_DATA);
         // Need to check crc16 before finish, because finish will update the CRC.
         let crc16 = writer.checksum();
@@ -2039,7 +2114,7 @@ mod tests {
 
     #[test]
     fn test_sec_header_without_stamp() {
-        let sec_header = PusTmSecondaryHeader::new_simple_no_timestamp(17, 1);
+        let sec_header = PusTmSecondaryHeader::new_simple_no_timestamp(MessageTypeId::new(17, 1));
         assert_eq!(sec_header.timestamp, &[]);
     }
 
@@ -2105,8 +2180,7 @@ mod tests {
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm = PusTmCreator::new_simple(
             sph,
-            17,
-            2,
+            MessageTypeId::new(17, 2),
             &time_provider,
             &mut stamp_buf,
             &[],
@@ -2127,8 +2201,7 @@ mod tests {
         let mut stamp_buf: [u8; 8] = [0; 8];
         let pus_tm = PusTmCreator::new_simple(
             sph,
-            17,
-            2,
+            MessageTypeId::new(17, 2),
             &time_provider,
             &mut stamp_buf,
             &[],
@@ -2166,8 +2239,8 @@ mod tests {
                 SequenceFlags::Unsegmented,
                 u14::new(0x34),
             ))
-            .with_service(17)
-            .with_subservice(2)
+            .with_service_type_id(17)
+            .with_message_subtype_id(2)
             .with_dest_id(0x2f2f)
             .with_checksum(false)
             .build();
@@ -2175,7 +2248,7 @@ mod tests {
         assert_eq!(tm.sequence_flags(), SequenceFlags::Unsegmented);
         assert_eq!(tm.apid().value(), 0x02);
         assert_eq!(tm.packet_type(), PacketType::Tm);
-        assert_eq!(tm.service(), 17);
-        assert_eq!(tm.subservice(), 2);
+        assert_eq!(tm.service_type_id(), 17);
+        assert_eq!(tm.message_subtype_id(), 2);
     }
 }

@@ -27,8 +27,8 @@
 //!     true
 //! );
 //! println!("{:?}", ping_tm);
-//! assert_eq!(ping_tm.service(), 17);
-//! assert_eq!(ping_tm.subservice(), 2);
+//! assert_eq!(ping_tm.service_type_id(), 17);
+//! assert_eq!(ping_tm.message_subtype_id(), 2);
 //! assert_eq!(ping_tm.apid().value(), 0x02);
 //!
 //! // Serialize TM into a raw buffer
@@ -42,16 +42,16 @@
 //! // Deserialize from the raw byte representation
 //! let ping_tm_reader = PusTmReader::new(&test_buf, &SecondaryHeaderParameters::new_minimal(7)).expect("deserialization failed");
 //! assert_eq!(written_size, ping_tm_reader.packet_len());
-//! assert_eq!(ping_tm_reader.service(), 17);
-//! assert_eq!(ping_tm_reader.subservice(), 2);
+//! assert_eq!(ping_tm_reader.service_type_id(), 17);
+//! assert_eq!(ping_tm_reader.message_subtype_id(), 2);
 //! assert_eq!(ping_tm_reader.apid().value(), 0x02);
 //! assert_eq!(ping_tm_reader.timestamp(), &time_buf);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 use crate::ecss::{
     calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, PusError, PusPacket, PusVersion,
-    WritablePusPacket,
+    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, MessageTypeId, PusError, PusPacket,
+    PusVersion, WritablePusPacket,
 };
 use crate::util::{UnsignedByteField, UnsignedEnum};
 use crate::{
@@ -559,12 +559,22 @@ impl PusPacket for PusTmCreator<'_, '_> {
         Ok(self.sec_header.pus_version)
     }
 
-    delegate!(to self.sec_header {
-        #[inline]
-        fn service(&self) -> u8;
-        #[inline]
-        fn subservice(&self) -> u8;
-    });
+    #[inline]
+    fn message_type_id(&self) -> super::MessageTypeId {
+        super::MessageTypeId {
+            type_id: self.sec_header.service,
+            subtype_id: self.sec_header.subservice,
+        }
+    }
+
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.sec_header.service
+    }
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.sec_header.subservice
+    }
 
     #[inline]
     fn user_data(&self) -> &[u8] {
@@ -867,12 +877,23 @@ impl PusPacket for PusTmReader<'_> {
         Ok(self.sec_header.pus_version)
     }
 
-    delegate!(to self.sec_header {
-        #[inline]
-        fn service(&self) -> u8;
-        #[inline]
-        fn subservice(&self) -> u8;
-    });
+    #[inline]
+    fn message_type_id(&self) -> super::MessageTypeId {
+        MessageTypeId {
+            type_id: self.sec_header.service,
+            subtype_id: self.sec_header.subservice,
+        }
+    }
+
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.sec_header.subservice
+    }
 
     #[inline]
     fn user_data(&self) -> &[u8] {
@@ -1117,12 +1138,20 @@ impl PusPacket for PusTmZeroCopyWriter<'_> {
     }
 
     #[inline]
-    fn service(&self) -> u8 {
+    fn message_type_id(&self) -> super::MessageTypeId {
+        MessageTypeId {
+            type_id: self.service_type_id(),
+            subtype_id: self.message_subtype_id(),
+        }
+    }
+
+    #[inline]
+    fn service_type_id(&self) -> u8 {
         self.raw_tm[7]
     }
 
     #[inline]
-    fn subservice(&self) -> u8 {
+    fn message_subtype_id(&self) -> u8 {
         self.raw_tm[8]
     }
 
@@ -1774,9 +1803,9 @@ mod tests {
         msg_counter: Option<u8>,
     ) {
         assert!(tm.is_tm());
-        assert_eq!(PusPacket::service(tm), 17);
+        assert_eq!(PusPacket::service_type_id(tm), 17);
         assert_eq!(GenericPusTmSecondaryHeader::service(tm), 17);
-        assert_eq!(PusPacket::subservice(tm), 2);
+        assert_eq!(PusPacket::message_subtype_id(tm), 2);
         assert_eq!(GenericPusTmSecondaryHeader::subservice(tm), 2);
         assert!(tm.sec_header_flag());
         if has_user_data {
@@ -1859,8 +1888,8 @@ mod tests {
         writer
             .set_destination_id(UnsignedByteFieldU16::new(0xf1f1).into())
             .unwrap();
-        assert_eq!(PusPacket::service(&writer), 17);
-        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(PusPacket::service_type_id(&writer), 17);
+        assert_eq!(PusPacket::message_subtype_id(&writer), 2);
         assert_eq!(
             writer.dest_id().unwrap().unwrap(),
             UnsignedByteFieldU16::new(0xf1f1).into()
@@ -1881,8 +1910,8 @@ mod tests {
             .expect("Creating zero copy writer failed");
         writer.set_seq_count(MAX_SEQ_COUNT);
         writer.set_apid(MAX_APID);
-        assert_eq!(PusPacket::service(&writer), 17);
-        assert_eq!(PusPacket::subservice(&writer), 2);
+        assert_eq!(PusPacket::service_type_id(&writer), 17);
+        assert_eq!(PusPacket::message_subtype_id(&writer), 2);
         assert!(writer.dest_id().unwrap().is_none());
         assert!(writer.msg_counter().is_none());
         if let Err(err) = writer.set_destination_id(UnsignedByteFieldU16::new(0xf1f1).into()) {

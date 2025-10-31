@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
-# [v0.17.0] 2025-10-29
+# [v0.17.0] 2025-10-31
 
 ## Changed
 
@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   value getter.
 - Renamed `CcsdsPrimaryHeader::from_composite_fields` to
   `CcsdsPrimaryHeader::new_from_composite_fields`
+- Renamed `PusPacket::service` to `PusPacket::service_type_id` and `PusPacket::subservice` to
+  `PusPacket::message_subtype_id`. Also added `PusPacket::message_type_id`. Performed the same
+  change for the ECSS PUS C secondary header traits.
 
 ## Added
 

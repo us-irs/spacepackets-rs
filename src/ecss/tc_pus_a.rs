@@ -15,8 +15,8 @@
 //!     true
 //! );
 //! println!("{:?}", pus_tc);
-//! assert_eq!(pus_tc.service(), 17);
-//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.service_type_id(), 17);
+//! assert_eq!(pus_tc.message_subtype_id(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
 //!
 //! // Serialize TC into a raw buffer
@@ -29,15 +29,15 @@
 //!
 //! // Deserialize from the raw byte representation. No source ID, 0 spare bytes.
 //! let pus_tc_deserialized = PusTcReader::new(&test_buf, None, 0).expect("Deserialization failed");
-//! assert_eq!(pus_tc.service(), 17);
-//! assert_eq!(pus_tc.subservice(), 1);
+//! assert_eq!(pus_tc.service_type_id(), 17);
+//! assert_eq!(pus_tc.message_subtype_id(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 use crate::ecss::tc::{AckFlags, ACK_ALL};
 use crate::ecss::{
     crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
+    verify_crc16_ccitt_false_from_raw_to_pus_error, MessageTypeId, PusError, PusPacket, PusVersion,
     WritablePusPacket,
 };
 use crate::util::{UnsignedByteField, UnsignedEnum};
@@ -499,11 +499,23 @@ impl PusPacket for PusTcCreator<'_> {
     delegate!(to self.sec_header {
         #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
-        #[inline]
-        fn service(&self) -> u8;
-        #[inline]
-        fn subservice(&self) -> u8;
     });
+    #[inline]
+    fn message_type_id(&self) -> MessageTypeId {
+        MessageTypeId {
+            type_id: self.service_type_id(),
+            subtype_id: self.message_subtype_id(),
+        }
+    }
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.sec_header.subservice
+    }
 
     #[inline]
     fn user_data(&self) -> &[u8] {
@@ -794,12 +806,26 @@ impl CcsdsPacket for PusTcReader<'_> {
 impl PusPacket for PusTcReader<'_> {
     delegate!(to self.sec_header {
         #[inline]
-        fn service(&self) -> u8;
-        #[inline]
-        fn subservice(&self) -> u8;
-        #[inline]
         fn pus_version(&self) -> Result<PusVersion, u4>;
     });
+
+    #[inline]
+    fn message_type_id(&self) -> MessageTypeId {
+        MessageTypeId {
+            type_id: self.service_type_id(),
+            subtype_id: self.message_subtype_id(),
+        }
+    }
+
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.sec_header.service
+    }
+
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.sec_header.subservice
+    }
 
     #[inline]
     fn has_checksum(&self) -> bool {
@@ -1229,9 +1255,9 @@ mod tests {
     }
 
     fn verify_test_tc_generic(tc: &(impl PusPacket + GenericPusTcSecondaryHeader)) {
-        assert_eq!(PusPacket::service(tc), 17);
+        assert_eq!(PusPacket::service_type_id(tc), 17);
         assert_eq!(GenericPusTcSecondaryHeader::service(tc), 17);
-        assert_eq!(PusPacket::subservice(tc), 1);
+        assert_eq!(PusPacket::message_subtype_id(tc), 1);
         assert_eq!(GenericPusTcSecondaryHeader::subservice(tc), 1);
         assert!(tc.sec_header_flag());
         assert_eq!(PusPacket::pus_version(tc).unwrap(), PusVersion::PusA);

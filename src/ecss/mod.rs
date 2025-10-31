@@ -203,17 +203,47 @@ pub enum PusError {
     ByteConversion(#[from] ByteConversionError),
 }
 
+/// Message type ID field.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct MessageTypeId {
+    /// Service type ID.
+    pub type_id: u8,
+    /// Subtype ID.
+    pub subtype_id: u8,
+}
+
+impl MessageTypeId {
+    /// Generic constructor.
+    pub const fn new(type_id: u8, subtype_id: u8) -> Self {
+        Self {
+            type_id,
+            subtype_id,
+        }
+    }
+}
+
 /// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry
 /// (TM) packets. All PUS packets are also a special type of [CcsdsPacket]s.
 pub trait PusPacket: CcsdsPacket {
     /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
 
-    /// Service ID.
-    fn service(&self) -> u8;
+    /// Message type ID.
+    fn message_type_id(&self) -> MessageTypeId;
 
-    /// Subservice ID.
-    fn subservice(&self) -> u8;
+    /// Service type ID.
+    #[inline]
+    fn service_type_id(&self) -> u8 {
+        self.message_type_id().type_id
+    }
+
+    /// Message subtype ID.
+    #[inline]
+    fn message_subtype_id(&self) -> u8 {
+        self.message_type_id().subtype_id
+    }
 
     /// User data field.
     fn user_data(&self) -> &[u8];
