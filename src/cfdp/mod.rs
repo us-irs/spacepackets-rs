@@ -13,43 +13,55 @@ pub const CFDP_VERSION_2_NAME: &str = "CCSDS 727.0-B-5";
 /// Currently, only this version is supported.
 pub const CFDP_VERSION_2: u8 = 0b001;
 
+/// PDU type.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum PduType {
+    /// File directive PDU.
     FileDirective = 0,
+    /// File data PDU.
     FileData = 1,
 }
 
+/// PDU direction.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum Direction {
+    /// Going towards the file receiver.
     TowardsReceiver = 0,
+    /// Going towards the file sender.
     TowardsSender = 1,
 }
 
+/// PDU transmission mode.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum TransmissionMode {
+    /// Acknowledged (class 1) transfer.
     Acknowledged = 0,
+    /// Unacknowledged (class 2) transfer.
     Unacknowledged = 1,
 }
 
+/// CRC flag.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum CrcFlag {
+    /// No CRC for the packet.
     NoCrc = 0,
+    /// Packet has CRC.
     WithCrc = 1,
 }
 
@@ -78,7 +90,9 @@ impl From<CrcFlag> for bool {
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum SegmentMetadataFlag {
+    /// Segment metadata not present.
     NotPresent = 0,
+    /// Segment metadata present.
     Present = 1,
 }
 
@@ -89,22 +103,30 @@ pub enum SegmentMetadataFlag {
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum SegmentationControl {
+    /// No record boundary preservation.
     NoRecordBoundaryPreservation = 0,
+    /// With record boundary preservation.
     WithRecordBoundaryPreservation = 1,
 }
 
+/// Fault handler codes according to the CFDP standard.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u3, exhaustive = false)]
 #[repr(u8)]
 pub enum FaultHandlerCode {
+    /// Notice of cancellation fault handler code.
     NoticeOfCancellation = 0b0001,
+    /// Notice of suspension fault handler code.
     NoticeOfSuspension = 0b0010,
+    /// Ignore error fault handler code.
     IgnoreError = 0b0011,
+    /// Abandon transaction fault handler code.
     AbandonTransaction = 0b0100,
 }
 
+/// CFDP condition codes.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -113,15 +135,25 @@ pub enum FaultHandlerCode {
 pub enum ConditionCode {
     /// This is not an error condition for which a faulty handler override can be specified
     NoError = 0b0000,
+    /// Positive acknowledgement limit reached.
     PositiveAckLimitReached = 0b0001,
+    /// Keep-alive limit reached.
     KeepAliveLimitReached = 0b0010,
+    /// Invalid transmission mode.
     InvalidTransmissionMode = 0b0011,
+    /// Filestore rejection.
     FilestoreRejection = 0b0100,
+    /// File checksum error.
     FileChecksumFailure = 0b0101,
+    /// File size error.
     FileSizeError = 0b0110,
+    /// NAK limit reached.
     NakLimitReached = 0b0111,
+    /// Inactivity detected.
     InactivityDetected = 0b1000,
+    /// Check limit reached.
     CheckLimitReached = 0b1010,
+    /// Unsupported checksum type.
     UnsupportedChecksumType = 0b1011,
     /// Not an actual fault condition for which fault handler overrides can be specified
     SuspendRequestReceived = 0b1110,
@@ -129,6 +161,7 @@ pub enum ConditionCode {
     CancelRequestReceived = 0b1111,
 }
 
+/// Large file flag.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -151,6 +184,7 @@ pub enum TransactionStatus {
     /// Transaction is not currently active and the CFDP implementation does not retain a
     /// transaction history.
     Undefined = 0b00,
+    /// Transaction is currently active.
     Active = 0b01,
     /// Transaction was active in the past and was terminated.
     Terminated = 0b10,
@@ -168,10 +202,13 @@ pub enum TransactionStatus {
 pub enum ChecksumType {
     /// Modular legacy checksum
     Modular = 0,
+    /// CRC32 Proximity-1.
     Crc32Proximity1 = 1,
+    /// CRC32C.
     Crc32C = 2,
-    /// Polynomial: 0x4C11DB7. Preferred checksum for now.
+    /// CRC32. Polynomial: 0x4C11DB7. Preferred checksum for now.
     Crc32 = 3,
+    /// Null checksum (no checksum).
     NullChecksum = 15,
 }
 
@@ -181,8 +218,10 @@ impl Default for ChecksumType {
     }
 }
 
+/// Raw null checksum.
 pub const NULL_CHECKSUM_U32: [u8; 4] = [0; 4];
 
+/// TLV or LV data larger than allowed [u8::MAX].
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -199,16 +238,21 @@ pub struct InvalidTlvTypeFieldError {
     expected: Option<u8>,
 }
 
+/// Generic TLV/LV error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvLvError {
+    /// Data too large error.
     #[error("{0}")]
     DataTooLarge(#[from] TlvLvDataTooLargeError),
+    /// Byte conversion error.
     #[error("byte conversion error: {0}")]
     ByteConversion(#[from] ByteConversionError),
+    /// Invalid TLV type field error.
     #[error("{0}")]
     InvalidTlvTypeField(#[from] InvalidTlvTypeFieldError),
+    /// Invalid value length.
     #[error("invalid value length {0}")]
     InvalidValueLength(usize),
     /// Only applies to filestore requests and responses. Second name was missing where one is

@@ -31,6 +31,7 @@ pub const FMT_STR_CODE_B_WITH_SIZE: (&str, usize) = ("%Y-%jT%T%.3f", 21);
 /// Three digits are used for the decimal fraction and a terminator is added at the end.
 pub const FMT_STR_CODE_B_TERMINATED_WITH_SIZE: (&str, usize) = ("%Y-%jT%T%.3fZ", 22);
 
+/// Functions requiring both [chrono] and [alloc] support.
 #[cfg(all(feature = "alloc", feature = "chrono"))]
 pub mod alloc_mod_chrono {
     use super::*;

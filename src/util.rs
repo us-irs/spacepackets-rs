@@ -1,12 +1,16 @@
+//! # Utility module.
 use crate::ByteConversionError;
 use core::fmt::Debug;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Helper traits for types which can be converted to a byte array.
 pub trait ToBeBytes {
+    /// Concrete byte array type.
     type ByteArray: AsRef<[u8]>;
     /// Length when written to big endian bytes.
     fn written_len(&self) -> usize;
+    /// Convert to big endian byte array.
     fn to_be_bytes(&self) -> Self::ByteArray;
 }
 
@@ -80,14 +84,17 @@ impl ToBeBytes for u64 {
     }
 }
 
+/// Helper trait for unsigned enumerations.
 pub trait UnsignedEnum {
     /// Size of the unsigned enumeration in bytes.
     fn size(&self) -> usize;
     /// Write the unsigned enumeration to a raw buffer. Returns the written size on success.
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
 
-    fn value(&self) -> u64;
+    /// Type-erased raw value.
+    fn value_raw(&self) -> u64;
 
+    /// Convert to a [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut buf = alloc::vec![0; self.size()];
@@ -96,22 +103,32 @@ pub trait UnsignedEnum {
     }
 }
 
+/// Extension trait for unsigned enumerations.
 pub trait UnsignedEnumExt: UnsignedEnum + Debug + Copy + Clone + PartialEq + Eq {}
 
+/// Unsigned byte field errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum UnsignedByteFieldError {
     /// Value is too large for specified width of byte field.
     #[error("value {value} too large for width {width}")]
-    ValueTooLargeForWidth { width: usize, value: u64 },
+    ValueTooLargeForWidth {
+        /// Width in bytes.
+        width: usize,
+        /// Value.
+        value: u64,
+    },
     /// Only 1, 2, 4 and 8 are allow width values. Optionally contains the expected width if
     /// applicable, for example for conversions.
     #[error("invalid width {found}, expected {expected:?}")]
     InvalidWidth {
+        /// Found width.
         found: usize,
+        /// Expected width.
         expected: Option<usize>,
     },
+    /// Error during byte conversion.
     #[error("byte conversion error: {0}")]
     ByteConversionError(#[from] ByteConversionError),
 }
@@ -126,16 +143,19 @@ pub struct UnsignedByteField {
 }
 
 impl UnsignedByteField {
+    /// Generic constructor.
     #[inline]
     pub const fn new(width: usize, value: u64) -> Self {
         Self { width, value }
     }
 
+    /// Type-erased raw value.
     #[inline]
-    pub const fn value_const(&self) -> u64 {
+    pub const fn value(&self) -> u64 {
         self.value
     }
 
+    /// Construct from raw bytes, assuming big-endian byte order.
     #[inline]
     pub fn new_from_be_bytes(width: usize, buf: &[u8]) -> Result<Self, UnsignedByteFieldError> {
         if width > buf.len() {
@@ -175,8 +195,8 @@ impl UnsignedEnum for UnsignedByteField {
     }
 
     #[inline]
-    fn value(&self) -> u64 {
-        self.value_const()
+    fn value_raw(&self) -> u64 {
+        self.value()
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
@@ -212,6 +232,7 @@ impl UnsignedEnum for UnsignedByteField {
     }
 }
 
+/// Generic type erased unsigned byte field.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -220,11 +241,13 @@ pub struct GenericUnsignedByteField<TYPE: Copy + Into<u64>> {
 }
 
 impl<TYPE: Copy + Into<u64>> GenericUnsignedByteField<TYPE> {
+    /// Generic constructor.
     pub const fn new(val: TYPE) -> Self {
         Self { value: val }
     }
 
-    pub const fn value_typed(&self) -> TYPE {
+    /// Raw value.
+    pub const fn value(&self) -> TYPE {
         self.value
     }
 }
@@ -247,20 +270,29 @@ impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericUnsignedByteFie
     }
 
     #[inline]
-    fn value(&self) -> u64 {
-        self.value_typed().into()
+    fn value_raw(&self) -> u64 {
+        self.value().into()
     }
 }
 
+/// Alias for [GenericUnsignedByteField] with [()] generic.
 pub type UnsignedByteFieldEmpty = GenericUnsignedByteField<()>;
+/// Alias for [GenericUnsignedByteField] with [u8] generic.
 pub type UnsignedByteFieldU8 = GenericUnsignedByteField<u8>;
+/// Alias for [GenericUnsignedByteField] with [u16] generic.
 pub type UnsignedByteFieldU16 = GenericUnsignedByteField<u16>;
+/// Alias for [GenericUnsignedByteField] with [u32] generic.
 pub type UnsignedByteFieldU32 = GenericUnsignedByteField<u32>;
+/// Alias for [GenericUnsignedByteField] with [u64] generic.
 pub type UnsignedByteFieldU64 = GenericUnsignedByteField<u64>;
 
+/// Alias for [UnsignedByteFieldU8]
 pub type UbfU8 = UnsignedByteFieldU8;
+/// Alias for [UnsignedByteFieldU16]
 pub type UbfU16 = UnsignedByteFieldU16;
+/// Alias for [UnsignedByteFieldU32]
 pub type UbfU32 = UnsignedByteFieldU32;
+/// Alias for [UnsignedByteFieldU64]
 pub type UbfU64 = UnsignedByteFieldU64;
 
 impl From<UnsignedByteFieldU8> for UnsignedByteField {
@@ -372,7 +404,7 @@ pub mod tests {
         for val in buf.iter().skip(1) {
             assert_eq!(*val, 0);
         }
-        assert_eq!(u8.value_typed(), 5);
+        assert_eq!(u8.value_raw(), 5);
         assert_eq!(u8.value(), 5);
     }
 
@@ -390,7 +422,7 @@ pub mod tests {
         for val in buf.iter().skip(2) {
             assert_eq!(*val, 0);
         }
-        assert_eq!(u16.value_typed(), 3823);
+        assert_eq!(u16.value_raw(), 3823);
         assert_eq!(u16.value(), 3823);
     }
 
@@ -408,7 +440,7 @@ pub mod tests {
         (4..8).for_each(|i| {
             assert_eq!(buf[i], 0);
         });
-        assert_eq!(u32.value_typed(), 80932);
+        assert_eq!(u32.value_raw(), 80932);
         assert_eq!(u32.value(), 80932);
     }
 
@@ -423,7 +455,7 @@ pub mod tests {
         assert_eq!(len, 8);
         let raw_val = u64::from_be_bytes(buf[0..8].try_into().unwrap());
         assert_eq!(raw_val, 5999999);
-        assert_eq!(u64.value_typed(), 5999999);
+        assert_eq!(u64.value_raw(), 5999999);
         assert_eq!(u64.value(), 5999999);
     }
 

@@ -7,13 +7,21 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
 pub enum Subservice {
+    /// Telemetry - Info report.
     TmInfoReport = 1,
+    /// Telemetry - Low severity report.
     TmLowSeverityReport = 2,
+    /// Telemetry - Medium severity report.
     TmMediumSeverityReport = 3,
+    /// Telemetry - High severity report.
     TmHighSeverityReport = 4,
+    /// Telecommand - Enable event generation.
     TcEnableEventGeneration = 5,
+    /// Telecommand - Disable event generation.
     TcDisableEventGeneration = 6,
+    /// Telecommand - Report disabled list.
     TcReportDisabledList = 7,
+    /// Telemetry - Disabled events report.
     TmDisabledEventsReport = 8,
 }
 

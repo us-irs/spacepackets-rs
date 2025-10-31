@@ -22,19 +22,29 @@ pub mod ascii;
 pub mod cds;
 pub mod cuc;
 
+/// Conversion constant for converting CCSDS days to UNIX days.
 pub const DAYS_CCSDS_TO_UNIX: i32 = -4383;
+/// Seconds per day.
 pub const SECONDS_PER_DAY: u32 = 86400;
+/// Milliseconds per day.
 pub const MS_PER_DAY: u32 = SECONDS_PER_DAY * 1000;
+/// Nanoseconds per second.
 pub const NANOS_PER_SECOND: u32 = 1_000_000_000;
 
+/// CCSDS time code identifiers.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CcsdsTimeCode {
+    /// CUC with a CCSDS epoch (1958-01-01T00:00:00+00:00).
     CucCcsdsEpoch = 0b001,
+    /// CUC with a custom agency epoch.
     CucAgencyEpoch = 0b010,
+    /// CDS time code.
     Cds = 0b100,
+    /// CCS time code.
     Ccs = 0b101,
+    /// Agency defined time code.
     AgencyDefined = 0b110,
 }
 
@@ -60,44 +70,61 @@ pub fn ccsds_time_code_from_p_field(pfield: u8) -> Result<CcsdsTimeCode, u8> {
     CcsdsTimeCode::try_from(raw_bits).map_err(|_| raw_bits)
 }
 
+/// Date is before the CCSDS epoch.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[error("date before ccsds epoch: {0:?}")]
 pub struct DateBeforeCcsdsEpochError(UnixTime);
 
+/// Generic timestamp error.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[non_exhaustive]
 pub enum TimestampError {
+    /// Invalid time code.
     #[error("invalid time code, expected {expected:?}, found {found}")]
-    InvalidTimeCode { expected: CcsdsTimeCode, found: u8 },
+    InvalidTimeCode {
+        /// Expected time code.
+        expected: CcsdsTimeCode,
+        /// Found raw time code.
+        found: u8,
+    },
+    /// Byte conversion error.
     #[error("time stamp: byte conversion error: {0}")]
     ByteConversion(#[from] ByteConversionError),
+    /// CDS timestamp error.
     #[error("CDS error: {0}")]
     Cds(#[from] cds::CdsError),
+    /// CUC timestamp error.
     #[error("CUC error: {0}")]
     Cuc(#[from] cuc::CucError),
+    /// Custom epoch is not supported.
     #[error("custom epoch not supported")]
     CustomEpochNotSupported,
 }
 
+/// [std] module.
 #[cfg(feature = "std")]
 pub mod std_mod {
     use crate::time::TimestampError;
     use std::time::SystemTimeError;
     use thiserror::Error;
 
+    /// [std] timestamp error.
     #[derive(Debug, Clone, Error)]
     pub enum StdTimestampError {
+        /// System time error.
         #[error("system time error: {0:?}")]
         SystemTime(#[from] SystemTimeError),
+        /// Generic timestamp error.
         #[error("timestamp error: {0}")]
         Timestamp(#[from] TimestampError),
     }
 }
 
+/// Seconds since epoch for the current system time.
 #[cfg(feature = "std")]
 pub fn seconds_since_epoch() -> f64 {
     SystemTime::now()
@@ -131,16 +158,19 @@ pub const fn unix_epoch_to_ccsds_epoch(unix_epoch: i64) -> i64 {
     unix_epoch - (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }
 
+/// Convert CCSDS epoch to UNIX epoch.
 #[inline]
 pub const fn ccsds_epoch_to_unix_epoch(ccsds_epoch: i64) -> i64 {
     ccsds_epoch + (DAYS_CCSDS_TO_UNIX as i64 * SECONDS_PER_DAY as i64)
 }
 
+/// Milliseconds of day for the current system time.
 #[cfg(feature = "std")]
 pub fn ms_of_day_using_sysclock() -> u32 {
     ms_of_day(seconds_since_epoch())
 }
 
+/// Milliseconds for the given seconds since epoch.
 pub fn ms_of_day(seconds_since_epoch: f64) -> u32 {
     let fraction_ms = seconds_since_epoch - seconds_since_epoch.floor();
     let ms_of_day: u32 = (((seconds_since_epoch.floor() as u32 % SECONDS_PER_DAY) * 1000) as f64
@@ -149,13 +179,16 @@ pub fn ms_of_day(seconds_since_epoch: f64) -> u32 {
     ms_of_day
 }
 
+/// Generic writable timestamp trait.
 pub trait TimeWriter {
+    /// Written length.
     fn len_written(&self) -> usize;
 
     /// Generic function to convert write a timestamp into a raw buffer.
     /// Returns the number of written bytes on success.
     fn write_to_bytes(&self, bytes: &mut [u8]) -> Result<usize, TimestampError>;
 
+    /// Convert to a owned [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<alloc::vec::Vec<u8>, TimestampError> {
         let mut vec = alloc::vec![0; self.len_written()];
@@ -164,7 +197,9 @@ pub trait TimeWriter {
     }
 }
 
+/// Genmeric readable timestamp trait.
 pub trait TimeReader: Sized {
+    /// Create a timestamp from a raw byte buffer.
     fn from_bytes(buf: &[u8]) -> Result<Self, TimestampError>;
 }
 
@@ -174,6 +209,7 @@ pub trait TimeReader: Sized {
 /// practical because they are a very common and simple exchange format for time information.
 /// Therefore, it was decided to keep them in this trait as well.
 pub trait CcsdsTimeProvider {
+    /// Length when written to bytes.
     fn len_as_bytes(&self) -> usize;
 
     /// Returns the pfield of the time provider. The pfield can have one or two bytes depending
@@ -181,29 +217,37 @@ pub trait CcsdsTimeProvider {
     /// entry denotes the length of the pfield and the second entry is the value of the pfield
     /// in big endian format.
     fn p_field(&self) -> (usize, [u8; 2]);
+
+    /// CCSDS time code field.
     fn ccdsd_time_code(&self) -> CcsdsTimeCode;
 
+    /// UNIX time as seconds.
     fn unix_secs(&self) -> i64 {
         self.unix_time().secs
     }
 
+    /// Subsecond nanoseconds.
     fn subsec_nanos(&self) -> u32 {
         self.unix_time().subsec_nanos
     }
 
+    /// Subsecond milliseconds.
     fn subsec_millis(&self) -> u16 {
         (self.subsec_nanos() / 1_000_000) as u16
     }
 
+    /// UNIX time.
     fn unix_time(&self) -> UnixTime {
         UnixTime::new(self.unix_secs(), self.subsec_nanos())
     }
 
+    /// [chrono] date time.
     #[cfg(feature = "chrono")]
     fn chrono_date_time(&self) -> chrono::LocalResult<chrono::DateTime<chrono::Utc>> {
         chrono::Utc.timestamp_opt(self.unix_secs(), self.subsec_nanos())
     }
 
+    /// [time] library date] library date time.
     #[cfg(feature = "timelib")]
     fn timelib_date_time(&self) -> Result<time::OffsetDateTime, time::error::ComponentRange> {
         Ok(time::OffsetDateTime::from_unix_timestamp(self.unix_secs())?
@@ -285,6 +329,7 @@ impl UnixTime {
         }
     }
 
+    /// New UNIX time with only seconds, subseconds set to zero.
     pub fn new_only_secs(unix_seconds: i64) -> Self {
         Self {
             secs: unix_seconds,
@@ -292,15 +337,18 @@ impl UnixTime {
         }
     }
 
+    /// Sub-second milliseconds.
     #[inline]
     pub fn subsec_millis(&self) -> u16 {
         (self.subsec_nanos / 1_000_000) as u16
     }
 
+    /// Sub-second nanoseconds.
     pub fn subsec_nanos(&self) -> u32 {
         self.subsec_nanos
     }
 
+    /// Create a UNIX timestamp from the current system time.
     #[cfg(feature = "std")]
     pub fn now() -> Result<Self, SystemTimeError> {
         let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
@@ -308,27 +356,31 @@ impl UnixTime {
         Ok(Self::new(epoch as i64, now.subsec_nanos()))
     }
 
+    /// UNIX timestamp as a floating point number in seconds.
     #[inline]
     pub fn unix_secs_f64(&self) -> f64 {
         self.secs as f64 + (self.subsec_nanos as f64 / 1_000_000_000.0)
     }
 
+    /// UNIX timestamp as seconds, discards the sub-second part.
     pub fn as_secs(&self) -> i64 {
         self.secs
     }
 
+    /// UNIX timestamp as [chrono] date time.
     #[cfg(feature = "chrono")]
     pub fn chrono_date_time(&self) -> chrono::LocalResult<chrono::DateTime<chrono::Utc>> {
         Utc.timestamp_opt(self.secs, self.subsec_nanos)
     }
 
+    /// UNIX timestamp as [time] library date time.
     #[cfg(feature = "timelib")]
     pub fn timelib_date_time(&self) -> Result<time::OffsetDateTime, time::error::ComponentRange> {
         Ok(time::OffsetDateTime::from_unix_timestamp(self.as_secs())?
             + time::Duration::nanoseconds(self.subsec_nanos().into()))
     }
 
-    // Calculate the difference in milliseconds between two UnixTimestamps
+    /// Calculate the difference in milliseconds between two UnixTimestamps
     pub fn diff_in_millis(&self, other: &UnixTime) -> Option<i64> {
         let seconds_difference = self.secs.checked_sub(other.secs)?;
         // Convert seconds difference to milliseconds
@@ -398,7 +450,9 @@ impl Ord for UnixTime {
 /// so the sign information is supplied separately.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct StampDiff {
+    /// Positive duration flag.
     pub positive_duration: bool,
+    /// Absolute duration.
     pub duration_absolute: Duration,
 }
 

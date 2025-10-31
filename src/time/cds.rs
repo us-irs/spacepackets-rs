@@ -37,12 +37,15 @@ use super::{
 
 /// Base value for the preamble field for a time field parser to determine the time field type.
 pub const P_FIELD_BASE: u8 = (CcsdsTimeCode::Cds as u8) << 4;
+/// Minimum allowed length for a CDS timestamp.
 pub const MIN_CDS_FIELD_LEN: usize = 7;
+/// Maximum allowed days value for 24 bit days field.
 pub const MAX_DAYS_24_BITS: u32 = 2_u32.pow(24) - 1;
 
 /// Generic trait implemented by token structs to specify the length of day field at type
 /// level. This trait is only meant to be implemented in this crate and therefore sealed.
 pub trait ProvidesDaysLength: Sealed + Clone {
+    /// Raw field type.
     type FieldType: Debug
         + Copy
         + Clone
@@ -73,24 +76,33 @@ impl ProvidesDaysLength for DaysLen24Bits {
     type FieldType = u32;
 }
 
+/// Length of day segment.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum LengthOfDaySegment {
+    /// Shorter 16 bits length of days field.
     Short16Bits = 0,
+    /// Larger 24 bits length of days field.
     Long24Bits = 1,
 }
 
+/// Sub-millisecond precision indicator.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SubmillisPrecision {
+    /// No sub-millisecond precision present.
     Absent = 0b00,
+    /// Microsecond precision present.
     Microseconds = 0b01,
+    /// Picoseconds precision present.
     Picoseconds = 0b10,
+    /// Reserved.
     Reserved = 0b11,
 }
 
+/// CDS timestamp error.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -102,10 +114,12 @@ pub enum CdsError {
     /// field. This error will be returned if there is a missmatch.
     #[error("wrong constructor for length of day {0:?} detected in preamble")]
     InvalidCtorForDaysOfLenInPreamble(LengthOfDaySegment),
+    /// Date is before the CCSDS epoch (1958-01-01T00:00:00+00:00)
     #[error("date before CCSDS epoch: {0}")]
     DateBeforeCcsdsEpoch(#[from] DateBeforeCcsdsEpochError),
 }
 
+/// Retrieve the [LengthOfDaySegment] from the p-field byte.
 pub fn length_of_day_segment_from_pfield(pfield: u8) -> LengthOfDaySegment {
     if (pfield >> 2) & 0b1 == 1 {
         return LengthOfDaySegment::Long24Bits;
@@ -113,6 +127,7 @@ pub fn length_of_day_segment_from_pfield(pfield: u8) -> LengthOfDaySegment {
     LengthOfDaySegment::Short16Bits
 }
 
+/// Retrieve the [SubmillisPrecision] from the p-field byte.
 #[inline]
 pub fn precision_from_pfield(pfield: u8) -> SubmillisPrecision {
     match pfield & 0b11 {
@@ -180,19 +195,29 @@ pub struct CdsTime<DaysLen: ProvidesDaysLength = DaysLen16Bits> {
 ///
 /// Also exists to encapsulate properties used by private converters.
 pub trait CdsBase {
+    /// Sub-millisecond precision indicator.
     fn submillis_precision(&self) -> SubmillisPrecision;
+
+    /// Sub-milliseconds.
     fn submillis(&self) -> u32;
+
+    /// Milliseconds of day.
     fn ms_of_day(&self) -> u32;
+
+    /// CCSDS days since the epoch as [u32].
     fn ccsds_days_as_u32(&self) -> u32;
 }
 
 /// Generic properties for all CDS time providers.
 pub trait CdsTimestamp: CdsBase {
+    /// Length of day segment.
     fn len_of_day_seg(&self) -> LengthOfDaySegment;
 }
 
+/// Generic implementation of [CcsdsTimeProvider] for CDS time providers.
 #[cfg(feature = "alloc")]
 pub trait DynCdsTimeProvider: CcsdsTimeProvider + CdsTimestamp + TimeWriter + Any {}
+
 #[cfg(feature = "alloc")]
 impl DynCdsTimeProvider for CdsTime<DaysLen16Bits> {}
 #[cfg(feature = "alloc")]
@@ -294,11 +319,13 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         true
     }
 
+    /// Clear the submillisecond field.
     pub fn clear_submillis(&mut self) {
         self.pfield &= !(0b11);
         self.submillis = 0;
     }
 
+    /// CCSDS days since the CCSDS epoch.
     pub fn ccsds_days(&self) -> ProvidesDaysLen::FieldType {
         self.ccsds_days
     }
@@ -522,6 +549,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         pfield
     }
 
+    /// Update the time from the current time.
     #[cfg(feature = "std")]
     pub fn update_from_now(&mut self) -> Result<(), StdTimestampError> {
         let conversion_from_now = self.generic_conversion_from_now()?;
@@ -612,6 +640,7 @@ impl CdsTime<DaysLen24Bits> {
         Self::now_generic_with_us_prec(LengthOfDaySegment::Long24Bits)
     }
 
+    /// Constructor from the CDS timestamp as a raw byte array.
     pub fn from_bytes_with_u24_days(buf: &[u8]) -> Result<Self, TimestampError> {
         let submillis_precision =
             Self::generic_raw_read_checks(buf, LengthOfDaySegment::Long24Bits)?;
@@ -704,6 +733,7 @@ impl CdsTime<DaysLen16Bits> {
         Self::from_now_generic_ps_prec(LengthOfDaySegment::Short16Bits)
     }
 
+    /// Write the CDS timestamp to a raw byte array.
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;
@@ -721,6 +751,7 @@ impl CdsTime<DaysLen16Bits> {
         Ok(self.len_as_bytes())
     }
 
+    /// Constructor from the CDS timestamp as a raw byte array.
     pub fn from_bytes_with_u16_days(buf: &[u8]) -> Result<Self, TimestampError> {
         let submillis_precision =
             Self::generic_raw_read_checks(buf, LengthOfDaySegment::Short16Bits)?;
@@ -892,6 +923,7 @@ impl TimeWriter for CdsTime<DaysLen16Bits> {
 }
 
 impl CdsTime<DaysLen24Bits> {
+    /// Write the CDS timestamp to a raw byte array.
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.length_check(buf, self.len_as_bytes())?;
         buf[0] = self.pfield;

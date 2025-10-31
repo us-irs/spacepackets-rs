@@ -14,28 +14,37 @@ use paste::paste;
 /// static structs when using the interior mutability pattern. This can be achieved by using
 /// [Cell], [core::cell::RefCell] or atomic types.
 pub trait SequenceCounter {
+    /// Raw type of the counter.
     type Raw: Into<u64>;
+
+    /// Bit width of the counter.
     const MAX_BIT_WIDTH: usize;
 
+    /// Get the current sequence count value.
     fn get(&self) -> Self::Raw;
 
+    /// Increment the sequence count by one.
     fn increment(&self);
 
+    /// Increment the sequence count by one, mutable API.
     fn increment_mut(&mut self) {
         self.increment();
     }
 
+    /// Get the current sequence count value and increment the counter by one.
     fn get_and_increment(&self) -> Self::Raw {
         let val = self.get();
         self.increment();
         val
     }
 
+    /// Get the current sequence count value and increment the counter by one, mutable API.
     fn get_and_increment_mut(&mut self) -> Self::Raw {
         self.get_and_increment()
     }
 }
 
+/// Simple sequence counter which wraps at [T::MAX].
 #[derive(Clone)]
 pub struct SequenceCounterSimple<T: Copy> {
     seq_count: Cell<T>,
@@ -48,12 +57,15 @@ macro_rules! impl_for_primitives {
         $(
             paste! {
                 impl SequenceCounterSimple<$ty> {
+                    /// Constructor with a custom maximum value.
                     pub fn [<new_custom_max_val_ $ty>](max_val: $ty) -> Self {
                         Self {
                             seq_count: Cell::new(0),
                             max_val,
                         }
                     }
+
+                    /// Generic constructor.
                     pub fn [<new_ $ty>]() -> Self {
                         Self {
                             seq_count: Cell::new(0),
@@ -275,6 +287,7 @@ macro_rules! sync_clonable_seq_counter_impl {
             }
 
             impl [<SequenceCounterSyncCustomWrap $ty:upper>] {
+                /// Generic constructor.
                 pub fn new(max_val: $ty) -> Self {
                     Self {
                         seq_count: core::sync::atomic::[<Atomic $ty:upper>]::new(0),

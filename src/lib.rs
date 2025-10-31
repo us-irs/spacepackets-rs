@@ -61,6 +61,8 @@
 //! ```
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// TODO: Add docs everywhere.
+//#![warn(missing_docs)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 #[cfg(any(feature = "std", test))]
@@ -102,6 +104,7 @@ pub const MAX_SEQ_COUNT: u14 = u14::MAX;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[non_exhaustive]
 pub enum ChecksumType {
+    /// Default CRC16-CCITT checksum.
     Crc16CcittFalse,
 }
 
@@ -112,12 +115,23 @@ pub enum ChecksumType {
 pub enum ByteConversionError {
     /// The passed slice is too small. Returns the passed slice length and expected minimum size
     #[error("target slice with size {found} is too small, expected size of at least {expected}")]
-    ToSliceTooSmall { found: usize, expected: usize },
+    ToSliceTooSmall {
+        /// Found slice size.
+        found: usize,
+        /// Expected slice size.
+        expected: usize,
+    },
     /// The provider buffer is too small. Returns the passed slice length and expected minimum size
     #[error("source slice with size {found} too small, expected at least {expected} bytes")]
-    FromSliceTooSmall { found: usize, expected: usize },
+    FromSliceTooSmall {
+        /// Found slice size.
+        found: usize,
+        /// Expected slice size.
+        expected: usize,
+    },
 }
 
+/// [zerocopy] serialization and deserialization errors.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -137,12 +151,15 @@ pub enum ZeroCopyError {
 #[error("invalid payload length: {0}")]
 pub struct InvalidPayloadLengthError(usize);
 
+/// Errors during CCSDS packet creation.
 #[derive(thiserror::Error, Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CcsdsPacketCreationError {
+    /// Byte conversion error.
     #[error("byte conversion: {0}")]
     ByteConversion(#[from] ByteConversionError),
+    /// Invalid payload length which exceeded [u16::MAX].
     #[error("invalid payload length: {0}")]
     InvalidPayloadLength(#[from] InvalidPayloadLengthError),
 }
@@ -154,22 +171,30 @@ pub enum CcsdsPacketCreationError {
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum PacketType {
+    /// Telemetry packet.
     Tm = 0,
+    /// Telecommand packet.
     Tc = 1,
 }
 
+/// CCSDS packet sequence flags.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u2, exhaustive = true)]
 #[repr(u8)]
 pub enum SequenceFlags {
+    /// Continuation segment of a segmented packet.
     ContinuationSegment = 0b00,
+    /// First segment of a sequence.
     FirstSegment = 0b01,
+    /// Last segment of a sequence.
     LastSegment = 0b10,
+    /// Unsegmented packet.
     Unsegmented = 0b11,
 }
 
+/// Retrieve the [PacketType] from a raw packet ID.
 #[inline]
 pub fn packet_type_in_raw_packet_id(packet_id: u16) -> PacketType {
     PacketType::try_from((packet_id >> 12) as u8 & 0b1).unwrap()
@@ -200,6 +225,9 @@ pub const fn ccsds_packet_len_for_user_data_len(
     Some(len)
 }
 
+/// Calculate the full CCSDS packet length for a given user data length.
+///
+/// Returns [None] if the packet length exceeds the maximum allowed size [u16::MAX].
 #[inline]
 pub fn ccsds_packet_len_for_user_data_len_with_checksum(data_len: usize) -> Option<usize> {
     ccsds_packet_len_for_user_data_len(data_len, Some(ChecksumType::Crc16CcittFalse))
@@ -211,8 +239,11 @@ pub fn ccsds_packet_len_for_user_data_len_with_checksum(data_len: usize) -> Opti
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PacketId {
+    /// Packet type (telemetry or telecommand).
     pub packet_type: PacketType,
+    /// Secondary header flag.
     pub sec_header_flag: bool,
+    /// Application Process ID (APID).
     pub apid: u11,
 }
 
@@ -256,16 +287,19 @@ impl Default for PacketId {
 }
 
 impl PacketId {
+    /// Generic constructor for telecommands.
     #[inline]
     pub const fn new_for_tc(sec_header: bool, apid: u11) -> Self {
         Self::new(PacketType::Tc, sec_header, apid)
     }
 
+    /// Generic constructor for telemetry.
     #[inline]
     pub const fn new_for_tm(sec_header: bool, apid: u11) -> Self {
         Self::new(PacketType::Tm, sec_header, apid)
     }
 
+    /// Generic constructor.
     #[inline]
     pub const fn new(packet_type: PacketType, sec_header_flag: bool, apid: u11) -> Self {
         PacketId {
@@ -289,6 +323,7 @@ impl PacketId {
         self.apid
     }
 
+    /// Raw numeric value.
     #[inline]
     pub const fn raw(&self) -> u16 {
         ((self.packet_type as u16) << 12)
@@ -307,6 +342,7 @@ impl From<u16> for PacketId {
     }
 }
 
+/// Deprecated type alias.
 #[deprecated(since = "0.16.0", note = "use PacketSequenceControl instead")]
 pub type PacketSequenceCtrl = PacketSequenceControl;
 
@@ -316,11 +352,14 @@ pub type PacketSequenceCtrl = PacketSequenceControl;
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PacketSequenceControl {
+    /// CCSDS sequence flags.
     pub seq_flags: SequenceFlags,
+    /// CCSDS sequence count.
     pub seq_count: u14,
 }
 
 impl PacketSequenceControl {
+    /// Generic constructor.
     #[inline]
     pub const fn new(seq_flags: SequenceFlags, seq_count: u14) -> PacketSequenceControl {
         PacketSequenceControl {
@@ -329,6 +368,7 @@ impl PacketSequenceControl {
         }
     }
 
+    /// Raw value.
     #[inline]
     pub const fn raw(&self) -> u16 {
         ((self.seq_flags as u16) << 14) | self.seq_count.value()
@@ -348,7 +388,7 @@ macro_rules! sph_from_other {
     ($Self: path, $other: path) => {
         impl From<$other> for $Self {
             fn from(other: $other) -> Self {
-                Self::from_composite_fields(
+                Self::new_from_composite_fields(
                     other.packet_id(),
                     other.psc(),
                     other.data_len(),
@@ -364,19 +404,33 @@ const VERSION_MASK: u16 = 0xE000;
 
 /// Generic trait to access fields of a CCSDS space packet header according to CCSDS 133.0-B-2.
 pub trait CcsdsPacket {
+    /// CCSDS version field.
     fn ccsds_version(&self) -> u3;
+
+    /// CCSDS packet ID.
+    ///
+    /// First two bytes of the CCSDS primary header without the first three bits.
     fn packet_id(&self) -> PacketId;
+
+    /// CCSDS packet sequence control.
+    ///
+    /// Third and fourth byte of the CCSDS primary header.
     fn psc(&self) -> PacketSequenceControl;
 
-    /// Retrieve data length field
+    /// Data length field.
+    ///
+    /// Please note that this is NOT the full packet length.
+    /// The full length can be calculated by adding the header length [CCSDS_HEADER_LEN] + 1 or
+    /// using [Self::packet_len].
     fn data_len(&self) -> u16;
 
-    /// Retrieve the total packet size based on the data length field
+    /// Total packet size based on the data length field
     #[inline]
     fn packet_len(&self) -> usize {
         usize::from(self.data_len()) + CCSDS_HEADER_LEN + 1
     }
 
+    /// Deprecated alias for [Self::packet_len].
     #[deprecated(since = "0.16.0", note = "use packet_len instead")]
     #[inline]
     fn total_len(&self) -> usize {
@@ -395,40 +449,45 @@ pub trait CcsdsPacket {
         self.psc().raw()
     }
 
+    /// CCSDS packet type.
     #[inline]
     fn packet_type(&self) -> PacketType {
         // This call should never fail because only 0 and 1 can be passed to the try_from call
         self.packet_id().packet_type
     }
 
+    /// Is this a telemetry packet?
     #[inline]
     fn is_tm(&self) -> bool {
         self.packet_type() == PacketType::Tm
     }
 
+    /// Is this a telecommand packet?
     #[inline]
     fn is_tc(&self) -> bool {
         self.packet_type() == PacketType::Tc
     }
 
-    /// Retrieve the secondary header flag. Returns true if a secondary header is present
+    /// CCSDS secondary header flag. Returns true if a secondary header is present
     /// and false if it is not.
     #[inline]
     fn sec_header_flag(&self) -> bool {
         self.packet_id().sec_header_flag
     }
 
-    /// Retrieve Application Process ID.
+    /// CCSDS Application Process ID (APID).
     #[inline]
     fn apid(&self) -> u11 {
         self.packet_id().apid
     }
 
+    /// CCSDS sequence count.
     #[inline]
     fn seq_count(&self) -> u14 {
         self.psc().seq_count
     }
 
+    /// CCSDS sequence flags.
     #[inline]
     fn sequence_flags(&self) -> SequenceFlags {
         // This call should never fail because the mask ensures that only valid values are passed
@@ -437,8 +496,10 @@ pub trait CcsdsPacket {
     }
 }
 
+/// Helper trait to generate the primary header from the composite fields.
 pub trait CcsdsPrimaryHeader {
-    fn from_composite_fields(
+    /// Constructor.
+    fn new_from_composite_fields(
         packet_id: PacketId,
         psc: PacketSequenceControl,
         data_len: u16,
@@ -447,25 +508,23 @@ pub trait CcsdsPrimaryHeader {
 }
 
 /// Space Packet Primary Header according to CCSDS 133.0-B-2.
-///
-/// # Arguments
-///
-/// * `version` - CCSDS version field, occupies the first 3 bits of the raw header. Will generally
-///   be set to 0b000 in all constructors provided by this crate.
-/// * `packet_id` - Packet Identifier, which can also be used as a start marker. Occupies the last
-///   13 bits of the first two bytes of the raw header
-/// * `psc` - Packet Sequence Control, occupies the third and fourth byte of the raw header
-/// * `data_len` - Data length field occupies the fifth and the sixth byte of the raw header
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SpacePacketHeader {
+    /// CCSDS version field, occupies the first 3 bits of the raw header. Will generally
+    /// be set to 0b000 in all constructors provided by this crate.
     pub version: u3,
+    /// CCSDS Packet Identifier, which can also be used as a start marker. Occupies the last
+    /// 13 bits of the first two bytes of the raw header
     pub packet_id: PacketId,
+    /// CCSDS Packet Sequence Control, occupies the third and fourth byte of the raw header
     pub psc: PacketSequenceControl,
+    /// Data length field occupies the fifth and the sixth byte of the raw header
     pub data_len: u16,
 }
 
+/// Alias for [SpacePacketHeader].
 pub type SpHeader = SpacePacketHeader;
 
 impl Default for SpacePacketHeader {
@@ -486,8 +545,10 @@ impl Default for SpacePacketHeader {
 }
 
 impl SpacePacketHeader {
+    /// Length of the CCSDS primary header.
     pub const LENGTH: usize = CCSDS_HEADER_LEN;
 
+    /// Generic constructor.
     #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceControl, data_len: u16) -> Self {
         Self {
@@ -513,6 +574,7 @@ impl SpacePacketHeader {
         }
     }
 
+    /// Constructor from individual fields.
     #[inline]
     pub const fn new_from_fields(
         ptype: PacketType,
@@ -530,6 +592,7 @@ impl SpacePacketHeader {
         }
     }
 
+    /// Constructor for telemetry packets.
     #[inline]
     pub const fn new_for_tm(
         apid: u11,
@@ -540,6 +603,7 @@ impl SpacePacketHeader {
         Self::new_from_fields(PacketType::Tm, false, apid, seq_flags, seq_count, data_len)
     }
 
+    /// Constructor for telecommand packets.
     #[inline]
     pub const fn new_for_tc(
         apid: u11,
@@ -564,6 +628,7 @@ impl SpacePacketHeader {
 
     delegate! {
         to self.packet_id {
+            /// Set the application process ID (APID).
             #[inline]
             pub fn set_apid(&mut self, apid: u11);
         }
@@ -575,26 +640,31 @@ impl SpacePacketHeader {
         usize::from(self.data_len()) + Self::LENGTH + 1
     }
 
+    /// Set the CCSDS sequence count.
     #[inline]
     pub fn set_seq_count(&mut self, seq_count: u14) {
         self.psc.seq_count = seq_count;
     }
 
+    /// Set the CCSDS sequence flags.
     #[inline]
     pub fn set_seq_flags(&mut self, seq_flags: SequenceFlags) {
         self.psc.seq_flags = seq_flags;
     }
 
+    /// Set the CCSDS secondary header flag.
     #[inline]
     pub fn set_sec_header_flag(&mut self) {
         self.packet_id.sec_header_flag = true;
     }
 
+    /// Clear the CCSDS secondary header flag.
     #[inline]
     pub fn clear_sec_header_flag(&mut self) {
         self.packet_id.sec_header_flag = false;
     }
 
+    /// Set the CCSDS packet type.
     #[inline]
     pub fn set_packet_type(&mut self, packet_type: PacketType) {
         self.packet_id.packet_type = packet_type;
@@ -677,7 +747,7 @@ impl CcsdsPacket for SpacePacketHeader {
 
 impl CcsdsPrimaryHeader for SpacePacketHeader {
     #[inline]
-    fn from_composite_fields(
+    fn new_from_composite_fields(
         packet_id: PacketId,
         psc: PacketSequenceControl,
         data_len: u16,
@@ -698,6 +768,7 @@ impl CcsdsPrimaryHeader for SpacePacketHeader {
 
 sph_from_other!(SpHeader, crate::zc::SpHeader);
 
+/// [zerocopy] based CCSDS Space Packet Primary Header implementation.
 pub mod zc {
     use crate::{CcsdsPacket, CcsdsPrimaryHeader, PacketId, PacketSequenceControl, VERSION_MASK};
     use arbitrary_int::traits::Integer;
@@ -705,6 +776,7 @@ pub mod zc {
     use zerocopy::byteorder::NetworkEndian;
     use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned, U16};
 
+    /// [zerocopy] space packet header.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned, Debug)]
     #[repr(C)]
     pub struct SpHeader {
@@ -714,6 +786,7 @@ pub mod zc {
     }
 
     impl SpHeader {
+        /// Generic constructor.
         pub fn new(
             packet_id: PacketId,
             psc: PacketSequenceControl,
@@ -769,7 +842,7 @@ pub mod zc {
     }
 
     impl CcsdsPrimaryHeader for SpHeader {
-        fn from_composite_fields(
+        fn new_from_composite_fields(
             packet_id: PacketId,
             psc: PacketSequenceControl,
             data_len: u16,
@@ -799,8 +872,11 @@ pub struct CcsdsPacketCreatorWithReservedData<'buf> {
 }
 
 impl<'buf> CcsdsPacketCreatorWithReservedData<'buf> {
+    /// CCSDS header length.
     pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
 
+    /// Calculate the full CCSDS packet length for a given user data length and with a CRC16
+    /// checksum.
     #[inline]
     pub fn packet_len_for_user_data_with_checksum(user_data_len: usize) -> Option<usize> {
         ccsds_packet_len_for_user_data_len(user_data_len, Some(ChecksumType::Crc16CcittFalse))
@@ -896,11 +972,13 @@ impl<'buf> CcsdsPacketCreatorWithReservedData<'buf> {
 }
 
 impl CcsdsPacketCreatorWithReservedData<'_> {
+    /// Raw full buffer this packet is constructed in.
     #[inline]
     pub fn raw_buffer(&self) -> &[u8] {
         self.buf
     }
 
+    /// Full packet length.
     #[inline]
     pub fn packet_len(&self) -> usize {
         <Self as CcsdsPacket>::packet_len(self)
@@ -986,7 +1064,9 @@ impl CcsdsPacket for CcsdsPacketCreatorWithReservedData<'_> {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CcsdsPacketId {
+    /// CCSDS Packet ID.
     pub packet_id: PacketId,
+    /// CCSDS Packet Sequence Control.
     pub psc: PacketSequenceControl,
 }
 
@@ -998,6 +1078,7 @@ impl Hash for CcsdsPacketId {
 }
 
 impl CcsdsPacketId {
+    /// Generic constructor.
     #[inline]
     pub const fn new(packet_id: PacketId, psc: PacketSequenceControl) -> Self {
         Self { packet_id, psc }
@@ -1012,6 +1093,7 @@ impl CcsdsPacketId {
         }
     }
 
+    /// Raw numeric value.
     #[inline]
     pub const fn raw(&self) -> u32 {
         ((self.packet_id.raw() as u32) << 16) | self.psc.raw() as u32
@@ -1133,6 +1215,7 @@ pub struct CcsdsPacketCreator<'app_data> {
 }
 
 impl<'app_data> CcsdsPacketCreator<'app_data> {
+    /// CCSDS header length.
     pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
 
     /// Helper function which can be used to determine the full packet length from the user
@@ -1211,6 +1294,7 @@ impl CcsdsPacketCreator<'_> {
             .write_to_bytes(buf, self.len_written(), self.packet_data)
     }
 
+    /// CCSDS space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.common.sp_header
@@ -1256,7 +1340,9 @@ pub struct CcsdsPacketCreatorOwned {
     packet_data: alloc::vec::Vec<u8>,
 }
 
+#[cfg(feature = "alloc")]
 impl CcsdsPacketCreatorOwned {
+    /// CCSDS header length.
     pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
 
     /// Helper function which can be used to determine the full packet length from the user
@@ -1332,6 +1418,7 @@ impl CcsdsPacketCreatorOwned {
             .write_to_bytes(buf, self.len_written(), &self.packet_data)
     }
 
+    /// CCSDS space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.common.sp_header
@@ -1344,6 +1431,7 @@ impl CcsdsPacketCreatorOwned {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl CcsdsPacket for CcsdsPacketCreatorOwned {
     /// CCSDS version field.
     #[inline]
@@ -1370,12 +1458,15 @@ impl CcsdsPacket for CcsdsPacketCreatorOwned {
     }
 }
 
+/// CCSDS packet read error.
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CcsdsPacketReadError {
+    /// Byte conversion error.
     #[error("byte conversion: {0}")]
     ByteConversion(#[from] ByteConversionError),
+    /// CRC error.
     #[error("CRC error")]
     CrcError,
 }
@@ -1390,14 +1481,17 @@ pub struct CcsdsPacketReader<'buf> {
 }
 
 impl<'buf> CcsdsPacketReader<'buf> {
+    /// CCSDS header length.
     pub const HEADER_LEN: usize = CCSDS_HEADER_LEN;
 
+    /// Constructor which expects a CRC16 checksum.
     pub fn new_with_checksum(
         buf: &'buf [u8],
     ) -> Result<CcsdsPacketReader<'buf>, CcsdsPacketReadError> {
         Self::new(buf, Some(ChecksumType::Crc16CcittFalse))
     }
 
+    /// Generic constructor.
     pub fn new(
         buf: &'buf [u8],
         checksum: Option<ChecksumType>,
@@ -1672,7 +1766,7 @@ pub(crate) mod tests {
         assert_eq!(sp_header.data_len(), 36);
         assert_eq!(sp_header.ccsds_version().value(), 0b000);
 
-        let from_comp_fields = SpHeader::from_composite_fields(
+        let from_comp_fields = SpHeader::new_from_composite_fields(
             PacketId::new(PacketType::Tc, true, u11::new(0x42)),
             PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0x7)),
             0,

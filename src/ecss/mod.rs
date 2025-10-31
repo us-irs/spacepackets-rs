@@ -25,53 +25,55 @@ pub mod tm;
 pub mod tm_pus_a;
 pub mod verification;
 
+/// Type alias for the CRC16 type.
 pub type CrcType = u16;
 
+/// Standard PUS service IDs.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum PusServiceId {
-    /// Service 1
+    /// Service 1 Verification
     Verification = 1,
-    /// Service 2
+    /// Service 2 Device Access
     DeviceAccess = 2,
-    /// Service 3
+    /// Service 3 Housekeeping
     Housekeeping = 3,
-    /// Service 4
+    /// Service 4 Parameter Statistics
     ParameterStatistics = 4,
-    /// Service 5
+    /// Service 5 Event
     Event = 5,
-    /// Service 6
+    /// Service 6 Memory Management
     MemoryManagement = 6,
-    /// Service 8
+    /// Service 8 Action
     Action = 8,
-    /// Service 9
+    /// Service 9 Time Management
     TimeManagement = 9,
-    /// Service 11
+    /// Service 11 Scheduling
     Scheduling = 11,
-    /// Service 12
+    /// Service 12 On-Board Monitoring
     OnBoardMonitoring = 12,
-    /// Service 13
+    /// Service 13 Large Packet Transfer
     LargePacketTransfer = 13,
-    /// Service 14
+    /// Service 14 Real-Time Forwarding Control
     RealTimeForwardingControl = 14,
-    /// Service 15
+    /// Service 15 Storage And Retrival
     StorageAndRetrival = 15,
-    /// Service 17
+    /// Service 17 Test
     Test = 17,
-    /// Service 18
+    /// Service 18 Operations And Procedures
     OpsAndProcedures = 18,
-    /// Service 19
+    /// Service 19 Event Action
     EventAction = 19,
-    /// Service 20
+    /// Service 20 Parameter
     Parameter = 20,
-    /// Service 21
+    /// Service 21 Request Sequencing
     RequestSequencing = 21,
-    /// Service 22
+    /// Service 22 Position Based Scheduling
     PositionBasedScheduling = 22,
-    /// Service 23
+    /// Service 23 File Management
     FileManagement = 23,
 }
 
@@ -83,8 +85,11 @@ pub enum PusServiceId {
 #[repr(u8)]
 #[non_exhaustive]
 pub enum PusVersion {
+    /// ESA PUS
     EsaPus = 0,
+    /// PUS A
     PusA = 1,
+    /// PUS C
     PusC = 2,
 }
 
@@ -107,20 +112,33 @@ impl TryFrom<u4> for PusVersion {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PacketTypeCodes {
+    /// Boolean.
     Boolean = 1,
+    /// Enumerated.
     Enumerated = 2,
+    /// Unsigned Integer.
     UnsignedInt = 3,
+    /// Signed Integer.
     SignedInt = 4,
+    /// Real (floating point).
     Real = 5,
+    /// Bit string.
     BitString = 6,
+    /// Octet (byte) string.
     OctetString = 7,
+    /// Character string.
     CharString = 8,
+    /// Absolute time.
     AbsoluteTime = 9,
+    /// Relative time.
     RelativeTime = 10,
+    /// Deduced.
     Deduced = 11,
+    /// Packet.
     Packet = 12,
 }
 
+/// Type alias for the ECSS Packet Type Codes (PTC)s.
 pub type Ptc = PacketTypeCodes;
 
 /// ECSS Packet Field Codes (PFC)s for the unsigned [Ptc].
@@ -129,15 +147,25 @@ pub type Ptc = PacketTypeCodes;
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum PfcUnsigned {
+    /// 1 byte.
     OneByte = 4,
+    /// 12 bits.
     TwelveBits = 8,
+    /// 2 bytes.
     TwoBytes = 12,
+    /// 3 bytes.
     ThreeBytes = 13,
+    /// 4 bytes.
     FourBytes = 14,
+    /// 6 bytes.
     SixBytes = 15,
+    /// 8 bytes.
     EightBytes = 16,
+    /// 1 bit.
     OneBit = 17,
+    /// 2 bits.
     TwoBits = 18,
+    /// 3 bits.
     ThreeBits = 19,
 }
 
@@ -157,12 +185,15 @@ pub enum PfcReal {
     DoubleMilStd = 4,
 }
 
+/// Generic PUS error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PusError {
+    /// PUS version is not supported.
     #[error("PUS version {0:?} not supported")]
     VersionNotSupported(u4),
+    /// Checksum failure.
     #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
@@ -175,12 +206,21 @@ pub enum PusError {
 /// Generic trait to describe common attributes for both PUS Telecommands (TC) and PUS Telemetry
 /// (TM) packets. All PUS packets are also a special type of [CcsdsPacket]s.
 pub trait PusPacket: CcsdsPacket {
+    /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
+
+    /// Service ID.
     fn service(&self) -> u8;
+
+    /// Subservice ID.
     fn subservice(&self) -> u8;
+
+    /// User data field.
     fn user_data(&self) -> &[u8];
+
     /// CRC-16-CCITT checksum.
     fn checksum(&self) -> Option<u16>;
+
     /// The presence of the CRC-16-CCITT checksum is optional.
     fn has_checksum(&self) -> bool {
         self.checksum().is_some()
@@ -226,6 +266,7 @@ pub(crate) fn user_data_from_raw(
     }
 }
 
+/// Verify the CRC16 of a raw packet and return a [PusError] on failure.
 pub fn verify_crc16_ccitt_false_from_raw_to_pus_error(
     raw_data: &[u8],
     crc16: u16,
@@ -235,6 +276,8 @@ pub fn verify_crc16_ccitt_false_from_raw_to_pus_error(
         .ok_or(PusError::ChecksumFailure(crc16))
 }
 
+/// Verify the CRC16 of a raw packet using a table-less implementation and return a [PusError] on
+/// failure.
 pub fn verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
     raw_data: &[u8],
     crc16: u16,
@@ -267,10 +310,15 @@ pub fn verify_crc16_ccitt_false_from_raw_no_table(raw_data: &[u8]) -> bool {
 macro_rules! sp_header_impls {
     () => {
         delegate!(to self.sp_header {
+            /// Set the CCSDS APID.
             #[inline]
             pub fn set_apid(&mut self, apid: u11);
+
+            /// Set the CCSDS sequence count.
             #[inline]
             pub fn set_seq_count(&mut self, seq_count: u14);
+
+            /// Set the CCSDS sequence flags.
             #[inline]
             pub fn set_seq_flags(&mut self, seq_flag: SequenceFlags);
         });
@@ -289,27 +337,28 @@ pub trait EcssEnumeration: UnsignedEnum {
     fn pfc(&self) -> u8;
 }
 
+/// Extension trait for [EcssEnumeration] which adds common trait bounds.
 pub trait EcssEnumerationExt: EcssEnumeration + Debug + Copy + Clone + PartialEq + Eq {}
 
+/// ECSS enumerated type wrapper.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct GenericEcssEnumWrapper<TYPE: Copy + Into<u64>> {
-    field: GenericUnsignedByteField<TYPE>,
-}
+pub struct GenericEcssEnumWrapper<TYPE: Copy + Into<u64>>(GenericUnsignedByteField<TYPE>);
 
 impl<TYPE: Copy + Into<u64>> GenericEcssEnumWrapper<TYPE> {
+    /// Returns [PacketTypeCodes::Enumerated].
     pub const fn ptc() -> PacketTypeCodes {
         PacketTypeCodes::Enumerated
     }
 
-    pub const fn value_typed(&self) -> TYPE {
-        self.field.value_typed()
+    /// Value.
+    pub const fn value(&self) -> TYPE {
+        self.0.value()
     }
 
-    pub fn new(val: TYPE) -> Self {
-        Self {
-            field: GenericUnsignedByteField::new(val),
-        }
+    /// Generic constructor.
+    pub const fn new(val: TYPE) -> Self {
+        Self(GenericUnsignedByteField::new(val))
     }
 }
 
@@ -319,11 +368,11 @@ impl<TYPE: Copy + ToBeBytes + Into<u64>> UnsignedEnum for GenericEcssEnumWrapper
     }
 
     fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
-        self.field.write_to_be_bytes(buf)
+        self.0.write_to_be_bytes(buf)
     }
 
-    fn value(&self) -> u64 {
-        self.field.value()
+    fn value_raw(&self) -> u64 {
+        self.0.value().into()
     }
 }
 
@@ -347,11 +396,12 @@ impl<T: Copy + Into<u64>> From<T> for GenericEcssEnumWrapper<T> {
 macro_rules! generic_ecss_enum_typedefs_and_from_impls {
     ($($ty:ty => $Enum:ident),*) => {
         $(
+            /// Type alias for ECSS enumeration wrapper around `$ty`
             pub type $Enum = GenericEcssEnumWrapper<$ty>;
 
             impl From<$Enum> for $ty {
                 fn from(value: $Enum) -> Self {
-                    value.value_typed()
+                    value.value()
                 }
             }
         )*
@@ -412,6 +462,7 @@ pub trait WritablePusPacket {
         Ok(curr_idx)
     }
 
+    /// Converts the packet into an owned [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, PusError> {
         // This is the correct way to do this. See
@@ -423,6 +474,7 @@ pub trait WritablePusPacket {
     }
 }
 
+/// PUS packet creator configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -465,7 +517,7 @@ mod tests {
             .expect("To byte conversion of u8 failed");
         assert_eq!(buf[1], 1);
         assert_eq!(my_enum.value(), 1);
-        assert_eq!(my_enum.value_typed(), 1);
+        assert_eq!(my_enum.value(), 1);
         let enum_as_u8: u8 = my_enum.into();
         assert_eq!(enum_as_u8, 1);
         let vec = my_enum.to_vec();
@@ -484,7 +536,7 @@ mod tests {
         assert_eq!(buf[1], 0x1f);
         assert_eq!(buf[2], 0x2f);
         assert_eq!(my_enum.value(), 0x1f2f);
-        assert_eq!(my_enum.value_typed(), 0x1f2f);
+        assert_eq!(my_enum.value(), 0x1f2f);
         let enum_as_raw: u16 = my_enum.into();
         assert_eq!(enum_as_raw, 0x1f2f);
         let vec = my_enum.to_vec();
@@ -521,7 +573,7 @@ mod tests {
         assert_eq!(buf[3], 0x3f);
         assert_eq!(buf[4], 0x4f);
         assert_eq!(my_enum.value(), 0x1f2f3f4f);
-        assert_eq!(my_enum.value_typed(), 0x1f2f3f4f);
+        assert_eq!(my_enum.value(), 0x1f2f3f4f);
         let enum_as_raw: u32 = my_enum.into();
         assert_eq!(enum_as_raw, 0x1f2f3f4f);
         let vec = my_enum.to_vec();
@@ -559,7 +611,7 @@ mod tests {
         assert_eq!(buf[6], 0x4f);
         assert_eq!(buf[7], 0x5f);
         assert_eq!(my_enum.value(), 0x1f2f3f4f5f);
-        assert_eq!(my_enum.value_typed(), 0x1f2f3f4f5f);
+        assert_eq!(my_enum.value(), 0x1f2f3f4f5f);
         let enum_as_raw: u64 = my_enum.into();
         assert_eq!(enum_as_raw, 0x1f2f3f4f5f);
         assert_eq!(u64::from_be_bytes(buf), 0x1f2f3f4f5f);
