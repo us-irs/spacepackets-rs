@@ -32,6 +32,7 @@ pub const P_FIELD_BASE: u8 = (CcsdsTimeCode::CucCcsdsEpoch as u8) << 4;
 /// Maximum length if the preamble field is not extended.
 pub const MAX_CUC_LEN_SMALL_PREAMBLE: usize = 8;
 
+/// Fractional resolution for the fractional part of the CUC time code.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -70,13 +71,14 @@ pub fn convert_fractional_part_to_ns(fractional_part: FractionalPart) -> u64 {
     10_u64.pow(9) * fractional_part.counter as u64 / div as u64
 }
 
+/// Convert the fractional resolution to the divisor used to calculate the fractional part.
 #[inline(always)]
 pub const fn fractional_res_to_div(res: FractionalResolution) -> u32 {
     // We do not use the full possible range for a given resolution. This is because if we did
     // that, the largest value would be equal to the counter being incremented by one. Thus, the
     // smallest allowed fractions value is 0 while the largest allowed fractions value is the
     // closest fractions value to the next counter increment.
-    2_u32.pow(8 * res as u32) - 1
+    (1u32 << (8 * res as u32)) - 1
 }
 
 /// Calculate the fractional part for a given resolution and subsecond nanoseconds.
@@ -101,22 +103,34 @@ pub fn fractional_part_from_subsec_ns(res: FractionalResolution, ns: u64) -> Fra
     }
 }
 
+/// CUC error.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CucError {
+    /// Invalid CUC counter width.
     #[error("invalid cuc counter byte width {0}")]
     InvalidCounterWidth(u8),
     /// Invalid counter supplied.
     #[error("invalid cuc counter {counter} for width {width}")]
-    InvalidCounter { width: u8, counter: u64 },
+    InvalidCounter {
+        /// Width.
+        width: u8,
+        /// Counter.
+        counter: u64,
+    },
+    /// Invalid fractions.
     #[error("invalid cuc fractional part {value} for resolution {resolution:?}")]
     InvalidFractions {
+        /// Resolution.
         resolution: FractionalResolution,
+        /// Value.
         value: u64,
     },
+    /// Error while correcting for leap seconds.
     #[error("error while correcting for leap seconds")]
     LeapSecondCorrectionError,
+    /// Data is before the CCSDS epoch.
     #[error("date before ccsds epoch: {0}")]
     DateBeforeCcsdsEpoch(#[from] DateBeforeCcsdsEpochError),
 }
@@ -127,14 +141,20 @@ pub enum CucError {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct WidthCounterPair(pub u8, pub u32);
 
+/// Fractional part of the CUC time code.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FractionalPart {
+    /// Resolution.
     pub resolution: FractionalResolution,
+    /// Counter.
     pub counter: u32,
 }
 
 impl FractionalPart {
+    /// Generic constructor.
+    ///
+    /// This function will panic if the counter is smaller than the calculated divisor.
     #[inline]
     pub const fn new(resolution: FractionalResolution, counter: u32) -> Self {
         let div = fractional_res_to_div(resolution);
@@ -157,6 +177,7 @@ impl FractionalPart {
         Self::new_with_seconds_resolution()
     }
 
+    /// Check constructor which verifies that the counter is larger than the divisor.
     #[inline]
     pub fn new_checked(resolution: FractionalResolution, counter: u32) -> Option<Self> {
         let div = fractional_res_to_div(resolution);
@@ -169,16 +190,19 @@ impl FractionalPart {
         })
     }
 
+    /// Fractional resolution.
     #[inline]
     pub fn resolution(&self) -> FractionalResolution {
         self.resolution
     }
 
+    /// Counter value.
     #[inline]
     pub fn counter(&self) -> u32 {
         self.counter
     }
 
+    /// Check whether the timestamp does not have a fractional part.
     #[inline]
     pub fn no_fractional_part(&self) -> bool {
         self.resolution == FractionalResolution::Seconds
@@ -245,17 +269,21 @@ pub struct CucTime {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CucTimeWithLeapSecs {
+    /// CUC time.
     pub time: CucTime,
+    /// Leap seconds.
     pub leap_seconds: u32,
 }
 
 impl CucTimeWithLeapSecs {
+    /// Generic constructor.
     #[inline]
     pub fn new(time: CucTime, leap_seconds: u32) -> Self {
         Self { time, leap_seconds }
     }
 }
 
+/// p-field length.
 #[inline]
 pub fn pfield_len(pfield: u8) -> usize {
     if ((pfield >> 7) & 0b1) == 1 {
@@ -381,6 +409,7 @@ impl CucTime {
         Ok(())
     }
 
+    /// Creates a CUC timestamp from a Chrono DateTime object.
     #[cfg(feature = "chrono")]
     pub fn from_chrono_date_time(
         dt: &chrono::DateTime<chrono::Utc>,
@@ -448,21 +477,25 @@ impl CucTime {
         })
     }
 
+    /// CCSDS time code.
     #[inline]
     pub fn ccsds_time_code(&self) -> CcsdsTimeCode {
         CcsdsTimeCode::CucCcsdsEpoch
     }
 
+    /// Width and counter pair.
     #[inline]
     pub fn width_counter_pair(&self) -> WidthCounterPair {
         self.counter
     }
 
+    /// Counter width.
     #[inline]
     pub fn counter_width(&self) -> u8 {
         self.counter.0
     }
 
+    /// Counter value.
     #[inline]
     pub fn counter(&self) -> u32 {
         self.counter.1
@@ -474,11 +507,13 @@ impl CucTime {
         self.fractions
     }
 
+    /// Convert to the leap seconds helper.
     #[inline]
     pub fn to_leap_sec_helper(&self, leap_seconds: u32) -> CucTimeWithLeapSecs {
         CucTimeWithLeapSecs::new(*self, leap_seconds)
     }
 
+    /// Set the fractional part.
     #[inline]
     pub fn set_fractions(&mut self, fractions: FractionalPart) -> Result<(), CucError> {
         Self::verify_fractions_value(fractions)?;
@@ -525,16 +560,19 @@ impl CucTime {
         self.pfield |= self.fractions.resolution() as u8;
     }
 
+    /// Length of the counter from the p-field.
     #[inline]
     pub fn len_cntr_from_pfield(pfield: u8) -> u8 {
         ((pfield >> 2) & 0b11) + 1
     }
 
+    /// Length of the fractional part from the p-field.
     #[inline]
     pub fn len_fractions_from_pfield(pfield: u8) -> u8 {
         pfield & 0b11
     }
 
+    /// UNIX seconds.
     #[inline]
     pub fn unix_secs(&self, leap_seconds: u32) -> i64 {
         ccsds_epoch_to_unix_epoch(self.counter.1 as i64)
@@ -542,6 +580,7 @@ impl CucTime {
             .unwrap()
     }
 
+    /// Subsecond milliseconds part of the CUC time.
     #[inline]
     pub fn subsec_millis(&self) -> u16 {
         (self.subsec_nanos() / 1_000_000) as u16
@@ -564,6 +603,7 @@ impl CucTime {
         )
     }
 
+    /// Packed length from the raw p-field.
     #[inline]
     pub fn len_packed_from_pfield(pfield: u8) -> usize {
         let mut base_len: usize = 1;

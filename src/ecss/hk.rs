@@ -9,13 +9,21 @@ use serde::{Deserialize, Serialize};
 #[repr(u8)]
 pub enum Subservice {
     // Regular HK
+    /// Telecommand - Create Housekeeping Report Structure.
     TcCreateHkReportStructure = 1,
+    /// Telecommand - Delete HK report structures.
     TcDeleteHkReportStructures = 3,
+    /// Telecommand - Enable HK generation.
     TcEnableHkGeneration = 5,
+    /// Telecommand - Disable HK generation.
     TcDisableHkGeneration = 6,
+    /// Telecommand - Report HK report structures.
     TcReportHkReportStructures = 9,
+    /// Telemetry - HK report.
     TmHkPacket = 25,
+    /// Telecommand - Generate one-shot report.
     TcGenerateOneShotHk = 27,
+    /// Telecommand - Modify collection interval.
     TcModifyHkCollectionInterval = 31,
 
     // Diagnostics HK

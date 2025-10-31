@@ -8,6 +8,7 @@ use std::string::String;
 
 use super::TlvLvDataTooLargeError;
 
+/// Minmum length of a CFDP length-value structure in bytes.
 pub const MIN_LV_LEN: usize = 1;
 
 /// Generic CFDP length-value (LV) abstraction as specified in CFDP 5.1.8.
@@ -63,8 +64,10 @@ pub(crate) fn generic_len_check_deserialization(
 }
 
 impl<'data> Lv<'data> {
+    /// Minimum length of a LV structure in bytes.
     pub const MIN_LEN: usize = MIN_LV_LEN;
 
+    /// Generic constructor.
     #[inline]
     pub fn new(data: &[u8]) -> Result<Lv<'_>, TlvLvDataTooLargeError> {
         if data.len() > u8::MAX as usize {
@@ -118,6 +121,7 @@ impl<'data> Lv<'data> {
         self.data.len() == 0
     }
 
+    /// Raw value part of the LV.
     #[inline]
     pub fn value(&self) -> &[u8] {
         self.data

@@ -19,9 +19,11 @@ use super::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError};
 
 pub mod msg_to_user;
 
+/// Minimum length of a type-length-value structure, including type and length fields.
 pub const MIN_TLV_LEN: usize = 2;
 
 pub trait GenericTlv {
+    /// TLV type field.
     fn tlv_type_field(&self) -> TlvTypeField;
 
     /// Checks whether the type field contains one of the standard types specified in the CFDP
@@ -45,7 +47,9 @@ pub trait GenericTlv {
     }
 }
 
+/// Readable TLV structure trait.
 pub trait ReadableTlv {
+    /// Value field of the TLV.
     fn value(&self) -> &[u8];
 
     /// Checks whether the value field is empty.
@@ -68,9 +72,15 @@ pub trait ReadableTlv {
     }
 }
 
+/// Writable TLV structure trait.
 pub trait WritableTlv {
+    /// Write the TLV to bytes.
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
+
+    /// Length of the written TLV.
     fn len_written(&self) -> usize;
+
+    /// Convenience method to write the TLV to an owned [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; self.len_written()];
@@ -79,16 +89,23 @@ pub trait WritableTlv {
     }
 }
 
+/// TLV type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum TlvType {
+    /// Filestore request.
     FilestoreRequest = 0x00,
+    /// Filestore response.
     FilestoreResponse = 0x01,
+    /// Message to user.
     MsgToUser = 0x02,
+    /// Fault handler.
     FaultHandler = 0x04,
+    /// Flow label.
     FlowLabel = 0x05,
+    /// Entity ID.
     EntityId = 0x06,
 }
 
