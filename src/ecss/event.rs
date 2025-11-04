@@ -3,10 +3,11 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Event service subtype ID.
 #[derive(Debug, Eq, PartialEq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
-pub enum Subservice {
+pub enum MessageSubtypeId {
     /// Telemetry - Info report.
     TmInfoReport = 1,
     /// Telemetry - Low severity report.
@@ -31,19 +32,19 @@ mod tests {
 
     #[test]
     fn test_conv_into_u8() {
-        let subservice: u8 = Subservice::TmLowSeverityReport.into();
+        let subservice: u8 = MessageSubtypeId::TmLowSeverityReport.into();
         assert_eq!(subservice, 2);
     }
 
     #[test]
     fn test_conv_from_u8() {
-        let subservice: Subservice = 2.try_into().unwrap();
-        assert_eq!(subservice, Subservice::TmLowSeverityReport);
+        let subservice: MessageSubtypeId = 2.try_into().unwrap();
+        assert_eq!(subservice, MessageSubtypeId::TmLowSeverityReport);
     }
 
     #[test]
     fn test_conv_fails() {
-        let conversion = Subservice::try_from(9);
+        let conversion = MessageSubtypeId::try_from(9);
         assert!(conversion.is_err());
         let err = conversion.unwrap_err();
         assert_eq!(err.number, 9);

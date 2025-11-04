@@ -1,4 +1,5 @@
 //! # Support of the CCSDS Unified Space Data Link Protocol (USLP)
+#![warn(missing_docs)]
 use crate::{crc::CRC_CCITT_FALSE, ByteConversionError};
 
 /// Only this version is supported by the library
@@ -17,6 +18,7 @@ pub enum SourceOrDestField {
     Dest = 1,
 }
 
+/// Bypass sequence control flag.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -30,6 +32,7 @@ pub enum BypassSequenceControlFlag {
     ExpeditedQoS = 1,
 }
 
+/// Protcol Control Command Flag.
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive,
 )]
@@ -37,55 +40,77 @@ pub enum BypassSequenceControlFlag {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum ProtocolControlCommandFlag {
+    /// Transfer frame data field contains user data.
     TfdfContainsUserData = 0,
+    /// Transfer frame data field contains protocol information.
     TfdfContainsProtocolInfo = 1,
 }
 
+/// USLP error enumeration.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UslpError {
+    /// Byte conversion error.
     #[error("byte conversion error: {0}")]
     ByteConversion(#[from] ByteConversionError),
+    /// Header is truncated, which is not supported.
     #[error("header is truncated, which is not supported")]
     HeaderIsTruncated,
+    /// Invalid protocol ID.
     #[error("invalid protocol id: {0}")]
     InvalidProtocolId(u8),
+    /// Invalid construction rule.
     #[error("invalid construction rule: {0}")]
     InvalidConstructionRule(u8),
+    /// Invalid version number.
     #[error("invalid version number: {0}")]
     InvalidVersionNumber(u8),
+    /// Invalid virtual channel ID.
     #[error("invalid virtual channel ID: {0}")]
     InvalidVcId(u8),
+    /// Invalid MAP ID.
     #[error("invalid MAP ID: {0}")]
     InvalidMapId(u8),
+    /// Checksum failure.
     #[error("checksum failure")]
     ChecksumFailure(u16),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+/// Invalid value for length.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct InvalidValueForLen {
+#[error("invalid value for length of the field")]
+pub struct InvalidValueForLenError {
     value: u64,
     len: u8,
 }
 
+/// Primary header of a USLP transfer frame.
 #[derive(Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PrimaryHeader {
+    /// Spacecraft ID.
     pub spacecraft_id: u16,
+    /// Source or destination identifier.
     pub source_or_dest_field: SourceOrDestField,
+    /// Virtual channel ID.
     pub vc_id: u8,
+    /// MAP ID.
     pub map_id: u8,
     frame_len_field: u16,
+    /// Bypass sequence control flag.
     pub sequence_control_flag: BypassSequenceControlFlag,
+    /// Procol control command flag.
     pub protocol_control_command_flag: ProtocolControlCommandFlag,
+    /// Operational control field flag.
     pub ocf_flag: bool,
     vc_frame_count_len: u8,
     vc_frame_count: u64,
 }
 
 impl PrimaryHeader {
+    /// Generic constructor.
     pub fn new(
         spacecraft_id: u16,
         source_or_dest_field: SourceOrDestField,
@@ -113,13 +138,14 @@ impl PrimaryHeader {
         })
     }
 
+    /// Set the virtual channel frame count.
     pub fn set_vc_frame_count(
         &mut self,
         count_len: u8,
         count: u64,
-    ) -> Result<(), InvalidValueForLen> {
+    ) -> Result<(), InvalidValueForLenError> {
         if count > 2_u64.pow(count_len as u32 * 8) - 1 {
-            return Err(InvalidValueForLen {
+            return Err(InvalidValueForLenError {
                 value: count,
                 len: count_len,
             });
@@ -129,16 +155,19 @@ impl PrimaryHeader {
         Ok(())
     }
 
+    /// Virtual channel frame count.
     #[inline]
     pub fn vc_frame_count(&self) -> u64 {
         self.vc_frame_count
     }
 
+    /// Length of the virtual channel frame count field.
     #[inline]
     pub fn vc_frame_count_len(&self) -> u8 {
         self.vc_frame_count_len
     }
 
+    /// Parse [Self] from raw bytes.
     pub fn from_bytes(buf: &[u8]) -> Result<Self, UslpError> {
         if buf.len() < 4 {
             return Err(ByteConversionError::FromSliceTooSmall {
@@ -207,6 +236,7 @@ impl PrimaryHeader {
         })
     }
 
+    /// Write primary header to bytes.
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.len_header() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -233,6 +263,7 @@ impl PrimaryHeader {
         Ok(self.len_header())
     }
 
+    /// Set frame length field.
     #[inline(always)]
     pub fn set_frame_len(&mut self, frame_len: usize) {
         // 4.1.2.7.2
@@ -241,11 +272,13 @@ impl PrimaryHeader {
         self.frame_len_field = frame_len.saturating_sub(1) as u16;
     }
 
+    /// Length of primary header when written to bytes.
     #[inline(always)]
     pub fn len_header(&self) -> usize {
         7 + self.vc_frame_count_len as usize
     }
 
+    /// Length of the entire frame.
     #[inline(always)]
     pub fn len_frame(&self) -> usize {
         // 4.1.2.7.2
@@ -271,6 +304,7 @@ impl PartialEq for PrimaryHeader {
     }
 }
 
+/// USLP protocol ID enumeration.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -278,6 +312,7 @@ impl PartialEq for PrimaryHeader {
 #[repr(u8)]
 #[non_exhaustive]
 pub enum UslpProtocolId {
+    /// Space packets or encapsulation packets.
     SpacePacketsOrEncapsulation = 0b00000,
     /// COP-1 control commands within the TFDZ.
     Cop1ControlCommands = 0b00001,
@@ -285,6 +320,7 @@ pub enum UslpProtocolId {
     CopPControlCommands = 0b00010,
     /// SDLS control commands within the TFDZ.
     Sdls = 0b00011,
+    /// User defined octet stream.
     UserDefinedOctetStream = 0b00100,
     /// Proximity-1 Supervisory Protocol Data Units (SPDUs) within the TFDZ.
     Spdu = 0b00111,
@@ -292,6 +328,7 @@ pub enum UslpProtocolId {
     Idle = 0b11111,
 }
 
+/// USLP construction rule enumeration.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -302,16 +339,25 @@ pub enum ConstructionRule {
     /// span transfer frame boundaries. The First Header Pointer (FHP) is required for packet
     /// extraction.
     PacketSpanningMultipleFrames = 0b000,
+    /// Start of a MAPA SDU or VCA SDU.
     StartOfMapaSduOrVcaSdu = 0b001,
+    /// Continuing portion of a MAPA SDU.
     ContinuingPortionOfMapaSdu = 0b010,
+    /// Octet stream.
     OctetStream = 0b011,
+    /// Starting segment.
     StartingSegment = 0b100,
+    /// Continuing segment.
     ContinuingSegment = 0b101,
+    /// Last segment.
     LastSegment = 0b110,
+    /// No segmentation.
     NoSegmentation = 0b111,
 }
 
 impl ConstructionRule {
+    /// Is the construction rule applicable to fixed-length TFDZs?
+    #[inline]
     pub const fn applicable_to_fixed_len_tfdz(&self) -> bool {
         match self {
             ConstructionRule::PacketSpanningMultipleFrames => true,
@@ -326,6 +372,7 @@ impl ConstructionRule {
     }
 }
 
+/// Transfer frame data field header.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TransferFrameDataFieldHeader {
     /// Construction rule for the TFDZ.
@@ -337,6 +384,7 @@ pub struct TransferFrameDataFieldHeader {
 }
 
 impl TransferFrameDataFieldHeader {
+    /// Length of the header when written to bytes.
     #[inline]
     pub const fn len_header(&self) -> usize {
         if self.construction_rule.applicable_to_fixed_len_tfdz() {
@@ -346,21 +394,25 @@ impl TransferFrameDataFieldHeader {
         }
     }
 
+    /// Construction rule.
     #[inline]
     pub const fn construction_rule(&self) -> ConstructionRule {
         self.construction_rule
     }
 
+    /// USLP protocol ID.
     #[inline]
     pub const fn uslp_protocol_id(&self) -> UslpProtocolId {
         self.uslp_protocol_id
     }
 
+    /// FHP or LVO field when present.
     #[inline]
     pub const fn fhp_or_lvo(&self) -> Option<u16> {
         self.fhp_or_lvo
     }
 
+    /// Parse [Self] from raw bytes.
     pub fn from_bytes(buf: &[u8]) -> Result<Self, UslpError> {
         if buf.is_empty() {
             return Err(ByteConversionError::FromSliceTooSmall {
@@ -451,29 +503,34 @@ impl<'buf> TransferFrameReader<'buf> {
         })
     }
 
+    /// Length of the entire frame.
     #[inline]
     pub fn len_frame(&self) -> usize {
         self.primary_header.len_frame()
     }
 
+    /// Primary header.
     #[inline]
     pub fn primary_header(&self) -> &PrimaryHeader {
         &self.primary_header
     }
 
+    /// Transfer frame data field header.
     #[inline]
     pub fn data_field_header(&self) -> &TransferFrameDataFieldHeader {
         &self.data_field_header
     }
 
+    /// Data contained in the transfer frame data field.
     #[inline]
     pub fn data(&self) -> &'buf [u8] {
         self.data
     }
 
+    /// Operational control field when present.
     #[inline]
-    pub fn operational_control_field(&self) -> &Option<u32> {
-        &self.operational_control_field
+    pub fn operational_control_field(&self) -> Option<u32> {
+        self.operational_control_field
     }
 }
 
@@ -705,11 +762,11 @@ mod tests {
         .unwrap();
         matches!(
             primary_header.set_vc_frame_count(0, 1).unwrap_err(),
-            InvalidValueForLen { value: 1, len: 0 }
+            InvalidValueForLenError { value: 1, len: 0 }
         );
         matches!(
             primary_header.set_vc_frame_count(1, 256).unwrap_err(),
-            InvalidValueForLen { value: 256, len: 1 }
+            InvalidValueForLenError { value: 256, len: 1 }
         );
     }
 

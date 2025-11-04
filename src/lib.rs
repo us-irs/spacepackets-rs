@@ -37,9 +37,9 @@
 //!  - [`timelib`](https://crates.io/crates/time): Add basic support for the `time` time library.
 //!  - [`defmt`](https://defmt.ferrous-systems.com/): Add support for the `defmt` by adding the
 //!    [`defmt::Format`](https://defmt.ferrous-systems.com/format) derive on many types.
-//!  - [`portable-atomic`]: Basic support for `portable-atomic` crate in addition to the support
-//!    for core atomic types. This support requires atomic CAS support enabled in the portable
-//!    atomic crate.
+//!  - [`portable-atomic`](https://github.com/taiki-e/portable-atomic): Basic support for
+//!    `portable-atomic` crate in addition to the support for core atomic types. This support
+//!    requires atomic CAS support enabled in the portable atomic crate.
 //!
 //! ## Module
 //!
@@ -61,8 +61,7 @@
 //! ```
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-// TODO: Add docs everywhere.
-//#![warn(missing_docs)]
+#![warn(missing_docs)]
 #[cfg(feature = "alloc")]
 extern crate alloc;
 #[cfg(any(feature = "std", test))]

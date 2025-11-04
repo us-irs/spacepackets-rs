@@ -1,5 +1,4 @@
 //! CCSDS Time Code Formats according to [CCSDS 301.0-B-4](https://public.ccsds.org/Pubs/301x0b4e1.pdf)
-#![warn(missing_docs)]
 use crate::ByteConversionError;
 #[cfg(feature = "chrono")]
 use chrono::{TimeZone, Utc};

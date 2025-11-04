@@ -74,33 +74,49 @@ enum AckOpts {
 
 /// Assuming 8 bytes of source ID and 7 bytes of spare.
 pub const MAX_SEC_HEADER_LEN: usize = 18;
+/// Maximum allowed number of space bytes.
 pub const MAX_SPARE_BYTES: usize = 7;
 
+/// Invalid number of spare bytes which must be between 0 and 7.
 #[derive(Debug, Eq, PartialEq, Copy, Clone, thiserror::Error)]
 #[error("invalid number of spare bytes, must be between 0 and 7")]
 pub struct InvalidNumberOfSpareBytesError;
 
+/// PUS version error.
 #[derive(Debug, Eq, PartialEq, Copy, Clone, thiserror::Error)]
 #[error("invalid version, expected PUS A (1), got {0}")]
 pub struct VersionError(pub u8);
 
+/// Trait for accessing PUS Telecommand secondary header fields.
 pub trait GenericPusTcSecondaryHeader {
+    /// PUS version number.
     fn pus_version(&self) -> Result<PusVersion, u4>;
+    /// Acknowledgment flags.
     fn ack_flags(&self) -> AckFlags;
+    /// Service type identifier.
     fn service(&self) -> u8;
+    /// Subservice type identifier.
     fn subservice(&self) -> u8;
+    /// Source ID.
     fn source_id(&self) -> Option<UnsignedByteField>;
+    /// Number of spare bytes.
     fn spare_bytes(&self) -> usize;
 }
 
+/// PUS TC secondary header.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcSecondaryHeader {
+    /// Service type identifier.
     pub service: u8,
+    /// Subservice type identifier.
     pub subservice: u8,
+    /// Source ID.
     pub source_id: Option<UnsignedByteField>,
+    /// Acknowledgment flags.
     pub ack: AckFlags,
+    /// PUS version.
     pub version: PusVersion,
     spare_bytes: usize,
 }
@@ -138,6 +154,8 @@ impl GenericPusTcSecondaryHeader for PusTcSecondaryHeader {
 }
 
 impl PusTcSecondaryHeader {
+    /// Constructor which allows modifying the service and subservice and sets
+    /// default values for the other fields.
     #[inline]
     pub fn new_simple(service: u8, subservice: u8) -> Self {
         PusTcSecondaryHeader {
@@ -150,6 +168,7 @@ impl PusTcSecondaryHeader {
         }
     }
 
+    /// Generic constructor.
     #[inline]
     pub fn new(
         service: u8,
@@ -176,6 +195,7 @@ impl PusTcSecondaryHeader {
         self.spare_bytes = spare_bytes;
     }
 
+    /// Length of the written secondary header in bytes.
     pub fn written_len(&self) -> usize {
         let mut len = 3 + self.spare_bytes;
         if let Some(source_id) = self.source_id {
@@ -184,6 +204,7 @@ impl PusTcSecondaryHeader {
         len
     }
 
+    /// Converts the secondary header into a vector of bytes.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> Result<Vec<u8>, ByteConversionError> {
         let mut buf = alloc::vec![0; self.written_len()];
@@ -191,6 +212,7 @@ impl PusTcSecondaryHeader {
         Ok(buf)
     }
 
+    /// Write the secondary header to a provided buffer.
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         if buf.len() < self.written_len() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -216,6 +238,7 @@ impl PusTcSecondaryHeader {
         Ok(current_idx)
     }
 
+    /// Read the secondary header from a raw byte slice.
     pub fn from_bytes(
         data: &[u8],
         source_id_size: Option<usize>,
@@ -268,6 +291,7 @@ impl PusTcSecondaryHeader {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcCreator<'app_data> {
     sp_header: SpHeader,
+    /// Secondary header.
     pub sec_header: PusTcSecondaryHeader,
     app_data: &'app_data [u8],
 }
@@ -323,6 +347,7 @@ impl<'app_data> PusTcCreator<'app_data> {
         )
     }
 
+    /// Constructor without application data.
     #[inline]
     pub fn new_no_app_data(
         sp_header: SpHeader,
@@ -332,26 +357,31 @@ impl<'app_data> PusTcCreator<'app_data> {
         Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
 
+    /// Space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 
+    /// Mutable access to the space packet header.
     #[inline]
     pub fn sp_header_mut(&mut self) -> &mut SpHeader {
         &mut self.sp_header
     }
 
+    /// Set the acknowledgment flags.
     #[inline]
     pub fn set_ack_field(&mut self, ack: AckFlags) {
         self.sec_header.ack = ack;
     }
 
+    /// Set the source ID.
     #[inline]
     pub fn set_source_id(&mut self, source_id: Option<UnsignedByteField>) {
         self.sec_header.source_id = source_id;
     }
 
+    /// Application data slice.
     #[inline]
     pub fn app_data(&'app_data self) -> &'app_data [u8] {
         self.user_data()
@@ -397,6 +427,7 @@ impl<'app_data> PusTcCreator<'app_data> {
         digest.finalize()
     }
 
+    /// Append the raw PUS byte representation to a provided vector.
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> usize {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -616,6 +647,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         })
     }
 
+    /// Length of the written TC packet.
     #[inline]
     pub const fn len_written(&self) -> usize {
         self.full_len
@@ -633,6 +665,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         &self.buf[self.app_data_offset..self.full_len - 2]
     }
 
+    /// Application data length.
     #[inline]
     pub fn app_data_len(&self) -> usize {
         self.full_len - 2 - self.app_data_offset
@@ -757,26 +790,31 @@ impl<'raw_data> PusTcReader<'raw_data> {
         })
     }
 
+    /// Application data slice.
     #[inline]
     pub fn app_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    /// Full raw data slice.
     #[inline]
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
 
+    /// Length of the packed PUS TC packet in bytes.
     #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.packet_len()
     }
 
+    /// Space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 
+    /// CRC16 checksum value.
     #[inline]
     pub fn crc16(&self) -> u16 {
         self.crc16

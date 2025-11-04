@@ -44,7 +44,7 @@ pub trait SequenceCounter {
     }
 }
 
-/// Simple sequence counter which wraps at [T::MAX].
+/// Simple sequence counter which wraps at ´T::MAX´.
 #[derive(Clone)]
 pub struct SequenceCounterSimple<T: Copy> {
     seq_count: Cell<T>,
