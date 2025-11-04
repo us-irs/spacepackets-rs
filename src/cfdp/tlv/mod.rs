@@ -22,6 +22,7 @@ pub mod msg_to_user;
 /// Minimum length of a type-length-value structure, including type and length fields.
 pub const MIN_TLV_LEN: usize = 2;
 
+/// Trait for generic TLV structures.
 pub trait GenericTlv {
     /// TLV type field.
     fn tlv_type_field(&self) -> TlvTypeField;
@@ -109,21 +110,30 @@ pub enum TlvType {
     EntityId = 0x06,
 }
 
+/// TLV type field variants.
+///
+/// This allows specifying custom variants as well.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum TlvTypeField {
+    /// Standard TLV types.
     Standard(TlvType),
+    /// Custom TLV type.
     Custom(u8),
 }
 
+/// Filestore action codes as specified in the standard.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FilestoreActionCode {
+    /// Create file.
     CreateFile = 0b0000,
+    /// Delete file.
     DeleteFile = 0b0001,
+    /// Rename file.
     RenameFile = 0b0010,
     /// This operation appends one file to another. The first specified name will form the first
     /// part of the new file and the name of the new file. This function can be used to get
@@ -132,9 +142,13 @@ pub enum FilestoreActionCode {
     /// This operation replaces the content of the first specified file with the content of
     /// the secondly specified file.
     ReplaceFile = 0b0100,
+    /// Create directory.
     CreateDirectory = 0b0101,
+    /// Remove directory.
     RemoveDirectory = 0b0110,
+    /// Deny file.
     DenyFile = 0b0111,
+    /// Deny directory.
     DenyDirectory = 0b1000,
 }
 
@@ -175,8 +189,10 @@ pub struct Tlv<'data> {
 }
 
 impl<'data> Tlv<'data> {
+    /// Minimum length of a TLV structure, including type and length fields.
     pub const MIN_LEN: usize = MIN_TLV_LEN;
 
+    /// Generic constructor for a TLV structure.
     pub fn new(tlv_type: TlvType, data: &[u8]) -> Result<Tlv<'_>, TlvLvDataTooLargeError> {
         Ok(Tlv {
             tlv_type_field: TlvTypeField::Standard(tlv_type),
@@ -184,6 +200,7 @@ impl<'data> Tlv<'data> {
         })
     }
 
+    /// Constructor for a TLV with a custom type field.
     pub fn new_with_custom_type(
         tlv_type: u8,
         data: &[u8],
@@ -225,6 +242,7 @@ impl<'data> Tlv<'data> {
         self.lv.raw_data()
     }
 
+    /// Converts to an owned TLV variant, allocating memory for the value field.
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
         TlvOwned {
@@ -268,6 +286,7 @@ impl GenericTlv for Tlv<'_> {
     }
 }
 
+/// Component of the TLV module which require [alloc] support.
 #[cfg(feature = "alloc")]
 pub mod alloc_mod {
     use super::*;
@@ -283,6 +302,7 @@ pub mod alloc_mod {
     }
 
     impl TlvOwned {
+        /// Generic constructor.
         pub fn new(tlv_type: TlvType, data: &[u8]) -> Self {
             Self {
                 tlv_type_field: TlvTypeField::Standard(tlv_type),
@@ -290,6 +310,7 @@ pub mod alloc_mod {
             }
         }
 
+        /// Generic constructor with a custom TLV type.
         pub fn new_with_custom_type(tlv_type: u8, data: &[u8]) -> Self {
             Self {
                 tlv_type_field: TlvTypeField::Custom(tlv_type),
@@ -305,6 +326,7 @@ pub mod alloc_mod {
             }
         }
 
+        /// Write to a byte slice.
         pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
             generic_len_check_data_serialization(buf, self.data.len(), MIN_TLV_LEN)?;
             buf[0] = self.tlv_type_field.into();
@@ -318,6 +340,7 @@ pub mod alloc_mod {
             self.data.len() + 2
         }
 
+        /// Convert to [Tlv]
         pub fn as_tlv(&self) -> Tlv<'_> {
             Tlv {
                 tlv_type_field: self.tlv_type_field,
@@ -366,6 +389,7 @@ pub mod alloc_mod {
     }
 }
 
+/// Entity ID TLV.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -374,6 +398,7 @@ pub struct EntityIdTlv {
 }
 
 impl EntityIdTlv {
+    /// Constructor.
     #[inline]
     pub fn new(entity_id: UnsignedByteField) -> Self {
         Self { entity_id }
@@ -389,21 +414,25 @@ impl EntityIdTlv {
         Ok(())
     }
 
+    /// Entity ID.
     #[inline]
     pub fn entity_id(&self) -> &UnsignedByteField {
         &self.entity_id
     }
 
+    /// Length of the value field.
     #[inline]
     pub fn len_value(&self) -> usize {
         self.entity_id.size()
     }
 
+    /// Full length of the TLV, including type and length fields.
     #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.entity_id.size()
     }
 
+    /// Create from a raw bytestream.
     pub fn from_bytes(buf: &[u8]) -> Result<Self, TlvLvError> {
         Self::len_check(buf)?;
         verify_tlv_type(buf[0], TlvType::EntityId)?;
@@ -495,6 +524,7 @@ impl TryFrom<Tlv<'_>> for EntityIdTlv {
     }
 }
 
+/// Does the [FilestoreActionCode] have a second filename?
 #[inline]
 pub fn fs_request_has_second_filename(action_code: FilestoreActionCode) -> bool {
     if action_code == FilestoreActionCode::RenameFile
@@ -528,6 +558,7 @@ impl FilestoreTlvBase<'_, '_> {
     }
 }
 
+/// Filestore request TLV.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct FilestoreRequestTlv<'first_name, 'second_name> {
@@ -536,14 +567,17 @@ pub struct FilestoreRequestTlv<'first_name, 'second_name> {
 }
 
 impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
+    /// Constructor for file creation.
     pub fn new_create_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::CreateFile, file_name, None)
     }
 
+    /// Constructor for file deletion.
     pub fn new_delete_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::DeleteFile, file_name, None)
     }
 
+    /// Constructor for file renaming.
     pub fn new_rename_file(
         source_name: Lv<'first_name>,
         target_name: Lv<'second_name>,
@@ -583,18 +617,22 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         )
     }
 
+    /// Constructor for directory creation.
     pub fn new_create_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::CreateDirectory, dir_name, None)
     }
 
+    /// Constructor for directory removal.
     pub fn new_remove_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::RemoveDirectory, dir_name, None)
     }
 
+    /// Constructor for file denial.
     pub fn new_deny_file(file_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::DenyFile, file_name, None)
     }
 
+    /// Constructor for directory denial.
     pub fn new_deny_directory(dir_name: Lv<'first_name>) -> Result<Self, TlvLvError> {
         Self::new(FilestoreActionCode::DenyDirectory, dir_name, None)
     }
@@ -628,31 +666,37 @@ impl<'first_name, 'second_name> FilestoreRequestTlv<'first_name, 'second_name> {
         })
     }
 
+    /// Action code.
     #[inline]
     pub fn action_code(&self) -> FilestoreActionCode {
         self.base.action_code
     }
 
+    /// First name as [Lv].
     #[inline]
     pub fn first_name(&self) -> Lv<'first_name> {
         self.base.first_name
     }
 
+    /// First name as optional [Lv].
     #[inline]
     pub fn second_name(&self) -> Option<Lv<'second_name>> {
         self.base.second_name
     }
 
+    /// Length of the value field.
     #[inline]
     pub fn len_value(&self) -> usize {
         self.base.base_len_value()
     }
 
+    /// Full TLV length.
     #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.len_value()
     }
 
+    /// Construct from a raw bytestream.
     pub fn from_bytes<'longest: 'first_name + 'second_name>(
         buf: &'longest [u8],
     ) -> Result<Self, TlvLvError> {
@@ -737,6 +781,7 @@ impl GenericTlv for FilestoreRequestTlv<'_, '_> {
     }
 }
 
+/// Filestore response TLV.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -768,6 +813,8 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
             Lv::new_empty(),
         )
     }
+
+    /// Generic constructor.
     pub fn new(
         action_code: FilestoreActionCode,
         status_code: u8,
@@ -796,6 +843,7 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         })
     }
 
+    /// Check whether this response has a second filename.
     pub fn has_second_filename(action_code: FilestoreActionCode) -> bool {
         if action_code == FilestoreActionCode::RenameFile
             || action_code == FilestoreActionCode::AppendFile
@@ -806,36 +854,43 @@ impl<'first_name, 'second_name, 'fs_msg> FilestoreResponseTlv<'first_name, 'seco
         false
     }
 
+    /// Action code.
     #[inline]
     pub fn action_code(&self) -> FilestoreActionCode {
         self.base.action_code
     }
 
+    /// Status code.
     #[inline]
     pub fn status_code(&self) -> u8 {
         self.status_code
     }
 
+    /// First name as [Lv].
     #[inline]
     pub fn first_name(&self) -> Lv<'first_name> {
         self.base.first_name
     }
 
+    /// Optional second name as [Lv].
     #[inline]
     pub fn second_name(&self) -> Option<Lv<'second_name>> {
         self.base.second_name
     }
 
+    /// Length of the value field.
     #[inline]
     pub fn len_value(&self) -> usize {
         self.base.base_len_value() + self.filestore_message.len_full()
     }
 
+    /// Full length of the TLV.
     #[inline]
     pub fn len_full(&self) -> usize {
         2 + self.len_value()
     }
 
+    /// Construct from a raw bytestream.
     pub fn from_bytes<'buf: 'first_name + 'second_name + 'fs_msg>(
         buf: &'buf [u8],
     ) -> Result<Self, TlvLvError> {

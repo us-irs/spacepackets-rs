@@ -183,7 +183,7 @@ impl<'data> Lv<'data> {
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use alloc::string::ToString;
 
     use super::*;

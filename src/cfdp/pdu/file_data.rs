@@ -1,3 +1,4 @@
+//! # File Data PDU packet implementation
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     PduError, PduHeader,
@@ -10,18 +11,24 @@ use serde::{Deserialize, Serialize};
 
 use super::{CfdpPdu, FileDirectiveType, WritablePduPacket};
 
+/// Record continuation state for segment metadata.
 #[derive(Debug, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[bitbybit::bitenum(u2, exhaustive = true)]
 #[repr(u8)]
 pub enum RecordContinuationState {
+    /// No start and no end.
     NoStartNoEnd = 0b00,
+    /// Start without end.
     StartWithoutEnd = 0b01,
+    /// End without start.
     EndWithoutStart = 0b10,
+    /// Start and end.
     StartAndEnd = 0b11,
 }
 
+/// Segment metadata structure.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SegmentMetadata<'seg_meta> {
@@ -30,6 +37,7 @@ pub struct SegmentMetadata<'seg_meta> {
 }
 
 impl<'seg_meta> SegmentMetadata<'seg_meta> {
+    /// Constructor.
     pub fn new(
         record_continuation_state: RecordContinuationState,
         metadata: Option<&'seg_meta [u8]>,
@@ -45,16 +53,19 @@ impl<'seg_meta> SegmentMetadata<'seg_meta> {
         })
     }
 
+    /// Record continuation state.
     #[inline]
     pub fn record_continuation_state(&self) -> RecordContinuationState {
         self.record_continuation_state
     }
 
+    /// Raw metadata slice.
     #[inline]
     pub fn metadata(&self) -> Option<&'seg_meta [u8]> {
         self.metadata
     }
 
+    /// Length of the written segment metadata structure.
     #[inline]
     pub fn len_written(&self) -> usize {
         // Map empty metadata to 0 and slice to its length.
@@ -169,24 +180,27 @@ pub struct FileDataPdu<'seg_meta, 'file_data> {
 }
 
 impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
+    /// Constructor for a file data PDU including segment metadata.
     pub fn new_with_seg_metadata(
         pdu_header: PduHeader,
         segment_metadata: SegmentMetadata<'seg_meta>,
         offset: u64,
         file_data: &'file_data [u8],
     ) -> Self {
-        Self::new_generic(pdu_header, Some(segment_metadata), offset, file_data)
+        Self::new(pdu_header, Some(segment_metadata), offset, file_data)
     }
 
+    /// Constructor for a file data PDU without segment metadata.
     pub fn new_no_seg_metadata(
         pdu_header: PduHeader,
         offset: u64,
         file_data: &'file_data [u8],
     ) -> Self {
-        Self::new_generic(pdu_header, None, offset, file_data)
+        Self::new(pdu_header, None, offset, file_data)
     }
 
-    pub fn new_generic(
+    /// Generic constructor for a file data PDU.
+    pub fn new(
         mut pdu_header: PduHeader,
         segment_metadata: Option<SegmentMetadata<'seg_meta>>,
         offset: u64,
@@ -213,26 +227,31 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
             .calc_pdu_datafield_len(self.file_data.len() as u64)
     }
 
+    /// Optional segment metadata.
     #[inline]
     pub fn segment_metadata(&self) -> Option<&SegmentMetadata<'_>> {
         self.common.segment_metadata.as_ref()
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         self.common.pdu_header()
     }
 
+    /// File data offset.
     #[inline]
     pub fn offset(&self) -> u64 {
         self.common.offset
     }
 
+    /// File data.
     #[inline]
     pub fn file_data(&self) -> &'file_data [u8] {
         self.file_data
     }
 
+    /// Read [Self] from the provided buffer.
     pub fn from_bytes<'buf: 'seg_meta + 'file_data>(buf: &'buf [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -281,6 +300,7 @@ impl<'seg_meta, 'file_data> FileDataPdu<'seg_meta, 'file_data> {
         Ok(current_idx)
     }
 
+    /// Length of the written PDU.
     pub fn len_written(&self) -> usize {
         self.common.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -323,20 +343,23 @@ pub struct FileDataPduCreatorWithReservedDatafield<'seg_meta> {
 }
 
 impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
+    /// Constructor for a file data PDU including segment metadata.
     pub fn new_with_seg_metadata(
         pdu_header: PduHeader,
         segment_metadata: SegmentMetadata<'seg_meta>,
         offset: u64,
         file_data_len: u64,
     ) -> Self {
-        Self::new_generic(pdu_header, Some(segment_metadata), offset, file_data_len)
+        Self::new(pdu_header, Some(segment_metadata), offset, file_data_len)
     }
 
+    /// Constructor for a file data PDU without segment metadata.
     pub fn new_no_seg_metadata(pdu_header: PduHeader, offset: u64, file_data_len: u64) -> Self {
-        Self::new_generic(pdu_header, None, offset, file_data_len)
+        Self::new(pdu_header, None, offset, file_data_len)
     }
 
-    pub fn new_generic(
+    /// Generic constructor.
+    pub fn new(
         mut pdu_header: PduHeader,
         segment_metadata: Option<SegmentMetadata<'seg_meta>>,
         offset: u64,
@@ -362,6 +385,7 @@ impl<'seg_meta> FileDataPduCreatorWithReservedDatafield<'seg_meta> {
         self.common.calc_pdu_datafield_len(self.file_data_len)
     }
 
+    /// Length of the written PDU.
     pub fn len_written(&self) -> usize {
         self.common.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -423,6 +447,7 @@ pub struct FileDataPduCreatorWithUnwrittenData<'buf> {
 }
 
 impl FileDataPduCreatorWithUnwrittenData<'_> {
+    /// Mutable access to the file data field.
     pub fn file_data_field_mut(&mut self) -> &mut [u8] {
         &mut self.write_buf[self.file_data_offset as usize
             ..self.file_data_offset as usize + self.file_data_len as usize]

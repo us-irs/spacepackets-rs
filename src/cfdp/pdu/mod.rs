@@ -15,24 +15,34 @@ pub mod finished;
 pub mod metadata;
 pub mod nak;
 
+/// File directive type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FileDirectiveType {
-    EofPdu = 0x04,
-    FinishedPdu = 0x05,
-    AckPdu = 0x06,
-    MetadataPdu = 0x07,
-    NakPdu = 0x08,
-    PromptPdu = 0x09,
-    KeepAlivePdu = 0x0c,
+    /// EOF.
+    Eof = 0x04,
+    /// Finished.
+    Finished = 0x05,
+    /// ACK.
+    Ack = 0x06,
+    /// Metadata.
+    Metadata = 0x07,
+    /// NAK.
+    Nak = 0x08,
+    /// Prompt.
+    Prompt = 0x09,
+    /// Keep Alive.
+    KeepAlive = 0x0c,
 }
 
+/// PDU error.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum PduError {
+    /// Byte conversion error.
     #[error("byte conversion error: {0}")]
     ByteConversion(#[from] ByteConversionError),
     /// Found version ID invalid, not equal to [super::CFDP_VERSION_2].
@@ -44,27 +54,35 @@ pub enum PduError {
     /// Invalid length for the entity ID detected. Only the values 1, 2, 4 and 8 are supported.
     #[error("invalid transaction ID length {0}")]
     InvalidTransactionSeqNumLen(u8),
+    /// Source and destination entity ID lengths do not match.
     #[error(
         "missmatch of PDU source ID length {src_id_len} and destination ID length {dest_id_len}"
     )]
     SourceDestIdLenMissmatch {
+        /// Source ID length.
         src_id_len: usize,
+        /// Destination ID length.
         dest_id_len: usize,
     },
     /// Wrong directive type, for example when parsing the directive field for a file directive
     /// PDU.
     #[error("wrong directive type, found {found:?}, expected {expected:?}")]
     WrongDirectiveType {
+        /// Found directive type.
         found: FileDirectiveType,
+        /// Expected directive type.
         expected: FileDirectiveType,
     },
     /// The directive type field contained a value not in the range of permitted values. This can
     /// also happen if an invalid value is passed to the ACK PDU reader.
     #[error("invalid directive type, found {found:?}, expected {expected:?}")]
     InvalidDirectiveType {
+        /// Found raw directive type.
         found: u8,
+        /// Expected raw directive type if applicable.
         expected: Option<FileDirectiveType>,
     },
+    /// Invalid start or end of scope for a NAK PDU.
     #[error("nak pdu: {0}")]
     InvalidStartOrEndOfScope(#[from] InvalidStartOrEndOfScopeError),
     /// Invalid condition code. Contains the raw detected value.
@@ -74,6 +92,7 @@ pub enum PduError {
     /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/).
     #[error("invalid checksum type {0}")]
     InvalidChecksumType(u8),
+    /// File size is too large.
     #[error("file size {0} too large")]
     FileSizeTooLarge(u64),
     /// If the CRC flag for a PDU is enabled and the checksum check fails. Contains raw 16-bit CRC.
@@ -96,9 +115,15 @@ impl From<InvalidAckedDirectiveCodeError> for PduError {
     }
 }
 
+/// Generic trait for a PDU which can be written to bytes.
 pub trait WritablePduPacket {
+    /// Length when written to bytes.
     fn len_written(&self) -> usize;
+
+    /// Write the PDU to a raw buffer, returning the written length.
     fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError>;
+
+    /// Convert the PDU to an owned vector of bytes.
     #[cfg(feature = "alloc")]
     fn to_vec(&self) -> Result<Vec<u8>, PduError> {
         // This is the correct way to do this. See
@@ -112,48 +137,58 @@ pub trait WritablePduPacket {
 
 /// Abstraction trait for fields and properties common for all PDUs.
 pub trait CfdpPdu {
+    /// PDU header.
     fn pdu_header(&self) -> &PduHeader;
 
+    /// Source ID (file sender).
     #[inline]
     fn source_id(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().source_entity_id
     }
 
+    /// Destination ID (file sender).
     #[inline]
     fn dest_id(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().dest_entity_id
     }
 
+    /// Transaction sequence number.
     #[inline]
     fn transaction_seq_num(&self) -> UnsignedByteField {
         self.pdu_header().common_pdu_conf().transaction_seq_num
     }
 
+    /// Transmission mode.
     #[inline]
     fn transmission_mode(&self) -> TransmissionMode {
         self.pdu_header().common_pdu_conf().trans_mode
     }
 
+    /// Direction.
     #[inline]
     fn direction(&self) -> Direction {
         self.pdu_header().common_pdu_conf().direction
     }
 
+    /// CRC flag.
     #[inline]
     fn crc_flag(&self) -> CrcFlag {
         self.pdu_header().common_pdu_conf().crc_flag
     }
 
+    /// File flag.
     #[inline]
     fn file_flag(&self) -> LargeFileFlag {
         self.pdu_header().common_pdu_conf().file_flag
     }
 
+    /// PDU type.
     #[inline]
     fn pdu_type(&self) -> PduType {
         self.pdu_header().pdu_type()
     }
 
+    /// File directive type when applicable.
     fn file_directive_type(&self) -> Option<FileDirectiveType>;
 }
 
@@ -169,15 +204,21 @@ pub trait CfdpPdu {
 pub struct CommonPduConfig {
     source_entity_id: UnsignedByteField,
     dest_entity_id: UnsignedByteField,
+    /// Transaction sequence number.
     pub transaction_seq_num: UnsignedByteField,
+    /// Transmission mode.
     pub trans_mode: TransmissionMode,
+    /// File flag.
     pub file_flag: LargeFileFlag,
+    /// CRC flag.
     pub crc_flag: CrcFlag,
+    /// Direction.
     pub direction: Direction,
 }
 
 // TODO: Builder pattern might be applicable here..
 impl CommonPduConfig {
+    /// Generic constructor.
     #[inline]
     pub fn new(
         source_id: impl Into<UnsignedByteField>,
@@ -210,6 +251,7 @@ impl CommonPduConfig {
         })
     }
 
+    /// Constructor for custom byte field with default field values for the other fields.
     #[inline]
     pub fn new_with_byte_fields(
         source_id: impl Into<UnsignedByteField>,
@@ -227,6 +269,7 @@ impl CommonPduConfig {
         )
     }
 
+    /// Source ID (file sender).
     #[inline]
     pub fn source_id(&self) -> UnsignedByteField {
         self.source_entity_id
@@ -255,6 +298,7 @@ impl CommonPduConfig {
         Ok((source_id, dest_id))
     }
 
+    /// Set the source and destination ID field.
     #[inline]
     pub fn set_source_and_dest_id(
         &mut self,
@@ -267,6 +311,7 @@ impl CommonPduConfig {
         Ok(())
     }
 
+    /// Destination ID (file receiver).
     #[inline]
     pub fn dest_id(&self) -> UnsignedByteField {
         self.dest_entity_id
@@ -305,6 +350,7 @@ impl PartialEq for CommonPduConfig {
     }
 }
 
+/// Fixed header length of the PDU header.
 pub const FIXED_HEADER_LEN: usize = 4;
 
 /// Abstraction for the PDU header common to all CFDP PDUs.
@@ -322,8 +368,10 @@ pub struct PduHeader {
 }
 
 impl PduHeader {
+    /// Fixed length of the PDU header when written to a raw buffer.
     pub const FIXED_LEN: usize = FIXED_HEADER_LEN;
 
+    /// Constructor for a File Data PDU header.
     #[inline]
     pub fn new_for_file_data(
         pdu_conf: CommonPduConfig,
@@ -340,6 +388,7 @@ impl PduHeader {
         )
     }
 
+    /// Constructor for a file data PDU.
     #[inline]
     pub fn new_for_file_data_default(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         Self::new_generic(
@@ -351,6 +400,7 @@ impl PduHeader {
         )
     }
 
+    /// Constructor for a file directive PDU.
     #[inline]
     pub fn new_for_file_directive(pdu_conf: CommonPduConfig, pdu_datafield_len: u16) -> Self {
         Self::new_generic(
@@ -362,6 +412,7 @@ impl PduHeader {
         )
     }
 
+    /// Constructor from a given [CommonPduConfig] and for a file directive PDU.
     #[inline]
     pub fn from_pdu_conf_for_file_directive(pdu_conf: CommonPduConfig) -> Self {
         Self::new_generic(
@@ -373,6 +424,7 @@ impl PduHeader {
         )
     }
 
+    /// Generic constructor.
     #[inline]
     pub fn new_generic(
         pdu_type: PduType,
@@ -399,6 +451,7 @@ impl PduHeader {
             + self.pdu_conf.dest_entity_id.size()
     }
 
+    /// PDU data field length.
     #[inline]
     pub fn pdu_datafield_len(&self) -> usize {
         self.pdu_datafield_len.into()
@@ -411,6 +464,7 @@ impl PduHeader {
         self.header_len() + self.pdu_datafield_len as usize
     }
 
+    /// Write the header to a raw buffer, returning the written length on success.
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         // The API does not allow passing entity IDs with different sizes, so this should
         // never happen.
@@ -578,21 +632,25 @@ impl PduHeader {
         ))
     }
 
+    /// PDU type.
     #[inline]
     pub fn pdu_type(&self) -> PduType {
         self.pdu_type
     }
 
+    /// Common PDU configuration fields.
     #[inline]
     pub fn common_pdu_conf(&self) -> &CommonPduConfig {
         &self.pdu_conf
     }
 
+    /// Segment metadata flag.
     #[inline]
     pub fn seg_metadata_flag(&self) -> SegmentMetadataFlag {
         self.seg_metadata_flag
     }
 
+    /// Segmentation Control.
     #[inline]
     pub fn seg_ctrl(&self) -> SegmentationControl {
         self.seg_ctrl

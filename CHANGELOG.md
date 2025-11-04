@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Changed
 
 - `CdsCommon` renamed to `CdsBase`
+- cfdp: Removed `FileDirectiveType` variant `*Pdu` suffix
 - Simplified CDS short timestamp, contains one less field which reduced serialization length.
 - Renamed `UnsignedEnum::value` to `UnsignedEnum::value_raw`, `value` is reserved for the `const`
   value getter.

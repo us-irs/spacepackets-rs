@@ -106,7 +106,7 @@ pub const MAX_SEQ_COUNT: u14 = u14::MAX;
 pub enum ChecksumType {
     /// Check the default CRC16-CCITT checksum.
     WithCrc16,
-    /// Packet has a CRC16 which should be ignored. 
+    /// Packet has a CRC16 which should be ignored.
     ///
     /// It is either not generated for packet creation or ignored when reading a packet.
     WithCrc16ButIgnored,
