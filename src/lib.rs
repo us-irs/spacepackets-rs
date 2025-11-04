@@ -1547,8 +1547,8 @@ impl<'buf> CcsdsPacketReader<'buf> {
         let sp_header = SpHeader::from_be_bytes(&buf[0..CCSDS_HEADER_LEN])?.0;
         if sp_header.packet_len() > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall {
-                found: sp_header.packet_len(),
-                expected: buf.len(),
+                found: buf.len(),
+                expected: sp_header.packet_len(),
             }
             .into());
         }
