@@ -675,6 +675,12 @@ impl SpacePacketHeader {
         self.packet_id.packet_type = packet_type;
     }
 
+    /// Application Process ID (APID) field.
+    #[inline]
+    pub fn apid(&self) -> u11 {
+        self.packet_id.apid
+    }
+
     /// Create a struct from a raw slice where the fields have network endianness (big).
     /// This function also returns the remaining part of the passed slice starting past the read
     /// CCSDS header.
