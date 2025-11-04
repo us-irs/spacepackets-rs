@@ -1383,6 +1383,9 @@ impl CcsdsPacket for CcsdsPacketCreator<'_> {
 
 /// CCSDS packet creator variant which owns the packet data.
 #[cfg(feature = "alloc")]
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CcsdsPacketCreatorOwned {
     common: CcsdsPacketCreatorCommon,
     packet_data: alloc::vec::Vec<u8>,
