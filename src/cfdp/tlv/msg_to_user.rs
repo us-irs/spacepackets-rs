@@ -8,8 +8,10 @@ use crate::{
 };
 use delegate::delegate;
 
+/// Message To User TLV structure.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct MsgToUserTlv<'data> {
+    /// Wrapped generic TLV structure.
     pub tlv: Tlv<'data>,
 }
 
@@ -23,7 +25,9 @@ impl<'data> MsgToUserTlv<'data> {
 
     delegate! {
         to self.tlv {
+            /// Value field of the TLV.
             pub fn value(&self) -> &[u8];
+
             /// Helper method to retrieve the length of the value. Simply calls the [slice::len] method of
             /// [Self::value]
             pub fn len_value(&self) -> usize;
@@ -37,14 +41,16 @@ impl<'data> MsgToUserTlv<'data> {
         }
     }
 
+    /// Is this a standard TLV?
     #[inline]
     pub fn is_standard_tlv(&self) -> bool {
         true
     }
 
+    /// TLV type field.
     #[inline]
-    pub fn tlv_type(&self) -> Option<TlvType> {
-        Some(TlvType::MsgToUser)
+    pub fn tlv_type(&self) -> TlvType {
+        TlvType::MsgToUser
     }
 
     /// Check whether this message is a reserved CFDP message like a Proxy Operation Message.
@@ -85,11 +91,13 @@ impl<'data> MsgToUserTlv<'data> {
         Ok(msg_to_user)
     }
 
+    /// Convert to a generic [Tlv].
     #[inline]
     pub fn to_tlv(&self) -> Tlv<'data> {
         self.tlv
     }
 
+    /// Convert to an [TlvOwned].
     #[cfg(feature = "alloc")]
     pub fn to_owned(&self) -> TlvOwned {
         self.tlv.to_owned()
@@ -102,6 +110,7 @@ impl<'data> MsgToUserTlv<'data> {
 
     delegate!(
         to self.tlv {
+            /// Write the TLV to a byte buffer.
             pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError>;
         }
     );
@@ -142,7 +151,7 @@ mod tests {
         assert!(msg_to_user.is_ok());
         let msg_to_user = msg_to_user.unwrap();
         assert!(msg_to_user.is_standard_tlv());
-        assert_eq!(msg_to_user.tlv_type().unwrap(), TlvType::MsgToUser);
+        assert_eq!(msg_to_user.tlv_type(), TlvType::MsgToUser);
         assert_eq!(
             msg_to_user.tlv_type_field(),
             TlvTypeField::Standard(TlvType::MsgToUser)

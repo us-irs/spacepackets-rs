@@ -1,3 +1,4 @@
+//! # Finished PDU packet implementation.
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
 };
@@ -13,23 +14,31 @@ use serde::{Deserialize, Serialize};
 use super::tlv::ReadableTlv;
 use super::{CfdpPdu, InvalidTlvTypeFieldError, WritablePduPacket};
 
+/// Delivery code enumeration.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum DeliveryCode {
+    /// Completed delivery.
     Complete = 0,
+    /// Incomplete delivery.
     Incomplete = 1,
 }
 
+/// File status enumeration.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum FileStatus {
+    /// File was discarded deliberately.
     DiscardDeliberately = 0b00,
+    /// File was rejected by the filestore.
     DiscardedFsRejection = 0b01,
+    /// File was retained (but not necesarilly complete).
     Retained = 0b10,
+    /// Unreported file status.
     Unreported = 0b11,
 }
 
@@ -65,6 +74,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         )
     }
 
+    /// Constructor where the fault location is provided.
     pub fn new_with_error(
         pdu_header: PduHeader,
         condition_code: ConditionCode,
@@ -82,6 +92,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         )
     }
 
+    /// Generic constructor.
     pub fn new(
         mut pdu_header: PduHeader,
         condition_code: ConditionCode,
@@ -109,32 +120,37 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         finished_pdu
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Condition code.
     #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    /// Delivery code.
     #[inline]
     pub fn delivery_code(&self) -> DeliveryCode {
         self.delivery_code
     }
 
+    /// File status.
     #[inline]
     pub fn file_status(&self) -> FileStatus {
         self.file_status
     }
 
-    // If there are no filestore responses, an empty slice will be returned.
+    /// Filestore responses as a slice.
     #[inline]
     pub fn filestore_responses(&self) -> &[FilestoreResponseTlv<'_, '_, '_>] {
         self.fs_responses
     }
 
+    /// Optional fault location [EntityIdTlv].
     #[inline]
     pub fn fault_location(&self) -> Option<EntityIdTlv> {
         self.fault_location
@@ -166,7 +182,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         }
 
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::FinishedPdu as u8;
+        buf[current_idx] = FileDirectiveType::Finished as u8;
         current_idx += 1;
         buf[current_idx] = ((self.condition_code as u8) << 4)
             | ((self.delivery_code as u8) << 2)
@@ -184,6 +200,7 @@ impl<'fs_responses> FinishedPduCreator<'fs_responses> {
         Ok(current_idx)
     }
 
+    /// Length of the written PDU in bytes.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -197,7 +214,7 @@ impl CfdpPdu for FinishedPduCreator<'_> {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::FinishedPdu)
+        Some(FileDirectiveType::Finished)
     }
 }
 
@@ -242,6 +259,7 @@ impl<'buf> Iterator for FilestoreResponseIterator<'buf> {
     }
 }
 
+/// Fnished PDU reader structure.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -269,13 +287,13 @@ impl<'buf> FinishedPduReader<'buf> {
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType {
                 found: buf[current_idx],
-                expected: Some(FileDirectiveType::FinishedPdu),
+                expected: Some(FileDirectiveType::Finished),
             }
         })?;
-        if directive_type != FileDirectiveType::FinishedPdu {
+        if directive_type != FileDirectiveType::Finished {
             return Err(PduError::WrongDirectiveType {
                 found: directive_type,
-                expected: FileDirectiveType::FinishedPdu,
+                expected: FileDirectiveType::Finished,
             });
         }
         current_idx += 1;
@@ -297,11 +315,13 @@ impl<'buf> FinishedPduReader<'buf> {
         })
     }
 
+    /// Raw filestore responses.
     #[inline]
     pub fn fs_responses_raw(&self) -> &[u8] {
         self.fs_responses_raw
     }
 
+    /// Iterator over the filestore responses.
     #[inline]
     pub fn fs_responses_iter(&self) -> FilestoreResponseIterator<'_> {
         FilestoreResponseIterator {
@@ -310,26 +330,31 @@ impl<'buf> FinishedPduReader<'buf> {
         }
     }
 
+    /// Condition code.
     #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    /// Delivery code.
     #[inline]
     pub fn delivery_code(&self) -> DeliveryCode {
         self.delivery_code
     }
 
+    /// File status.
     #[inline]
     pub fn file_status(&self) -> FileStatus {
         self.file_status
     }
 
+    /// Optional fault location [EntityIdTlv].
     #[inline]
     pub fn fault_location(&self) -> Option<EntityIdTlv> {
         self.fault_location
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
@@ -399,7 +424,7 @@ impl CfdpPdu for FinishedPduReader<'_> {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::FinishedPdu)
+        Some(FileDirectiveType::Finished)
     }
 }
 
@@ -468,7 +493,7 @@ mod tests {
         assert_eq!(finished_pdu.pdu_type(), PduType::FileDirective);
         assert_eq!(
             finished_pdu.file_directive_type(),
-            Some(FileDirectiveType::FinishedPdu)
+            Some(FileDirectiveType::Finished)
         );
         assert_eq!(
             finished_pdu.transmission_mode(),
@@ -500,7 +525,7 @@ mod tests {
         );
         verify_raw_header(finished_pdu.pdu_header(), &buf);
         let mut current_idx = finished_pdu.pdu_header().header_len();
-        assert_eq!(buf[current_idx], FileDirectiveType::FinishedPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Finished as u8);
         current_idx += 1;
         assert_eq!(
             (buf[current_idx] >> 4) & 0b1111,

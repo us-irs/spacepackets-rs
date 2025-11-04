@@ -1,3 +1,4 @@
+//! # Metadata PDU packet implementation.
 #[cfg(feature = "alloc")]
 use super::tlv::TlvOwned;
 use crate::cfdp::lv::Lv;
@@ -16,16 +17,21 @@ use serde::{Deserialize, Serialize};
 use super::tlv::ReadableTlv;
 use super::{CfdpPdu, WritablePduPacket};
 
+/// Generic metadata parameters.
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct MetadataGenericParams {
+    /// Closure requested flag.
     pub closure_requested: bool,
+    /// Checksum type.
     pub checksum_type: ChecksumType,
+    /// File size.
     pub file_size: u64,
 }
 
 impl MetadataGenericParams {
+    /// Constructor.
     pub fn new(closure_requested: bool, checksum_type: ChecksumType, file_size: u64) -> Self {
         Self {
             closure_requested,
@@ -35,6 +41,7 @@ impl MetadataGenericParams {
     }
 }
 
+/// Build the metadata options from a slice of [Tlv]s
 pub fn build_metadata_opts_from_slice(
     buf: &mut [u8],
     tlvs: &[Tlv],
@@ -46,6 +53,7 @@ pub fn build_metadata_opts_from_slice(
     Ok(written)
 }
 
+/// Build the metadata options from a vector of [Tlv]s
 #[cfg(feature = "alloc")]
 pub fn build_metadata_opts_from_vec(
     buf: &mut [u8],
@@ -54,6 +62,7 @@ pub fn build_metadata_opts_from_vec(
     build_metadata_opts_from_slice(buf, tlvs.as_slice())
 }
 
+/// Build the metadata options from a slice of [TlvOwned]s
 #[cfg(feature = "alloc")]
 pub fn build_metadata_opts_from_owned_slice(tlvs: &[TlvOwned]) -> Vec<u8> {
     let mut sum_vec = Vec::new();
@@ -77,6 +86,7 @@ pub struct MetadataPduCreator<'src_name, 'dest_name, 'opts> {
 }
 
 impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'opts> {
+    /// Constructor for a metadata PDU without options.
     pub fn new_no_opts(
         pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
@@ -92,6 +102,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         )
     }
 
+    /// Constructor for a metadata PDU with options.
     pub fn new_with_opts(
         pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
@@ -108,6 +119,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         )
     }
 
+    /// Generic constructor for a metadata PDU.
     pub fn new(
         mut pdu_header: PduHeader,
         metadata_params: MetadataGenericParams,
@@ -128,26 +140,31 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         pdu
     }
 
+    /// Metadata generic parameters.
     #[inline]
     pub fn metadata_params(&self) -> &MetadataGenericParams {
         &self.metadata_params
     }
 
+    /// Source file name as a [Lv].
     #[inline]
     pub fn src_file_name(&self) -> Lv<'src_name> {
         self.src_file_name
     }
 
+    /// Destination file name as a [Lv].
     #[inline]
     pub fn dest_file_name(&self) -> Lv<'dest_name> {
         self.dest_file_name
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Raw options.
     #[inline]
     pub fn options(&self) -> &'opts [u8] {
         self.options
@@ -191,7 +208,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         }
 
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::MetadataPdu as u8;
+        buf[current_idx] = FileDirectiveType::Metadata as u8;
         current_idx += 1;
         buf[current_idx] = ((self.metadata_params.closure_requested as u8) << 6)
             | (self.metadata_params.checksum_type as u8);
@@ -215,6 +232,7 @@ impl<'src_name, 'dest_name, 'opts> MetadataPduCreator<'src_name, 'dest_name, 'op
         Ok(current_idx)
     }
 
+    /// Length of the written PDU in bytes.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -228,7 +246,7 @@ impl CfdpPdu for MetadataPduCreator<'_, '_, '_> {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::MetadataPdu)
+        Some(FileDirectiveType::Metadata)
     }
 }
 
@@ -291,10 +309,12 @@ pub struct MetadataPduReader<'buf> {
 }
 
 impl<'raw> MetadataPduReader<'raw> {
+    /// Constructor from raw bytes.
     pub fn new(buf: &'raw [u8]) -> Result<Self, PduError> {
         Self::from_bytes(buf)
     }
 
+    /// Constructor from raw bytes.
     pub fn from_bytes(buf: &'raw [u8]) -> Result<Self, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -308,13 +328,13 @@ impl<'raw> MetadataPduReader<'raw> {
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType {
                 found: buf[current_idx],
-                expected: Some(FileDirectiveType::MetadataPdu),
+                expected: Some(FileDirectiveType::Metadata),
             }
         })?;
-        if directive_type != FileDirectiveType::MetadataPdu {
+        if directive_type != FileDirectiveType::Metadata {
             return Err(PduError::WrongDirectiveType {
                 found: directive_type,
-                expected: FileDirectiveType::MetadataPdu,
+                expected: FileDirectiveType::Metadata,
             });
         }
         current_idx += 1;
@@ -350,26 +370,31 @@ impl<'raw> MetadataPduReader<'raw> {
         })
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Raw options.
     #[inline]
     pub fn options(&self) -> &'raw [u8] {
         self.options
     }
 
+    /// Generic metadata parameters.
     #[inline]
     pub fn metadata_params(&self) -> &MetadataGenericParams {
         &self.metadata_params
     }
 
+    /// Source file name as a [Lv].
     #[inline]
     pub fn src_file_name(&self) -> Lv<'_> {
         self.src_file_name
     }
 
+    /// Destination file name as a [Lv].
     #[inline]
     pub fn dest_file_name(&self) -> Lv<'_> {
         self.dest_file_name
@@ -383,12 +408,12 @@ impl CfdpPdu for MetadataPduReader<'_> {
     }
 
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::MetadataPdu)
+        Some(FileDirectiveType::Metadata)
     }
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use alloc::string::ToString;
 
     use crate::cfdp::lv::Lv;
@@ -471,7 +496,7 @@ pub mod tests {
         );
         assert_eq!(
             metadata_pdu.file_directive_type(),
-            Some(FileDirectiveType::MetadataPdu)
+            Some(FileDirectiveType::Metadata)
         );
         assert_eq!(
             metadata_pdu.transmission_mode(),
@@ -502,7 +527,7 @@ pub mod tests {
                 + expected_src_filename.len_full()
                 + expected_dest_filename.len_full()
         );
-        assert_eq!(buf[7], FileDirectiveType::MetadataPdu as u8);
+        assert_eq!(buf[7], FileDirectiveType::Metadata as u8);
         assert_eq!(buf[8] >> 6, closure_requested as u8);
         assert_eq!(buf[8] & 0b1111, checksum_type as u8);
         assert_eq!(u32::from_be_bytes(buf[9..13].try_into().unwrap()), 0x1010);
@@ -807,10 +832,10 @@ pub mod tests {
         let error = metadata_error.unwrap_err();
         if let PduError::InvalidDirectiveType { found, expected } = error {
             assert_eq!(found, 0xff);
-            assert_eq!(expected, Some(FileDirectiveType::MetadataPdu));
+            assert_eq!(expected, Some(FileDirectiveType::Metadata));
             assert_eq!(
                 error.to_string(),
-                "invalid directive type, found 255, expected Some(MetadataPdu)"
+                "invalid directive type, found 255, expected Some(Metadata)"
             );
         } else {
             panic!("Expected InvalidDirectiveType error, got {:?}", error);
@@ -827,16 +852,16 @@ pub mod tests {
             &[],
         );
         let mut metadata_vec = metadata_pdu.to_vec().unwrap();
-        metadata_vec[7] = FileDirectiveType::EofPdu as u8;
+        metadata_vec[7] = FileDirectiveType::Eof as u8;
         let metadata_error = MetadataPduReader::from_bytes(&metadata_vec);
         assert!(metadata_error.is_err());
         let error = metadata_error.unwrap_err();
         if let PduError::WrongDirectiveType { found, expected } = error {
-            assert_eq!(found, FileDirectiveType::EofPdu);
-            assert_eq!(expected, FileDirectiveType::MetadataPdu);
+            assert_eq!(found, FileDirectiveType::Eof);
+            assert_eq!(expected, FileDirectiveType::Metadata);
             assert_eq!(
                 error.to_string(),
-                "wrong directive type, found EofPdu, expected MetadataPdu"
+                "wrong directive type, found Eof, expected Metadata"
             );
         } else {
             panic!("Expected InvalidDirectiveType error, got {:?}", error);

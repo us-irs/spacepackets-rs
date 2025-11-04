@@ -1,3 +1,4 @@
+//! # Acknowledgement (ACK) PDU packet implementation.
 use crate::{
     cfdp::{ConditionCode, CrcFlag, Direction, TransactionStatus},
     ByteConversionError,
@@ -10,6 +11,7 @@ use super::{
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Invalid [FileDirectiveType] of the acknowledged PDU error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("invalid directive code of acknowledged PDU")]
 pub struct InvalidAckedDirectiveCodeError(pub FileDirectiveType);
@@ -28,15 +30,16 @@ pub struct AckPdu {
 }
 
 impl AckPdu {
+    /// Constructor.
     pub fn new(
         mut pdu_header: PduHeader,
         directive_code_of_acked_pdu: FileDirectiveType,
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
     ) -> Result<Self, InvalidAckedDirectiveCodeError> {
-        if directive_code_of_acked_pdu == FileDirectiveType::EofPdu {
+        if directive_code_of_acked_pdu == FileDirectiveType::Eof {
             pdu_header.pdu_conf.direction = Direction::TowardsSender;
-        } else if directive_code_of_acked_pdu == FileDirectiveType::FinishedPdu {
+        } else if directive_code_of_acked_pdu == FileDirectiveType::Finished {
             pdu_header.pdu_conf.direction = Direction::TowardsReceiver;
         } else {
             return Err(InvalidAckedDirectiveCodeError(directive_code_of_acked_pdu));
@@ -52,6 +55,9 @@ impl AckPdu {
         Ok(ack_pdu)
     }
 
+    /// Constructor for an ACK PDU acknowledging an EOF PDU.
+    ///
+    /// Relevant for the file receiver.
     pub fn new_for_eof_pdu(
         pdu_header: PduHeader,
         condition_code: ConditionCode,
@@ -60,13 +66,16 @@ impl AckPdu {
         // Unwrap okay here, [new] can only fail on invalid directive codes.
         Self::new(
             pdu_header,
-            FileDirectiveType::EofPdu,
+            FileDirectiveType::Eof,
             condition_code,
             transaction_status,
         )
         .unwrap()
     }
 
+    /// Constructor for an ACK PDU acknowledging a Finished PDU.
+    ///
+    /// Relevant for the file sender.
     pub fn new_for_finished_pdu(
         pdu_header: PduHeader,
         condition_code: ConditionCode,
@@ -75,28 +84,32 @@ impl AckPdu {
         // Unwrap okay here, [new] can only fail on invalid directive codes.
         Self::new(
             pdu_header,
-            FileDirectiveType::FinishedPdu,
+            FileDirectiveType::Finished,
             condition_code,
             transaction_status,
         )
         .unwrap()
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Directive code of the acknowledged PDU.
     #[inline]
     pub fn directive_code_of_acked_pdu(&self) -> FileDirectiveType {
         self.directive_code_of_acked_pdu
     }
 
+    /// Condition code.
     #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    /// Transaction status.
     #[inline]
     pub fn transaction_status(&self) -> TransactionStatus {
         self.transaction_status
@@ -110,6 +123,7 @@ impl AckPdu {
         3
     }
 
+    /// Construct [Self] from the provided byte slice.
     pub fn from_bytes(buf: &[u8]) -> Result<AckPdu, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -117,13 +131,13 @@ impl AckPdu {
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType {
                 found: buf[current_idx],
-                expected: Some(FileDirectiveType::AckPdu),
+                expected: Some(FileDirectiveType::Ack),
             }
         })?;
-        if directive_type != FileDirectiveType::AckPdu {
+        if directive_type != FileDirectiveType::Ack {
             return Err(PduError::WrongDirectiveType {
                 found: directive_type,
-                expected: FileDirectiveType::AckPdu,
+                expected: FileDirectiveType::Ack,
             });
         }
         current_idx += 1;
@@ -134,8 +148,8 @@ impl AckPdu {
                     expected: None,
                 }
             })?;
-        if acked_directive_type != FileDirectiveType::EofPdu
-            && acked_directive_type != FileDirectiveType::FinishedPdu
+        if acked_directive_type != FileDirectiveType::Eof
+            && acked_directive_type != FileDirectiveType::Finished
         {
             return Err(PduError::InvalidDirectiveType {
                 found: acked_directive_type as u8,
@@ -167,11 +181,11 @@ impl AckPdu {
             .into());
         }
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::AckPdu as u8;
+        buf[current_idx] = FileDirectiveType::Ack as u8;
         current_idx += 1;
 
         buf[current_idx] = (self.directive_code_of_acked_pdu as u8) << 4;
-        if self.directive_code_of_acked_pdu == FileDirectiveType::FinishedPdu {
+        if self.directive_code_of_acked_pdu == FileDirectiveType::Finished {
             // This is the directive subtype code. It needs to be set to 0b0001 if the ACK PDU
             // acknowledges a Finished PDU, and to 0b0000 otherwise.
             buf[current_idx] |= 0b0001;
@@ -185,6 +199,7 @@ impl AckPdu {
         Ok(current_idx)
     }
 
+    /// Length of the written PDU in bytes.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -198,7 +213,7 @@ impl CfdpPdu for AckPdu {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::AckPdu)
+        Some(FileDirectiveType::Ack)
     }
 }
 
@@ -230,10 +245,7 @@ mod tests {
         assert_eq!(ack_pdu.crc_flag(), expected_crc_flag);
         assert_eq!(ack_pdu.file_flag(), LargeFileFlag::Normal);
         assert_eq!(ack_pdu.pdu_type(), PduType::FileDirective);
-        assert_eq!(
-            ack_pdu.file_directive_type(),
-            Some(FileDirectiveType::AckPdu)
-        );
+        assert_eq!(ack_pdu.file_directive_type(), Some(FileDirectiveType::Ack));
         assert_eq!(ack_pdu.transmission_mode(), TransmissionMode::Acknowledged);
         assert_eq!(ack_pdu.direction(), expected_dir);
         assert_eq!(ack_pdu.source_id(), TEST_SRC_ID.into());
@@ -247,14 +259,14 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new(
             pdu_header,
-            FileDirectiveType::FinishedPdu,
+            FileDirectiveType::Finished,
             ConditionCode::NoError,
             TransactionStatus::Active,
         )
         .expect("creating ACK PDU failed");
         assert_eq!(
             ack_pdu.directive_code_of_acked_pdu(),
-            FileDirectiveType::FinishedPdu
+            FileDirectiveType::Finished
         );
         verify_state(&ack_pdu, CrcFlag::NoCrc, Direction::TowardsReceiver);
     }
@@ -273,8 +285,8 @@ mod tests {
         assert_eq!(written, ack_pdu.len_written());
         verify_raw_header(ack_pdu.pdu_header(), &buf);
 
-        assert_eq!(buf[7], FileDirectiveType::AckPdu as u8);
-        assert_eq!((buf[8] >> 4) & 0b1111, FileDirectiveType::FinishedPdu as u8);
+        assert_eq!(buf[7], FileDirectiveType::Ack as u8);
+        assert_eq!((buf[8] >> 4) & 0b1111, FileDirectiveType::Finished as u8);
         assert_eq!(buf[8] & 0b1111, 0b0001);
         assert_eq!(buf[9] >> 4 & 0b1111, condition_code as u8);
         assert_eq!(buf[9] & 0b11, transaction_status as u8);
@@ -292,7 +304,7 @@ mod tests {
         let pdu_header = PduHeader::new_for_file_directive(pdu_conf, 0);
         let ack_pdu = AckPdu::new(
             pdu_header,
-            FileDirectiveType::FinishedPdu,
+            FileDirectiveType::Finished,
             ConditionCode::NoError,
             TransactionStatus::Active,
         )
@@ -320,12 +332,12 @@ mod tests {
         assert_eq!(
             AckPdu::new(
                 pdu_header,
-                FileDirectiveType::MetadataPdu,
+                FileDirectiveType::Metadata,
                 ConditionCode::NoError,
                 TransactionStatus::Active,
             )
             .unwrap_err(),
-            InvalidAckedDirectiveCodeError(FileDirectiveType::MetadataPdu)
+            InvalidAckedDirectiveCodeError(FileDirectiveType::Metadata)
         );
     }
 
@@ -372,7 +384,7 @@ mod tests {
         );
         assert_eq!(
             ack_pdu.directive_code_of_acked_pdu(),
-            FileDirectiveType::EofPdu
+            FileDirectiveType::Eof
         );
         verify_state(&ack_pdu, CrcFlag::WithCrc, Direction::TowardsSender);
     }

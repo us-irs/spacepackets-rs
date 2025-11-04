@@ -1,3 +1,4 @@
+//! # NAK PDU packet implementation.
 use crate::{
     cfdp::{CrcFlag, Direction, LargeFileFlag},
     ByteConversionError,
@@ -8,6 +9,7 @@ use super::{
     PduHeader, WritablePduPacket,
 };
 
+/// Invalid start or end of scope value.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[error("invalid start or end of scope value for NAK PDU")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -52,6 +54,7 @@ fn write_start_and_end_of_scope(
     current_index
 }
 
+/// Buffer is too small to even hold a PDU header.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, thiserror::Error)]
 #[error("packet buffer too small for PDU header")]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -94,11 +97,14 @@ pub fn calculate_max_segment_requests(
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SegmentRequests<'a> {
+    /// Segment requests for normal file sizes bounded by [u32::MAX].
     U32Pairs(&'a [(u32, u32)]),
+    /// Segment requests for large file sizes bounded by [u64::MAX].
     U64Pairs(&'a [(u64, u64)]),
 }
 
 impl SegmentRequests<'_> {
+    /// Wrapped segment requests are empty.
     #[inline]
     pub fn is_empty(&self) -> bool {
         match self {
@@ -152,6 +158,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         )
     }
 
+    /// Constructor for large file sizes.
     pub fn new_large_file_size(
         pdu_header: PduHeader,
         start_of_scope: u64,
@@ -206,21 +213,25 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         Ok(nak_pdu)
     }
 
+    /// Start of scope of the NAK PDU.
     #[inline]
     pub fn start_of_scope(&self) -> u64 {
         self.start_of_scope
     }
 
+    /// End of scope of the NAK PDU.
     #[inline]
     pub fn end_of_scope(&self) -> u64 {
         self.end_of_scope
     }
 
+    /// Semgent requests.
     #[inline]
     pub fn segment_requests(&self) -> Option<&SegmentRequests<'_>> {
         self.segment_requests.as_ref()
     }
 
+    /// Number of segment requests.
     #[inline]
     pub fn num_segment_reqs(&self) -> usize {
         match &self.segment_requests {
@@ -232,6 +243,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
         }
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
@@ -252,7 +264,7 @@ impl<'seg_reqs> NakPduCreator<'seg_reqs> {
             .into());
         }
         let mut current_index = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_index] = FileDirectiveType::NakPdu as u8;
+        buf[current_index] = FileDirectiveType::Nak as u8;
         current_index += 1;
 
         current_index = write_start_and_end_of_scope(
@@ -309,7 +321,7 @@ impl CfdpPdu for NakPduCreator<'_> {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::NakPdu)
+        Some(FileDirectiveType::Nak)
     }
 }
 
@@ -337,6 +349,8 @@ pub struct NakPduCreatorWithReservedSeqReqsBuf<'buf> {
 }
 
 impl<'buf> NakPduCreatorWithReservedSeqReqsBuf<'buf> {
+    /// Calculartes the maximum amount of segment requests which fit into a packet with the
+    /// provided parameters.
     pub fn calculate_max_segment_requests(
         max_packet_size: usize,
         pdu_header: &PduHeader,
@@ -344,6 +358,7 @@ impl<'buf> NakPduCreatorWithReservedSeqReqsBuf<'buf> {
         calculate_max_segment_requests(max_packet_size, pdu_header)
     }
 
+    /// Constructor.
     pub fn new(
         buf: &'buf mut [u8],
         mut pdu_header: PduHeader,
@@ -371,11 +386,13 @@ impl<'buf> NakPduCreatorWithReservedSeqReqsBuf<'buf> {
 }
 
 impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Number of segment requests.
     #[inline]
     pub fn num_segment_reqs(&self) -> usize {
         self.num_segment_reqs
@@ -407,6 +424,7 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         Ok(())
     }
 
+    /// Length when written to a buffer.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -427,6 +445,7 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
         &self.buf[segment_req_buf_offset..segment_req_buf_offset + len]
     }
 
+    /// Iterator over all segment requests.
     #[inline]
     pub fn segment_request_iter(&self) -> SegmentRequestIter<'_> {
         SegmentRequestIter::new(
@@ -447,7 +466,7 @@ impl NakPduCreatorWithReservedSeqReqsBuf<'_> {
     ) -> Result<usize, InvalidStartOrEndOfScopeError> {
         self.set_start_and_end_of_scope(start_of_scope, end_of_scope)?;
         let mut current_idx = self.pdu_header.write_to_bytes(self.buf).unwrap();
-        self.buf[current_idx] = FileDirectiveType::NakPdu as u8;
+        self.buf[current_idx] = FileDirectiveType::Nak as u8;
         current_idx += 1;
 
         if self.pdu_header.common_pdu_conf().file_flag == LargeFileFlag::Large {
@@ -613,15 +632,17 @@ impl CfdpPdu for NakPduReader<'_> {
     }
 
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::NakPdu)
+        Some(FileDirectiveType::Nak)
     }
 }
 
 impl<'seg_reqs> NakPduReader<'seg_reqs> {
+    /// Constructor from a raw bytestream.
     pub fn new(buf: &'seg_reqs [u8]) -> Result<NakPduReader<'seg_reqs>, PduError> {
         Self::from_bytes(buf)
     }
 
+    /// Constructor from a raw bytestream.
     pub fn from_bytes(buf: &'seg_reqs [u8]) -> Result<NakPduReader<'seg_reqs>, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -631,13 +652,13 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType {
                 found: buf[current_idx],
-                expected: Some(FileDirectiveType::NakPdu),
+                expected: Some(FileDirectiveType::Nak),
             }
         })?;
-        if directive_type != FileDirectiveType::NakPdu {
+        if directive_type != FileDirectiveType::Nak {
             return Err(PduError::WrongDirectiveType {
                 found: directive_type,
-                expected: FileDirectiveType::AckPdu,
+                expected: FileDirectiveType::Ack,
             });
         }
         current_idx += 1;
@@ -682,14 +703,17 @@ impl<'seg_reqs> NakPduReader<'seg_reqs> {
         })
     }
 
+    /// Start of scope.
     pub fn start_of_scope(&self) -> u64 {
         self.start_of_scope
     }
 
+    /// End of scope.
     pub fn end_of_scope(&self) -> u64 {
         self.end_of_scope
     }
 
+    /// Number of segment requests.
     pub fn num_segment_reqs(&self) -> usize {
         if self.seg_reqs_raw.is_empty() {
             return 0;
@@ -747,10 +771,7 @@ mod tests {
         assert_eq!(nak_pdu.crc_flag(), CrcFlag::NoCrc);
         assert_eq!(nak_pdu.file_flag(), LargeFileFlag::Normal);
         assert_eq!(nak_pdu.pdu_type(), PduType::FileDirective);
-        assert_eq!(
-            nak_pdu.file_directive_type(),
-            Some(FileDirectiveType::NakPdu),
-        );
+        assert_eq!(nak_pdu.file_directive_type(), Some(FileDirectiveType::Nak),);
         assert_eq!(nak_pdu.transmission_mode(), TransmissionMode::Acknowledged);
         assert_eq!(nak_pdu.direction(), Direction::TowardsSender);
         assert_eq!(nak_pdu.source_id(), TEST_SRC_ID.into());
@@ -794,7 +815,7 @@ mod tests {
         verify_raw_header(nak_pdu.pdu_header(), &buf);
         let mut current_idx = nak_pdu.pdu_header().header_len();
         assert_eq!(current_idx + 9, nak_pdu.len_written());
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -821,7 +842,7 @@ mod tests {
         verify_raw_header(nak_pdu.pdu_header(), &buf);
         let mut current_idx = nak_pdu.pdu_header().header_len();
         assert_eq!(current_idx + 9 + 16, nak_pdu.len_written());
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -1034,7 +1055,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 9, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -1060,7 +1081,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 8 + 2, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -1087,7 +1108,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
@@ -1131,7 +1152,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());
@@ -1171,7 +1192,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 8 + num_segments * 8, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u32::from_be_bytes(buf[current_idx..current_idx + 4].try_into().unwrap());
@@ -1227,7 +1248,7 @@ mod tests {
         verify_raw_header(&pdu_header, &buf);
         let mut current_idx = pdu_header.header_len();
         assert_eq!(current_idx + 1 + 16 + num_segments * 16, len_written);
-        assert_eq!(buf[current_idx], FileDirectiveType::NakPdu as u8);
+        assert_eq!(buf[current_idx], FileDirectiveType::Nak as u8);
         current_idx += 1;
         let start_of_scope =
             u64::from_be_bytes(buf[current_idx..current_idx + 8].try_into().unwrap());

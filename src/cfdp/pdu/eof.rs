@@ -1,3 +1,4 @@
+//! # End-of-File (EOF) PDU packet implementation.
 use crate::cfdp::pdu::{
     add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
     FileDirectiveType, PduError, PduHeader,
@@ -25,6 +26,7 @@ pub struct EofPdu {
 }
 
 impl EofPdu {
+    /// Constructor.
     pub fn new(
         mut pdu_header: PduHeader,
         condition_code: ConditionCode,
@@ -45,6 +47,7 @@ impl EofPdu {
         eof_pdu
     }
 
+    /// Constructor for no error EOF PDUs.
     pub fn new_no_error(pdu_header: PduHeader, file_checksum: u32, file_size: u64) -> Self {
         Self::new(
             pdu_header,
@@ -55,21 +58,25 @@ impl EofPdu {
         )
     }
 
+    /// PDU header.
     #[inline]
     pub fn pdu_header(&self) -> &PduHeader {
         &self.pdu_header
     }
 
+    /// Condition code.
     #[inline]
     pub fn condition_code(&self) -> ConditionCode {
         self.condition_code
     }
 
+    /// File checksum.
     #[inline]
     pub fn file_checksum(&self) -> u32 {
         self.file_checksum
     }
 
+    /// File size.
     #[inline]
     pub fn file_size(&self) -> u64 {
         self.file_size
@@ -90,6 +97,7 @@ impl EofPdu {
         len
     }
 
+    /// Construct [Self] from the provided byte slice.
     pub fn from_bytes(buf: &[u8]) -> Result<EofPdu, PduError> {
         let (pdu_header, mut current_idx) = PduHeader::from_bytes(buf)?;
         let full_len_without_crc = pdu_header.verify_length_and_checksum(buf)?;
@@ -102,13 +110,13 @@ impl EofPdu {
         let directive_type = FileDirectiveType::try_from(buf[current_idx]).map_err(|_| {
             PduError::InvalidDirectiveType {
                 found: buf[current_idx],
-                expected: Some(FileDirectiveType::EofPdu),
+                expected: Some(FileDirectiveType::Eof),
             }
         })?;
-        if directive_type != FileDirectiveType::EofPdu {
+        if directive_type != FileDirectiveType::Eof {
             return Err(PduError::WrongDirectiveType {
                 found: directive_type,
-                expected: FileDirectiveType::EofPdu,
+                expected: FileDirectiveType::Eof,
             });
         }
         current_idx += 1;
@@ -145,7 +153,7 @@ impl EofPdu {
             .into());
         }
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        buf[current_idx] = FileDirectiveType::EofPdu as u8;
+        buf[current_idx] = FileDirectiveType::Eof as u8;
         current_idx += 1;
         buf[current_idx] = (self.condition_code as u8) << 4;
         current_idx += 1;
@@ -165,6 +173,7 @@ impl EofPdu {
         Ok(current_idx)
     }
 
+    /// Length of the written PDU in bytes.
     pub fn len_written(&self) -> usize {
         self.pdu_header.header_len() + self.calc_pdu_datafield_len()
     }
@@ -178,7 +187,7 @@ impl CfdpPdu for EofPdu {
 
     #[inline]
     fn file_directive_type(&self) -> Option<FileDirectiveType> {
-        Some(FileDirectiveType::EofPdu)
+        Some(FileDirectiveType::Eof)
     }
 }
 
@@ -221,10 +230,7 @@ mod tests {
         assert_eq!(eof_pdu.crc_flag(), crc_flag);
         assert_eq!(eof_pdu.file_flag(), file_flag);
         assert_eq!(eof_pdu.pdu_type(), PduType::FileDirective);
-        assert_eq!(
-            eof_pdu.file_directive_type(),
-            Some(FileDirectiveType::EofPdu)
-        );
+        assert_eq!(eof_pdu.file_directive_type(), Some(FileDirectiveType::Eof));
         assert_eq!(eof_pdu.transmission_mode(), TransmissionMode::Acknowledged);
         assert_eq!(eof_pdu.direction(), Direction::TowardsReceiver);
         assert_eq!(eof_pdu.source_id(), TEST_SRC_ID.into());
@@ -253,7 +259,7 @@ mod tests {
         assert_eq!(written, eof_pdu.len_written());
         verify_raw_header(eof_pdu.pdu_header(), &buf);
         let mut current_idx = eof_pdu.pdu_header().header_len();
-        buf[current_idx] = FileDirectiveType::EofPdu as u8;
+        buf[current_idx] = FileDirectiveType::Eof as u8;
         current_idx += 1;
         assert_eq!(
             (buf[current_idx] >> 4) & 0b1111,
