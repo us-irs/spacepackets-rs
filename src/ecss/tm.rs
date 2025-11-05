@@ -78,12 +78,15 @@ use self::zc::PusTmSecHeaderWithoutTimestamp;
 
 use super::verify_crc16_ccitt_false_from_raw_to_pus_error_no_table;
 
+/// Marker trait for PUS telemetry packets.
 pub trait IsPusTelemetry {}
 
 /// Length without timestamp
 pub const PUS_TM_MIN_SEC_HEADER_LEN: usize = 7;
+/// Minimum length of a PUS telemetry packet without source data and timestamp
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize = CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN;
 
+/// Generic properties of a PUS TM secondary header.
 pub trait GenericPusTmSecondaryHeader {
     /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
@@ -110,12 +113,14 @@ pub trait GenericPusTmSecondaryHeader {
     }
 }
 
+/// [zerocopy] support module.
 pub mod zc {
     use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{MessageTypeId, PusError, PusVersion};
     use arbitrary_int::{traits::Integer as _, u4};
     use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
+    /// PUS TM secondary header without a timestamp.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
     #[repr(C)]
     pub struct PusTmSecHeaderWithoutTimestamp {
@@ -126,9 +131,10 @@ pub mod zc {
         dest_id: U16<NetworkEndian>,
     }
 
-    pub struct PusTmSecHeader<'slice> {
+    /// PUS TM secondary header with timestamp.
+    pub struct PusTmSecHeader<'time> {
         pub(crate) zc_header: PusTmSecHeaderWithoutTimestamp,
-        pub(crate) timestamp: &'slice [u8],
+        pub(crate) timestamp: &'time [u8],
     }
 
     impl TryFrom<crate::ecss::tm::PusTmSecondaryHeader<'_>> for PusTmSecHeaderWithoutTimestamp {
@@ -194,19 +200,27 @@ pub mod zc {
     }
 }
 
+/// PUS TM secondary header.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmSecondaryHeader<'stamp> {
     pus_version: PusVersion,
+    /// Spacecraft time reference status.
     pub sc_time_ref_status: u4,
+    /// Message type ID.
     pub message_type_id: MessageTypeId,
+    /// Message counter for the message service type ID.
     pub msg_counter: u16,
+    /// Destination ID.
     pub dest_id: u16,
+    /// Raw timestamp slice.
     pub timestamp: &'stamp [u8],
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
+    /// Constructor where only the message type ID and timestamp are specified. The other fields
+    /// are set to default values.
     #[inline]
     pub fn new_simple(message_type_id: MessageTypeId, timestamp: &'stamp [u8]) -> Self {
         Self::new(message_type_id, 0, 0, timestamp)
@@ -218,6 +232,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         Self::new(message_type_id, 0, 0, &[])
     }
 
+    /// Generic constructor.
     #[inline]
     pub fn new(
         message_type_id: MessageTypeId,
@@ -300,7 +315,9 @@ impl<'slice> TryFrom<zc::PusTmSecHeader<'slice>> for PusTmSecondaryHeader<'slice
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmCreator<'time, 'src_data> {
+    /// Space packet header.
     pub sp_header: SpHeader,
+    /// Secondary header.
     #[cfg_attr(feature = "serde", serde(borrow))]
     pub sec_header: PusTmSecondaryHeader<'time>,
     source_data: &'src_data [u8],
@@ -343,6 +360,8 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         pus_tm
     }
 
+    /// Simple constructor which builds the [PusTmSecondaryHeader] internally from the
+    /// provided arguments.
     #[inline]
     pub fn new_simple(
         sp_header: SpHeader,
@@ -358,6 +377,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         Ok(Self::new(sp_header, sec_header, source_data, packet_config))
     }
 
+    /// Constructor for PUS TM packets without source data.
     #[inline]
     pub fn new_no_source_data(
         sp_header: SpHeader,
@@ -367,50 +387,60 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         Self::new(sp_header, sec_header, &[], packet_config)
     }
 
+    /// Builder API.
     pub fn builder() -> PusTmBuilder<'time, 'src_data> {
         PusTmBuilder::new()
     }
 
+    /// Does the packet have a checksum?
     #[inline]
     pub fn has_checksum(&self) -> bool {
         self.has_checksum
     }
 
+    /// Raw timestamp slice.
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
+    /// Raw source data slice.
     #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.source_data
     }
 
+    /// Servcie type ID.
     #[inline]
     pub fn service_type_id(&self) -> u8 {
         self.sec_header.service_type_id()
     }
 
+    /// Message subtype ID.
     #[inline]
     pub fn message_subtype_id(&self) -> u8 {
         self.sec_header.message_subtype_id()
     }
 
+    /// Application Process Identifier (APID).
     #[inline]
     pub fn apid(&self) -> u11 {
         self.sp_header.packet_id.apid
     }
 
+    /// Set the destination ID.
     #[inline]
     pub fn set_dest_id(&mut self, dest_id: u16) {
         self.sec_header.dest_id = dest_id;
     }
 
+    /// Set the message counter for the service type ID.
     #[inline]
     pub fn set_msg_counter(&mut self, msg_counter: u16) {
         self.sec_header.msg_counter = msg_counter
     }
 
+    /// Set the spacecraft time reference status.
     #[inline]
     pub fn set_sc_time_ref_status(&mut self, sc_time_ref_status: u4) {
         self.sec_header.sc_time_ref_status = sc_time_ref_status;
@@ -626,6 +656,7 @@ impl GenericPusTmSecondaryHeader for PusTmCreator<'_, '_> {
 
 impl IsPusTelemetry for PusTmCreator<'_, '_> {}
 
+/// PUS TM bulder API.
 #[derive(Debug)]
 pub struct PusTmBuilder<'time, 'src_data> {
     sp_header: SpHeader,
@@ -641,6 +672,7 @@ impl Default for PusTmBuilder<'_, '_> {
 }
 
 impl PusTmBuilder<'_, '_> {
+    /// Constructor.
     pub fn new() -> Self {
         Self {
             sp_header: SpHeader::new(
@@ -662,12 +694,14 @@ impl PusTmBuilder<'_, '_> {
         }
     }
 
+    /// Set the application process identifier (APID).
     #[inline]
     pub fn with_apid(mut self, apid: u11) -> Self {
         self.sp_header.packet_id.set_apid(apid);
         self
     }
 
+    /// Set the packet ID.
     #[inline]
     pub fn with_packet_id(mut self, mut packet_id: PacketId) -> Self {
         packet_id.packet_type = PacketType::Tc;
@@ -675,54 +709,63 @@ impl PusTmBuilder<'_, '_> {
         self
     }
 
+    /// Set the packet sequence control.
     #[inline]
     pub fn with_packet_sequence_control(mut self, psc: PacketSequenceControl) -> Self {
         self.sp_header.psc = psc;
         self
     }
 
+    /// Set the sequence count.
     #[inline]
     pub fn with_sequence_count(mut self, seq_count: u14) -> Self {
         self.sp_header.psc.seq_count = seq_count;
         self
     }
 
+    /// Set the message type ID.
     #[inline]
     pub fn with_message_type_id(mut self, message_type_id: MessageTypeId) -> Self {
         self.sec_header.message_type_id = message_type_id;
         self
     }
 
+    /// Set the service type ID.
     #[inline]
     pub fn with_service_type_id(mut self, type_id: u8) -> Self {
         self.sec_header.message_type_id.type_id = type_id;
         self
     }
 
+    /// Set the message subtype ID.
     #[inline]
     pub fn with_message_subtype_id(mut self, subtype_id: u8) -> Self {
         self.sec_header.message_type_id.subtype_id = subtype_id;
         self
     }
 
+    /// Set the destination ID.
     #[inline]
     pub fn with_dest_id(mut self, dest_id: u16) -> Self {
         self.sec_header.dest_id = dest_id;
         self
     }
 
+    /// Set the message counter for the service type ID.
     #[inline]
     pub fn with_msg_counter(mut self, msg_counter: u16) -> Self {
         self.sec_header.msg_counter = msg_counter;
         self
     }
 
+    /// Set the spacecraft time reference status.
     #[inline]
     pub fn with_sc_time_ref_status(mut self, sc_time_ref_status: u4) -> Self {
         self.sec_header.sc_time_ref_status = sc_time_ref_status;
         self
     }
 
+    /// Enable or disable checksum generation.
     #[inline]
     pub fn with_checksum(mut self, has_checksum: bool) -> Self {
         self.has_checksum = has_checksum;
@@ -731,6 +774,7 @@ impl PusTmBuilder<'_, '_> {
 }
 
 impl<'src_data> PusTmBuilder<'_, 'src_data> {
+    /// Set the source data.
     #[inline]
     pub fn with_source_data(mut self, source_data: &'src_data [u8]) -> Self {
         self.source_data = source_data;
@@ -739,6 +783,7 @@ impl<'src_data> PusTmBuilder<'_, 'src_data> {
 }
 
 impl<'time> PusTmBuilder<'time, '_> {
+    /// Set the timestamp.
     #[inline]
     pub fn with_timestamp(mut self, timestamp: &'time [u8]) -> Self {
         self.sec_header.timestamp = timestamp;
@@ -747,6 +792,7 @@ impl<'time> PusTmBuilder<'time, '_> {
 }
 
 impl<'time, 'src_data> PusTmBuilder<'time, 'src_data> {
+    /// Constructor.
     pub fn build(self) -> PusTmCreator<'time, 'src_data> {
         PusTmCreator::new(
             self.sp_header,
@@ -847,6 +893,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         })
     }
 
+    /// Length of the full packet written to the buffer.
     #[inline]
     pub const fn len_written(&self) -> usize {
         self.full_len
@@ -872,6 +919,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         }
     }
 
+    /// Length of the source data.
     #[inline]
     pub fn source_data_len(&self) -> usize {
         let mut len = self.full_len - self.source_data_offset;
@@ -921,11 +969,16 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
     }
 }
 
+/// Configuration options for the [PusTmReader].
+///
+/// This includes managed parameters which can not be deduced from the raw byte slice itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ReaderConfig {
+    /// Expected timestamp length.
     pub timestamp_len: usize,
+    /// Does the packet have a checksum?
     pub has_checksum: bool,
 }
 
@@ -945,7 +998,9 @@ pub struct ReaderConfig {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmReader<'raw_data> {
+    /// Space packet header.
     pub sp_header: SpHeader,
+    /// PUS TM secondary header.
     pub sec_header: PusTmSecondaryHeader<'raw_data>,
     #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: &'raw_data [u8],
@@ -1003,6 +1058,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         )
     }
 
+    /// Constructor which does not perform checksum verification.
     pub fn new_no_checksum_verification(
         slice: &'raw_data [u8],
         reader_config: ReaderConfig,
@@ -1064,41 +1120,49 @@ impl<'raw_data> PusTmReader<'raw_data> {
         })
     }
 
+    /// Length of the full packed PUS TM packet.
     #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.packet_len()
     }
 
+    /// Source data slice.
     #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    /// Service type ID.
     #[inline]
     pub fn service_type_id(&self) -> u8 {
         self.sec_header.service_type_id()
     }
 
+    /// Message subtype ID.
     #[inline]
     pub fn message_subtype_id(&self) -> u8 {
         self.sec_header.message_subtype_id()
     }
 
+    /// Full packet length.
     #[inline]
     pub fn packet_len(&self) -> usize {
         self.sp_header.packet_len()
     }
 
+    /// Application Process Identifier (APID).
     #[inline]
     pub fn apid(&self) -> u11 {
         self.sp_header.packet_id.apid
     }
 
+    /// Raw timestamp slice.
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
+    /// Does the packet have a checksum?
     #[inline]
     pub fn checksum(&self) -> Option<u16> {
         self.checksum
@@ -1244,6 +1308,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         Some(writer)
     }
 
+    /// Set the application process identifier (APID).
     #[inline]
     pub fn set_apid(&mut self, apid: u11) {
         // Clear APID part of the raw packet ID
@@ -1283,6 +1348,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         .unwrap()
     }
 
+    /// Set the sequence count in the CCSDS packet header.
     #[inline]
     pub fn set_seq_count(&mut self, seq_count: u14) {
         let new_psc = (u16::from_be_bytes(self.raw_tm[2..4].try_into().unwrap()) & 0xC000)

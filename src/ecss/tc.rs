@@ -68,6 +68,7 @@ use super::verify_crc16_ccitt_false_from_raw_to_pus_error_no_table;
 
 /// PUS C secondary header length is fixed
 pub const PUC_TC_SECONDARY_HEADER_LEN: usize = size_of::<zc::PusTcSecondaryHeader>();
+/// Minimum PUS C secondary header length without application data.
 pub const PUS_TC_MIN_LEN_WITHOUT_APP_DATA: usize = CCSDS_HEADER_LEN + PUC_TC_SECONDARY_HEADER_LEN;
 const PUS_VERSION: PusVersion = PusVersion::PusC;
 
@@ -79,12 +80,16 @@ pub trait IsPusTelecommand {}
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq)]
 pub struct AckFlags {
+    /// Acceptance must be acknowledged.
     #[bit(3, rw)]
     acceptance: bool,
+    /// Start must be acknowledged.
     #[bit(2, rw)]
     start: bool,
+    /// Progress must be acknowledged.
     #[bit(1, rw)]
     progress: bool,
+    /// Completion must be acknowledged.
     #[bit(0, rw)]
     completion: bool,
 }
@@ -98,9 +103,11 @@ pub const ACK_ALL: AckFlags = AckFlags::builder()
     .build();
 
 impl AckFlags {
+    /// Constant to acknowledge all TC handling phases.
     pub const ALL: Self = ACK_ALL;
 }
 
+/// Generic trait for PUS TC secondary header access.
 pub trait GenericPusTcSecondaryHeader {
     /// PUS version.
     fn pus_version(&self) -> Result<PusVersion, u4>;
@@ -124,6 +131,7 @@ pub trait GenericPusTcSecondaryHeader {
     }
 }
 
+/// [zerocopy] support.
 pub mod zc {
     use crate::ecss::tc::{AckFlags, GenericPusTcSecondaryHeader};
     use crate::ecss::{MessageTypeId, PusError, PusVersion};
@@ -131,6 +139,7 @@ pub mod zc {
     use arbitrary_int::u4;
     use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
 
+    /// PUS TC secondary header.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
     #[repr(C)]
     pub struct PusTcSecondaryHeader {
@@ -192,13 +201,18 @@ pub mod zc {
     }
 }
 
+/// PUS C secondary header for telecommands.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcSecondaryHeader {
+    /// Message type ID.
     pub message_type_id: MessageTypeId,
+    /// Source ID.
     pub source_id: u16,
+    /// Acknowledgement flags.
     pub ack_flags: AckFlags,
+    /// PUS version.
     pub version: PusVersion,
 }
 
@@ -238,8 +252,10 @@ impl TryFrom<zc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
 }
 
 impl PusTcSecondaryHeader {
+    /// Header length constant.
     pub const HEADER_LEN: usize = PUC_TC_SECONDARY_HEADER_LEN;
 
+    /// Simple constructor which only requires the [MessageTypeId].
     #[inline]
     pub fn new_simple(message_type_id: MessageTypeId) -> Self {
         PusTcSecondaryHeader {
@@ -250,6 +266,7 @@ impl PusTcSecondaryHeader {
         }
     }
 
+    /// General constructor.
     #[inline]
     pub fn new(message_type_id: MessageTypeId, ack_flags: AckFlags, source_id: u16) -> Self {
         PusTcSecondaryHeader {
@@ -274,6 +291,7 @@ impl PusTcSecondaryHeader {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTcCreator<'app_data> {
     sp_header: SpHeader,
+    /// Secondary header.
     pub sec_header: PusTcSecondaryHeader,
     app_data: &'app_data [u8],
     has_checksum: bool,
@@ -328,6 +346,7 @@ impl<'app_data> PusTcCreator<'app_data> {
         )
     }
 
+    /// Constructor for a PUS TC packet without application data.
     #[inline]
     pub fn new_no_app_data(
         sp_header: SpHeader,
@@ -337,40 +356,48 @@ impl<'app_data> PusTcCreator<'app_data> {
         Self::new(sp_header, sec_header, &[], packet_config)
     }
 
+    /// Get a builder whih allows building [Self] step-by-step.
     pub fn builder<'a>() -> PusTcBuilder<'a> {
         PusTcBuilder::default()
     }
 
+    /// Space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 
+    /// Mutable access to the space packet header.
     #[inline]
     pub fn sp_header_mut(&mut self) -> &mut SpHeader {
         &mut self.sp_header
     }
 
+    /// Service type ID.
     #[inline]
     pub fn service_type_id(&self) -> u8 {
         self.sec_header.service_type_id()
     }
 
+    /// Message subtype ID.
     #[inline]
     pub fn message_subtype_id(&self) -> u8 {
         self.sec_header.message_subtype_id()
     }
 
+    /// Application Process ID (APID).
     #[inline]
     pub fn apid(&self) -> u11 {
         self.sp_header.packet_id.apid
     }
 
+    /// Set acknowledgement flags.
     #[inline]
     pub fn set_ack_flags(&mut self, ack_flags: AckFlags) {
         self.sec_header.ack_flags = ack_flags;
     }
 
+    /// Set the source ID.
     #[inline]
     pub fn set_source_id(&mut self, source_id: u16) {
         self.sec_header.source_id = source_id;
@@ -412,11 +439,13 @@ impl<'app_data> PusTcCreator<'app_data> {
         digest.finalize()
     }
 
+    /// Current packet has a checksum.
     #[inline]
     pub fn has_checksum(&self) -> bool {
         self.has_checksum
     }
 
+    /// Append the raw PUS byte representation to a provided vector.
     #[cfg(feature = "alloc")]
     pub fn append_to_vec(&self, vec: &mut Vec<u8>) -> usize {
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
@@ -658,6 +687,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         })
     }
 
+    /// Length of the full packet written into a buffer.
     #[inline]
     pub const fn len_written(&self) -> usize {
         self.full_len
@@ -685,6 +715,7 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         &self.buf[self.app_data_offset..end_index]
     }
 
+    /// Length of the application data.
     #[inline]
     pub fn app_data_len(&self) -> usize {
         let mut len = self.full_len - self.app_data_offset;
@@ -747,6 +778,7 @@ pub struct PusTcBuilder<'a> {
 }
 
 impl PusTcBuilder<'_> {
+    /// Constructor.
     pub fn new() -> Self {
         Self {
             sp_header: SpHeader::new(
@@ -760,6 +792,7 @@ impl PusTcBuilder<'_> {
         }
     }
 
+    /// Set the packet ID.
     #[inline]
     pub fn with_packet_id(mut self, mut packet_id: PacketId) -> Self {
         packet_id.packet_type = PacketType::Tc;
@@ -767,54 +800,63 @@ impl PusTcBuilder<'_> {
         self
     }
 
+    /// Set the packet sequence control.
     #[inline]
     pub fn with_packet_sequence_control(mut self, psc: PacketSequenceControl) -> Self {
         self.sp_header.psc = psc;
         self
     }
 
+    /// Set the sequence count.
     #[inline]
     pub fn with_sequence_count(mut self, seq_count: u14) -> Self {
         self.sp_header.psc.seq_count = seq_count;
         self
     }
 
+    /// Set the message type ID.
     #[inline]
     pub fn with_message_type_id(mut self, message_type: MessageTypeId) -> Self {
         self.sec_header.message_type_id = message_type;
         self
     }
 
+    /// Set the service type ID.
     #[inline]
     pub fn with_service_type_id(mut self, service: u8) -> Self {
         self.sec_header.message_type_id.type_id = service;
         self
     }
 
+    /// Set the message subtype ID.
     #[inline]
     pub fn with_message_subtype_id(mut self, subtype_id: u8) -> Self {
         self.sec_header.message_type_id.subtype_id = subtype_id;
         self
     }
 
+    /// Set the source ID.
     #[inline]
     pub fn with_source_id(mut self, source_id: u16) -> Self {
         self.sec_header.source_id = source_id;
         self
     }
 
+    /// Set the acknowledgmenet flags.
     #[inline]
     pub fn with_ack_flags(mut self, ack_flags: AckFlags) -> Self {
         self.sec_header.ack_flags = ack_flags;
         self
     }
 
+    /// Set the Application Process ID (APID).
     #[inline]
     pub fn with_apid(mut self, apid: u11) -> Self {
         self.sp_header.packet_id.set_apid(apid);
         self
     }
 
+    /// Enable or disable the checksum.
     #[inline]
     pub fn with_checksum(mut self, has_checksum: bool) -> Self {
         self.has_checksum = has_checksum;
@@ -829,6 +871,7 @@ impl Default for PusTcBuilder<'_> {
 }
 
 impl<'a> PusTcBuilder<'a> {
+    /// Constructor.
     pub fn build(self) -> PusTcCreator<'a> {
         PusTcCreator::new(
             self.sp_header,
@@ -841,6 +884,7 @@ impl<'a> PusTcBuilder<'a> {
         )
     }
 
+    /// Application data slice.
     #[inline]
     pub fn with_app_data(mut self, app_data: &'a [u8]) -> Self {
         self.app_data = app_data;
@@ -949,26 +993,31 @@ impl<'raw_data> PusTcReader<'raw_data> {
         })
     }
 
+    /// Application data slice.
     #[inline]
     pub fn app_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    /// Full raw data slice.
     #[inline]
     pub fn raw_data(&self) -> &[u8] {
         self.raw_data
     }
 
+    /// Length of the packed data.
     #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.packet_len()
     }
 
+    /// Space packet header.
     #[inline]
     pub fn sp_header(&self) -> &SpHeader {
         &self.sp_header
     }
 
+    /// CRC16 checksum if present.
     #[inline]
     pub fn crc16(&self) -> Option<u16> {
         self.crc16

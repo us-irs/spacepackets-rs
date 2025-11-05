@@ -3,46 +3,74 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// Scheduling service subtype ID.
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoPrimitive, TryFromPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
-pub enum Subservice {
+pub enum MessageSubtypeId {
     // Core subservices
+    /// Telecommand - Enable scheduling.
     TcEnableScheduling = 1,
+    /// Telecommand - Disable scheduling.
     TcDisableScheduling = 2,
+    /// Telecommand - Reset scheduling.
     TcResetScheduling = 3,
+    /// Telecommand - Insert activity.
     TcInsertActivity = 4,
+    /// Telecommand - Delete activity by request ID.
     TcDeleteActivityByRequestId = 5,
+    /// Telecommand - Delete activity by filter.
     TcDeleteActivitiesByFilter = 6,
 
     // Time shift subservices
+    /// Telecommand - Time shift activity by request ID.
     TcTimeShiftActivityWithRequestId = 7,
+    /// Telecommand - Time shift activity by filter.
     TcTimeShiftActivitiesByFilter = 8,
+    /// Telecommand - Time shift all.
     TcTimeShiftAll = 15,
 
     // Reporting subservices
+    /// Telecommand - Detail report by request ID.
     TcDetailReportByRequestId = 9,
+    /// Telemetry - Detail report.
     TmDetailReport = 10,
+    /// Telecommand - Detail report by filter.
     TcDetailReportByFilter = 11,
+    /// Telecommand - Summary report by request ID.
     TcSummaryReportByRequestId = 12,
+    /// Telemetry - Summary report.
     TmSummaryReport = 13,
+    /// Telecommand - Summary report by filter.
     TcSummaryReportByFilter = 14,
+    /// Telecommand - Detail report all.
     TcDetailReportAll = 16,
+    /// Telecommand - Summary report all.
     TcSummaryReportAll = 17,
 
     // Subschedule subservices
+    /// Telecommand - Report subschedule status.
     TcReportSubscheduleStatus = 18,
+    /// Telemetry - Subschedule status report.
     TmReportSubscheduleStatus = 19,
+    /// Telecommand - Enable subschedule.
     TcEnableSubschedule = 20,
+    /// Telecommand - Disable subschedule.
     TcDisableSubschedule = 21,
 
     // Group subservices
+    /// Telecommand - Create schedule group.
     TcCreateScheduleGroup = 22,
+    /// Telecommand - Delete schedule group.
     TcDeleteScheduleGroup = 23,
+    /// Telecommand - Enable schedule group.
     TcEnableScheduleGroup = 24,
+    /// Telecommand - Disable schedule group.
     TcDisableScheduleGroup = 25,
+    /// Telecommand - Report all group status.
     TcReportAllGroupsStatus = 26,
+    /// Telemetry - All group status report.
     TmReportAllGroupsStatus = 27,
 }
 
@@ -51,7 +79,9 @@ pub enum Subservice {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum SchedStatus {
+    /// Scheduling disabled.
     Disabled = 0,
+    /// Scheduling enabled.
     Enabled = 1,
 }
 
@@ -71,9 +101,13 @@ impl From<bool> for SchedStatus {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum TimeWindowType {
+    /// Select all.
     SelectAll = 0,
+    /// From time tag to time tag.
     TimeTagToTimeTag = 1,
+    /// Starting from a time tag.
     FromTimeTag = 2,
+    /// Until a time tag.
     ToTimeTag = 3,
 }
 
@@ -99,20 +133,20 @@ mod tests {
 
     #[test]
     fn test_conv_into_u8() {
-        let subservice: u8 = Subservice::TcCreateScheduleGroup.into();
+        let subservice: u8 = MessageSubtypeId::TcCreateScheduleGroup.into();
         assert_eq!(subservice, 22);
     }
 
     #[test]
     fn test_conv_from_u8() {
-        let subservice: Subservice = 22u8.try_into().unwrap();
-        assert_eq!(subservice, Subservice::TcCreateScheduleGroup);
+        let subservice: MessageSubtypeId = 22u8.try_into().unwrap();
+        assert_eq!(subservice, MessageSubtypeId::TcCreateScheduleGroup);
     }
 
     #[test]
     #[cfg(feature = "serde")]
     fn test_serde_subservice_id() {
-        generic_serde_test(Subservice::TcEnableScheduling);
+        generic_serde_test(MessageSubtypeId::TcEnableScheduling);
     }
 
     #[test]

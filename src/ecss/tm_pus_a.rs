@@ -48,6 +48,7 @@
 //! assert_eq!(ping_tm_reader.timestamp(), &time_buf);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
+use crate::ecss::tm::IsPusTelemetry;
 use crate::ecss::{
     calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
     verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, MessageTypeId, PusError, PusPacket,
@@ -73,55 +74,78 @@ use crate::time::{TimeWriter, TimestampError};
 
 use super::verify_crc16_ccitt_false_from_raw_to_pus_error_no_table;
 
-pub trait IsPusTelemetry {}
-
 /// Length without timestamp
 pub const PUS_TM_MIN_SEC_HEADER_LEN: usize = 3;
+/// Minimal length of a PUS TM packet without source data.
 pub const PUS_TM_MIN_LEN_WITHOUT_SOURCE_DATA: usize =
     CCSDS_HEADER_LEN + PUS_TM_MIN_SEC_HEADER_LEN + size_of::<CrcType>();
 
+/// Generic properties of a PUS-A PUS TM secondary header.
 pub trait GenericPusTmSecondaryHeader {
+    /// PUS version field.
     fn pus_version(&self) -> PusVersion;
+    /// Service field.
     fn service(&self) -> u8;
+    /// Subservice field.
     fn subservice(&self) -> u8;
+    /// Message counter field for the service ID.
     fn msg_counter(&self) -> Option<u8>;
+    /// Destination ID.
     fn dest_id(&self) -> Option<UnsignedByteField>;
+    /// Number of spare bytes.
     fn spare_bytes(&self) -> usize;
 }
 
+/// Managed parameters for the secondary header which can not be deduced from the packet itself.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SecondaryHeaderParameters {
+    /// Timestamp length in bytes.
     pub timestamp_len: usize,
+    /// Does the packet have a message counter?
     pub has_msg_counter: bool,
-    pub dest_id_len: Option<usize>,
+    /// Present and length of the destination ID.
+    pub opt_dest_id_len: Option<usize>,
+    /// Number of spare bytes.
     pub spare_bytes: usize,
 }
 
 impl SecondaryHeaderParameters {
+    /// Minimal constructor.
     pub const fn new_minimal(timestamp_len: usize) -> Self {
         Self {
             timestamp_len,
             has_msg_counter: false,
-            dest_id_len: None,
+            opt_dest_id_len: None,
             spare_bytes: 0,
         }
     }
 }
 
+/// PUS TM secondary header.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmSecondaryHeader<'stamp> {
     pus_version: PusVersion,
+    /// Service field.
     pub service: u8,
+    /// Subservice field.
     pub subservice: u8,
+    /// Service message counter.
     pub msg_counter: Option<u8>,
+    /// Destination ID field.
     pub dest_id: Option<UnsignedByteField>,
+    /// Timestamp slice.
     pub timestamp: &'stamp [u8],
+    /// Number of spare bytes to add after the timestamp.
     pub spare_bytes: usize,
 }
 
 impl<'stamp> PusTmSecondaryHeader<'stamp> {
+    /// Simple constructor.
+    ///
+    /// Allows setting the service, subservice and timestamp and sets default values for the
+    /// other fields.
     #[inline]
     pub fn new_simple(service: u8, subservice: u8, timestamp: &'stamp [u8]) -> Self {
         Self::new(service, subservice, None, None, timestamp, 0)
@@ -133,6 +157,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         Self::new(service, subservice, None, None, &[], 0)
     }
 
+    /// Generic constructor.
     #[inline]
     pub fn new(
         service: u8,
@@ -153,6 +178,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         }
     }
 
+    /// Construct the secondary header from a raw byte slice.
     pub fn from_bytes(
         buf: &'stamp [u8],
         params: &SecondaryHeaderParameters,
@@ -180,7 +206,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             current_idx += 1;
         }
         let mut dest_id = None;
-        if let Some(dest_id_len) = params.dest_id_len {
+        if let Some(dest_id_len) = params.opt_dest_id_len {
             dest_id = Some(
                 UnsignedByteField::new_from_be_bytes(
                     dest_id_len,
@@ -201,6 +227,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         })
     }
 
+    /// Write the PUS TM secondary header to a provided buffer.
     pub fn write_to_be_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         let written_len = self.written_len();
         if buf.len() < written_len {
@@ -229,6 +256,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         Ok(written_len)
     }
 
+    /// Convert the PUS TM packet secondary header to a [alloc::vec::Vec].
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> Vec<u8> {
         let mut vec = alloc::vec![0; self.written_len()];
@@ -236,6 +264,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         vec
     }
 
+    /// Length of the secondary header when written to bytes.
     pub fn written_len(&self) -> usize {
         let mut len = PUS_TM_MIN_SEC_HEADER_LEN + self.timestamp.len() + self.spare_bytes;
         if let Some(dest_id) = self.dest_id {
@@ -247,9 +276,10 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
         len
     }
 
+    /// Length for the provided packet parameters.
     pub fn len_for_params(params: &SecondaryHeaderParameters) -> usize {
         let mut len = PUS_TM_MIN_SEC_HEADER_LEN + params.timestamp_len + params.spare_bytes;
-        if let Some(dest_id) = params.dest_id_len {
+        if let Some(dest_id) = params.opt_dest_id_len {
             len += dest_id;
         }
         if params.has_msg_counter {
@@ -308,7 +338,9 @@ impl GenericPusTmSecondaryHeader for PusTmSecondaryHeader<'_> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmCreator<'time, 'src_data> {
+    /// Space packet header.
     pub sp_header: SpHeader,
+    /// PUS TM secondary header.
     #[cfg_attr(feature = "serde", serde(borrow))]
     pub sec_header: PusTmSecondaryHeader<'time>,
     source_data: &'src_data [u8],
@@ -351,6 +383,8 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         pus_tm
     }
 
+    /// Simple constructor which builds the [PusTmSecondaryHeader] internally from the
+    /// provided arguments.
     #[inline]
     pub fn new_simple(
         sp_header: SpHeader,
@@ -367,6 +401,7 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         Ok(Self::new(sp_header, sec_header, source_data, set_ccsds_len))
     }
 
+    /// Constructor for PUS TM packets without source data.
     #[inline]
     pub fn new_no_source_data(
         sp_header: SpHeader,
@@ -376,21 +411,25 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         Self::new(sp_header, sec_header, &[], set_ccsds_len)
     }
 
+    /// Raw timestamp slice.
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
+    /// Raw source data slice.
     #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.source_data
     }
 
+    /// Set the destination ID.
     #[inline]
     pub fn set_dest_id(&mut self, dest_id: Option<UnsignedByteField>) {
         self.sec_header.dest_id = dest_id;
     }
 
+    /// Set the message counter for the current service ID.
     #[inline]
     pub fn set_msg_counter(&mut self, msg_counter: Option<u8>) {
         self.sec_header.msg_counter = msg_counter
@@ -675,6 +714,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         })
     }
 
+    /// Length of the full packet when written to bytes.
     #[inline]
     pub const fn len_written(&self) -> usize {
         self.full_len
@@ -692,6 +732,7 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
         &self.buf[self.source_data_offset..self.full_len - 2]
     }
 
+    /// Source data length.
     #[inline]
     pub fn source_data_len(&self) -> usize {
         self.full_len - 2 - self.source_data_offset
@@ -745,7 +786,9 @@ impl<'buf> PusTmCreatorWithReservedSourceData<'buf> {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct PusTmReader<'raw_data> {
+    /// Space packet header.
     pub sp_header: SpHeader,
+    /// PUS TM secondary header.
     pub sec_header: PusTmSecondaryHeader<'raw_data>,
     #[cfg_attr(feature = "serde", serde(skip))]
     raw_data: &'raw_data [u8],
@@ -779,6 +822,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         Ok(tc)
     }
 
+    /// New constructor which does not check the CRC16.
     pub fn new_no_crc_check(
         slice: &'raw_data [u8],
         sec_header_params: &SecondaryHeaderParameters,
@@ -822,21 +866,25 @@ impl<'raw_data> PusTmReader<'raw_data> {
         })
     }
 
+    /// Length of the full packet as packed in the raw data.
     #[inline]
     pub fn len_packed(&self) -> usize {
         self.sp_header.packet_len()
     }
 
+    /// Raw source data slice.
     #[inline]
     pub fn source_data(&self) -> &[u8] {
         self.user_data()
     }
 
+    /// Raw timestamp slice.
     #[inline]
     pub fn timestamp(&self) -> &[u8] {
         self.sec_header.timestamp
     }
 
+    /// CRC16 checksum of the packet.
     #[inline]
     pub fn crc16(&self) -> u16 {
         self.crc16
@@ -941,16 +989,21 @@ impl PartialEq<PusTmReader<'_>> for PusTmCreator<'_, '_> {
     }
 }
 
+/// Secondary header field not present error.
 #[derive(Debug, thiserror::Error)]
 #[error("this field is not present in the secondary header")]
 pub struct SecondaryHeaderFieldNotPresentError;
 
+/// Destination ID operation error.
 #[derive(Debug, thiserror::Error)]
 pub enum DestIdOperationError {
+    /// Field is not present in the secondary header.
     #[error("this field is not present in the secondary header")]
     FieldNotPresent(#[from] SecondaryHeaderFieldNotPresentError),
+    /// Invalid field length.
     #[error("invalid byte field length")]
     InvalidFieldLen,
+    /// Bzyte conversion error.
     #[error("byte conversion error")]
     ByteConversionError(#[from] ByteConversionError),
 }
@@ -1008,15 +1061,16 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         self.raw_tm[0..2].copy_from_slice(&updated_apid.to_be_bytes());
     }
 
+    /// Destination ID field if present.
     pub fn dest_id(&self) -> Result<Option<UnsignedByteField>, ByteConversionError> {
-        if self.sec_header_params.dest_id_len.is_none() {
+        if self.sec_header_params.opt_dest_id_len.is_none() {
             return Ok(None);
         }
         let mut base_idx = 10;
         if self.sec_header_params.has_msg_counter {
             base_idx += 1;
         }
-        let dest_id_len = self.sec_header_params.dest_id_len.unwrap();
+        let dest_id_len = self.sec_header_params.opt_dest_id_len.unwrap();
         if self.raw_tm.len() < base_idx + dest_id_len {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: self.raw_tm.len(),
@@ -1032,6 +1086,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         ))
     }
 
+    /// Message counter if present.
     pub fn msg_counter(&self) -> Option<u8> {
         if !self.sec_header_params.has_msg_counter {
             return None;
@@ -1061,10 +1116,10 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         &mut self,
         dest_id: UnsignedByteField,
     ) -> Result<(), DestIdOperationError> {
-        if self.sec_header_params.dest_id_len.is_none() {
+        if self.sec_header_params.opt_dest_id_len.is_none() {
             return Err(SecondaryHeaderFieldNotPresentError.into());
         }
-        let dest_id_len = self.sec_header_params.dest_id_len.unwrap();
+        let dest_id_len = self.sec_header_params.opt_dest_id_len.unwrap();
         if dest_id.size() != dest_id_len {
             return Err(DestIdOperationError::InvalidFieldLen);
         }
@@ -1093,6 +1148,7 @@ impl<'raw> PusTmZeroCopyWriter<'raw> {
         crate::zc::SpHeader::read_from_bytes(&self.raw_tm[0..CCSDS_HEADER_LEN]).unwrap()
     }
 
+    /// Set the sequence count.
     #[inline]
     pub fn set_seq_count(&mut self, seq_count: u14) {
         let new_psc = (u16::from_be_bytes(self.raw_tm[2..4].try_into().unwrap()) & 0xC000)
@@ -1523,7 +1579,7 @@ mod tests {
             &SecondaryHeaderParameters {
                 timestamp_len: 7,
                 has_msg_counter: msg_counter.is_some(),
-                dest_id_len: dest_id.as_ref().map(|id| id.size()),
+                opt_dest_id_len: dest_id.as_ref().map(|id| id.size()),
                 spare_bytes: 0,
             },
         )
@@ -1878,7 +1934,7 @@ mod tests {
             &SecondaryHeaderParameters {
                 timestamp_len: dummy_timestamp().len(),
                 has_msg_counter: false,
-                dest_id_len: Some(2),
+                opt_dest_id_len: Some(2),
                 spare_bytes: 0,
             },
         )
