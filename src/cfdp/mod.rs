@@ -195,7 +195,7 @@ pub enum TransactionStatus {
 
 /// Checksum types according to the
 /// [SANA Checksum Types registry](https://sanaregistry.org/r/checksum_identifiers/)
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
@@ -209,13 +209,8 @@ pub enum ChecksumType {
     /// CRC32. Polynomial: 0x4C11DB7. Preferred checksum for now.
     Crc32 = 3,
     /// Null checksum (no checksum).
+    #[default]
     NullChecksum = 15,
-}
-
-impl Default for ChecksumType {
-    fn default() -> Self {
-        Self::NullChecksum
-    }
 }
 
 /// Raw null checksum.
