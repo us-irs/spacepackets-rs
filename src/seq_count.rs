@@ -18,18 +18,13 @@ pub trait SequenceCounter {
     type Raw: Into<u64>;
 
     /// Bit width of the counter.
-    const MAX_BIT_WIDTH: usize;
+    fn max_bit_width(&self) -> usize;
 
     /// Get the current sequence count value.
     fn get(&self) -> Self::Raw;
 
     /// Increment the sequence count by one.
     fn increment(&self);
-
-    /// Increment the sequence count by one, mutable API.
-    fn increment_mut(&mut self) {
-        self.increment();
-    }
 
     /// Get the current sequence count value and increment the counter by one.
     fn get_and_increment(&self) -> Self::Raw {
@@ -38,10 +33,11 @@ pub trait SequenceCounter {
         val
     }
 
-    /// Get the current sequence count value and increment the counter by one, mutable API.
-    fn get_and_increment_mut(&mut self) -> Self::Raw {
-        self.get_and_increment()
-    }
+    /// Set the sequence counter.
+    ///
+    /// This should not be required by default but can be used to reset the counter
+    /// or initialize it with a custom value.
+    fn set(&self, value: Self::Raw);
 }
 
 /// Simple sequence counter which wraps at ´T::MAX´.
@@ -58,7 +54,7 @@ macro_rules! impl_for_primitives {
             paste! {
                 impl SequenceCounterSimple<$ty> {
                     /// Constructor with a custom maximum value.
-                    pub fn [<new_custom_max_val_ $ty>](max_val: $ty) -> Self {
+                    pub const fn [<new_custom_max_val_ $ty>](max_val: $ty) -> Self {
                         Self {
                             seq_count: Cell::new(0),
                             max_val,
@@ -66,7 +62,7 @@ macro_rules! impl_for_primitives {
                     }
 
                     /// Generic constructor.
-                    pub fn [<new_ $ty>]() -> Self {
+                    pub const fn [<new_ $ty>]() -> Self {
                         Self {
                             seq_count: Cell::new(0),
                             max_val: $ty::MAX
@@ -82,16 +78,23 @@ macro_rules! impl_for_primitives {
 
                 impl SequenceCounter for SequenceCounterSimple<$ty> {
                     type Raw = $ty;
-                    const MAX_BIT_WIDTH: usize = core::mem::size_of::<Self::Raw>() * 8;
 
+                    #[inline]
+                    fn max_bit_width(&self) -> usize {
+                        core::mem::size_of::<Self::Raw>() * 8
+                    }
+
+                    #[inline]
                     fn get(&self) -> Self::Raw {
                         self.seq_count.get()
                     }
 
+                    #[inline]
                     fn increment(&self) {
                         self.get_and_increment();
                     }
 
+                    #[inline]
                     fn get_and_increment(&self) -> Self::Raw {
                         let curr_count = self.seq_count.get();
 
@@ -101,6 +104,11 @@ macro_rules! impl_for_primitives {
                             self.seq_count.set(curr_count + 1);
                         }
                         curr_count
+                    }
+
+                    #[inline]
+                    fn set(&self, value: Self::Raw) {
+                        self.seq_count.set(value);
                     }
                 }
             }
@@ -117,6 +125,7 @@ pub struct SequenceCounterCcsdsSimple {
 }
 
 impl Default for SequenceCounterCcsdsSimple {
+    #[inline]
     fn default() -> Self {
         Self {
             provider: SequenceCounterSimple::new_custom_max_val_u16(MAX_SEQ_COUNT.as_u16()),
@@ -126,12 +135,38 @@ impl Default for SequenceCounterCcsdsSimple {
 
 impl SequenceCounter for SequenceCounterCcsdsSimple {
     type Raw = u16;
-    const MAX_BIT_WIDTH: usize = core::mem::size_of::<Self::Raw>() * 8;
     delegate::delegate! {
         to self.provider {
             fn get(&self) -> u16;
             fn increment(&self);
             fn get_and_increment(&self) -> u16;
+        }
+    }
+
+    #[inline]
+    fn set(&self, value: u16) {
+        if value > MAX_SEQ_COUNT.as_u16() {
+            return;
+        }
+        self.provider.set(value);
+    }
+
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        Self::MAX_BIT_WIDTH
+    }
+}
+
+impl SequenceCounterCcsdsSimple {
+    /// Maximum bit width for CCSDS packet sequence counter is 14 bits.
+    pub const MAX_BIT_WIDTH: usize = 14;
+
+    /// Create a new sequence counter specifically for the sequence count of CCSDS packets.
+    ///
+    /// It has a [Self::MAX_BIT_WIDTH] of 14.
+    pub const fn new() -> Self {
+        Self {
+            provider: SequenceCounterSimple::new_custom_max_val_u16(MAX_SEQ_COUNT.value()),
         }
     }
 }
@@ -140,14 +175,24 @@ impl SequenceCounter for SequenceCounterCcsdsSimple {
 impl SequenceCounter for core::sync::atomic::AtomicU8 {
     type Raw = u8;
 
-    const MAX_BIT_WIDTH: usize = 8;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        8
+    }
 
+    #[inline]
     fn get(&self) -> Self::Raw {
         self.load(core::sync::atomic::Ordering::Relaxed)
     }
 
+    #[inline]
     fn increment(&self) {
         self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn set(&self, value: u8) {
+        self.store(value, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -155,14 +200,24 @@ impl SequenceCounter for core::sync::atomic::AtomicU8 {
 impl SequenceCounter for core::sync::atomic::AtomicU16 {
     type Raw = u16;
 
-    const MAX_BIT_WIDTH: usize = 16;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        16
+    }
 
+    #[inline]
     fn get(&self) -> Self::Raw {
         self.load(core::sync::atomic::Ordering::Relaxed)
     }
 
+    #[inline]
     fn increment(&self) {
         self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn set(&self, value: u16) {
+        self.store(value, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -170,14 +225,24 @@ impl SequenceCounter for core::sync::atomic::AtomicU16 {
 impl SequenceCounter for core::sync::atomic::AtomicU32 {
     type Raw = u32;
 
-    const MAX_BIT_WIDTH: usize = 32;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        32
+    }
 
+    #[inline]
     fn get(&self) -> Self::Raw {
         self.load(core::sync::atomic::Ordering::Relaxed)
     }
 
+    #[inline]
     fn increment(&self) {
         self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn set(&self, value: u32) {
+        self.store(value, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -185,14 +250,24 @@ impl SequenceCounter for core::sync::atomic::AtomicU32 {
 impl SequenceCounter for core::sync::atomic::AtomicU64 {
     type Raw = u64;
 
-    const MAX_BIT_WIDTH: usize = 64;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        64
+    }
 
+    #[inline]
     fn get(&self) -> Self::Raw {
         self.load(core::sync::atomic::Ordering::Relaxed)
     }
 
+    #[inline]
     fn increment(&self) {
         self.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[inline]
+    fn set(&self, value: u64) {
+        self.store(value, core::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -200,7 +275,10 @@ impl SequenceCounter for core::sync::atomic::AtomicU64 {
 impl SequenceCounter for portable_atomic::AtomicU8 {
     type Raw = u8;
 
-    const MAX_BIT_WIDTH: usize = 8;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        8
+    }
 
     fn get(&self) -> Self::Raw {
         self.load(portable_atomic::Ordering::Relaxed)
@@ -208,6 +286,10 @@ impl SequenceCounter for portable_atomic::AtomicU8 {
 
     fn increment(&self) {
         self.fetch_add(1, portable_atomic::Ordering::Relaxed);
+    }
+
+    fn set(&self, value: Self::Raw) {
+        self.store(value, portable_atomic::Ordering::Relaxed);
     }
 }
 
@@ -215,7 +297,10 @@ impl SequenceCounter for portable_atomic::AtomicU8 {
 impl SequenceCounter for portable_atomic::AtomicU16 {
     type Raw = u16;
 
-    const MAX_BIT_WIDTH: usize = 16;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        16
+    }
 
     fn get(&self) -> Self::Raw {
         self.load(portable_atomic::Ordering::Relaxed)
@@ -223,6 +308,10 @@ impl SequenceCounter for portable_atomic::AtomicU16 {
 
     fn increment(&self) {
         self.fetch_add(1, portable_atomic::Ordering::Relaxed);
+    }
+
+    fn set(&self, value: Self::Raw) {
+        self.store(value, portable_atomic::Ordering::Relaxed);
     }
 }
 
@@ -230,7 +319,10 @@ impl SequenceCounter for portable_atomic::AtomicU16 {
 impl SequenceCounter for portable_atomic::AtomicU32 {
     type Raw = u32;
 
-    const MAX_BIT_WIDTH: usize = 32;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        32
+    }
 
     fn get(&self) -> Self::Raw {
         self.load(portable_atomic::Ordering::Relaxed)
@@ -238,6 +330,10 @@ impl SequenceCounter for portable_atomic::AtomicU32 {
 
     fn increment(&self) {
         self.fetch_add(1, portable_atomic::Ordering::Relaxed);
+    }
+
+    fn set(&self, value: Self::Raw) {
+        self.store(value, portable_atomic::Ordering::Relaxed);
     }
 }
 
@@ -245,7 +341,10 @@ impl SequenceCounter for portable_atomic::AtomicU32 {
 impl SequenceCounter for portable_atomic::AtomicU64 {
     type Raw = u64;
 
-    const MAX_BIT_WIDTH: usize = 64;
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        64
+    }
 
     fn get(&self) -> Self::Raw {
         self.load(portable_atomic::Ordering::Relaxed)
@@ -254,18 +353,32 @@ impl SequenceCounter for portable_atomic::AtomicU64 {
     fn increment(&self) {
         self.fetch_add(1, portable_atomic::Ordering::Relaxed);
     }
+
+    fn set(&self, value: Self::Raw) {
+        self.store(value, portable_atomic::Ordering::Relaxed);
+    }
 }
 
 impl<T: SequenceCounter + ?Sized> SequenceCounter for &T {
     type Raw = T::Raw;
-    const MAX_BIT_WIDTH: usize = T::MAX_BIT_WIDTH;
 
+    #[inline]
+    fn max_bit_width(&self) -> usize {
+        (**self).max_bit_width()
+    }
+
+    #[inline]
     fn get(&self) -> Self::Raw {
         (**self).get()
     }
 
+    #[inline]
     fn increment(&self) {
         (**self).increment()
+    }
+
+    fn set(&self, value: Self::Raw) {
+        (**self).set(value);
     }
 }
 
@@ -298,7 +411,10 @@ macro_rules! sync_clonable_seq_counter_impl {
 
             impl SequenceCounter for [<SequenceCounterSyncCustomWrap $ty:upper>] {
                 type Raw = $ty;
-                const MAX_BIT_WIDTH: usize = core::mem::size_of::<Self::Raw>() * 8;
+
+                fn max_bit_width(&self) -> usize {
+                    core::mem::size_of::<Self::Raw>() * 8
+                }
 
                 fn get(&self) -> $ty {
                     self.seq_count.load(core::sync::atomic::Ordering::Relaxed)
@@ -319,6 +435,10 @@ macro_rules! sync_clonable_seq_counter_impl {
                         },
                     ).unwrap()
                 }
+
+                fn set(&self, value: $ty) {
+                    self.seq_count.store(value, core::sync::atomic::Ordering::Relaxed);
+                }
             }
         }
     };
@@ -333,9 +453,187 @@ sync_clonable_seq_counter_impl!(u32);
 #[cfg(target_has_atomic = "64")]
 sync_clonable_seq_counter_impl!(u64);
 
+/// Modules relying on [std] support.
+#[cfg(feature = "std")]
+pub mod std_mod {
+    use super::*;
+
+    use core::str::FromStr;
+    use std::path::{Path, PathBuf};
+    use std::string::ToString as _;
+    use std::{fs, io};
+
+    /// A persistent file-backed sequence counter that can wrap any other [SequenceCounter]
+    /// implementation which is non-persistent.
+    ///
+    /// In the default configuration, the underlying [SequenceCounter] is initialized from the file
+    /// content, and the file content will only be updated on a manual [Self::save] or on drop.
+    #[derive(Debug, PartialEq, Eq)]
+    pub struct SequenceCounterOnFile<
+        Inner: SequenceCounter<Raw = RawTy>,
+        RawTy: core::fmt::Debug
+            + Copy
+            + Clone
+            + Into<u64>
+            + TryFrom<u64>
+            + FromStr
+            + Default
+            + PartialEq
+            + Eq,
+    > {
+        path: PathBuf,
+        inner: Inner,
+        /// Configures whether the counter value is saved to disk when the object is dropped.
+        ///
+        /// If this is set to [true] which is the default, the sequence counter will only be stored
+        /// to disk if the [Self::save] method is used or the object is dropped. Otherwise, the
+        /// counter will be saved to disk on every [Self::increment] or [Self::set].
+        pub save_on_drop: bool,
+    }
+
+    impl<
+            Inner: SequenceCounter<Raw = RawTy>,
+            RawTy: core::fmt::Debug
+                + Copy
+                + Clone
+                + Into<u64>
+                + TryFrom<u64>
+                + FromStr
+                + Default
+                + PartialEq
+                + Eq,
+        > SequenceCounterOnFile<Inner, RawTy>
+    {
+        /// Initialize a new persistent sequence counter using a file at the given path and
+        /// any non persistent inner [SequenceCounter] implementation.
+        pub fn new<P: AsRef<Path>>(path: P, inner: Inner) -> io::Result<Self> {
+            let path = path.as_ref().to_path_buf();
+            let value = Self::load_from_path(&path);
+            inner.set(value);
+            Ok(Self {
+                path,
+                inner,
+                save_on_drop: true,
+            })
+        }
+
+        fn load_from_path(path: &Path) -> RawTy {
+            let bytes = match fs::read(path) {
+                Ok(b) => b,
+                Err(_) => return Default::default(),
+            };
+
+            // Trim optional single trailing newline (Unix/Windows)
+            let trimmed = match bytes.last() {
+                Some(&b'\n') => &bytes[..bytes.len() - 1],
+                _ => &bytes,
+            };
+
+            // Reject non-ASCII
+            if !trimmed.is_ascii() {
+                return Default::default();
+            }
+
+            // Parse
+            std::str::from_utf8(trimmed)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default()
+        }
+
+        /// Persist the current value to disk (best-effort).
+        pub fn save(&self) -> io::Result<()> {
+            let value = self.inner.get();
+            std::fs::write(&self.path, value.into().to_string())
+        }
+    }
+
+    impl<
+            Inner: SequenceCounter<Raw = RawTy>,
+            RawTy: core::fmt::Debug
+                + Copy
+                + Clone
+                + Into<u64>
+                + TryFrom<u64, Error: core::fmt::Debug>
+                + FromStr
+                + Default
+                + PartialEq
+                + Eq,
+        > SequenceCounter for SequenceCounterOnFile<Inner, RawTy>
+    {
+        type Raw = RawTy;
+
+        fn max_bit_width(&self) -> usize {
+            self.inner.max_bit_width()
+        }
+
+        fn get(&self) -> RawTy {
+            self.inner.get()
+        }
+
+        fn increment(&self) {
+            self.inner.increment();
+
+            if !self.save_on_drop {
+                // persist (ignore I/O errors here; caller can call `save` explicitly)
+                let _ = self.save();
+            }
+        }
+
+        fn set(&self, value: RawTy) {
+            self.inner.set(value);
+            if !self.save_on_drop {
+                // persist (ignore I/O errors here; caller can call `save` explicitly)
+                let _ = self.save();
+            }
+        }
+    }
+
+    impl<
+            Inner: SequenceCounter<Raw = RawTy>,
+            RawTy: core::fmt::Debug
+                + Copy
+                + Clone
+                + Into<u64>
+                + TryFrom<u64>
+                + FromStr
+                + Default
+                + PartialEq
+                + Eq,
+        > Drop for SequenceCounterOnFile<Inner, RawTy>
+    {
+        fn drop(&mut self) {
+            if self.save_on_drop {
+                let _ = self.save();
+            }
+        }
+    }
+
+    /// Type alisas for a CCSDS sequence counter stored on file.
+    pub type SequenceCounterCcsdsOnFile = SequenceCounterOnFile<SequenceCounterCcsdsSimple, u16>;
+
+    impl SequenceCounterCcsdsOnFile {
+        /// Open or create the counter file at `path`.
+        pub fn new_ccsds_counter<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+            SequenceCounterOnFile::new(path, SequenceCounterCcsdsSimple::default())
+        }
+    }
+
+    /// Type alisas for a [u16] sequence counter stored on file.
+    pub type SequenceCounterU16OnFile = SequenceCounterOnFile<SequenceCounterSimple<u16>, u16>;
+
+    impl SequenceCounterU16OnFile {
+        /// Open or create the counter file at `path`.
+        pub fn new_u16_counter<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+            SequenceCounterOnFile::new(path, SequenceCounterSimple::<u16>::default())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+    use std::boxed::Box;
 
     use crate::seq_count::{
         SequenceCounter, SequenceCounterCcsdsSimple, SequenceCounterSimple,
@@ -347,6 +645,7 @@ mod tests {
     fn test_u8_counter() {
         let u8_counter = SequenceCounterSimple::<u8>::default();
         assert_eq!(u8_counter.get(), 0);
+        assert_eq!(u8_counter.max_bit_width(), 8);
         assert_eq!(u8_counter.get_and_increment(), 0);
         assert_eq!(u8_counter.get_and_increment(), 1);
         assert_eq!(u8_counter.get(), 2);
@@ -384,33 +683,37 @@ mod tests {
         assert_eq!(seq_counter.get_and_increment().into(), 0);
         assert_eq!(seq_counter.get_and_increment().into(), 1);
         assert_eq!(seq_counter.get().into(), 2);
-        seq_counter.increment_mut();
+        seq_counter.increment();
         assert_eq!(seq_counter.get().into(), 3);
-        assert_eq!(seq_counter.get_and_increment_mut().into(), 3);
+        assert_eq!(seq_counter.get_and_increment().into(), 3);
         assert_eq!(seq_counter.get().into(), 4);
     }
 
     #[test]
     fn test_atomic_counter_u8() {
         let mut sync_u8_counter = AtomicU8::new(0);
+        assert_eq!(sync_u8_counter.max_bit_width(), 8);
         common_counter_test(&mut sync_u8_counter);
     }
 
     #[test]
     fn test_atomic_counter_u16() {
         let mut sync_u16_counter = AtomicU16::new(0);
+        assert_eq!(sync_u16_counter.max_bit_width(), 16);
         common_counter_test(&mut sync_u16_counter);
     }
 
     #[test]
     fn test_atomic_counter_u32() {
         let mut sync_u32_counter = AtomicU32::new(0);
+        assert_eq!(sync_u32_counter.max_bit_width(), 32);
         common_counter_test(&mut sync_u32_counter);
     }
 
     #[test]
     fn test_atomic_counter_u64() {
         let mut sync_u64_counter = AtomicU64::new(0);
+        assert_eq!(sync_u64_counter.max_bit_width(), 64);
         common_counter_test(&mut sync_u64_counter);
     }
 
@@ -469,5 +772,57 @@ mod tests {
             sync_u8_counter.increment();
         }
         assert_eq!(sync_u8_counter.get(), 0);
+    }
+
+    #[test]
+    fn test_dyn_compatible() {
+        let counter: Box<dyn SequenceCounter<Raw = u16>> =
+            Box::new(SequenceCounterCcsdsSimple::default());
+        assert_eq!(counter.get(), 0);
+        assert_eq!(counter.max_bit_width(), 14);
+        counter.increment();
+        assert_eq!(counter.get(), 1);
+        assert_eq!(counter.get_and_increment(), 1);
+        assert_eq!(counter.get(), 2);
+    }
+
+    #[test]
+    fn test_persistent_counter() {
+        let tempdir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = tempdir.path().join("seq_count.txt");
+        let mut persistent_counter =
+            crate::seq_count::std_mod::SequenceCounterCcsdsOnFile::new_ccsds_counter(&path)
+                .unwrap();
+        assert_eq!(persistent_counter.get(), 0);
+        assert_eq!(persistent_counter.get_and_increment(), 0);
+        drop(persistent_counter);
+        assert!(path.exists());
+
+        persistent_counter =
+            crate::seq_count::std_mod::SequenceCounterCcsdsOnFile::new_ccsds_counter(
+                tempdir.path().join("seq_count.txt"),
+            )
+            .unwrap();
+        assert_eq!(persistent_counter.get(), 1);
+    }
+
+    #[test]
+    fn test_persistent_couter_manual_save() {
+        let tempdir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = tempdir.path().join("seq_count.txt");
+        let mut persistent_counter =
+            crate::seq_count::std_mod::SequenceCounterCcsdsOnFile::new_ccsds_counter(&path)
+                .unwrap();
+        assert_eq!(persistent_counter.get(), 0);
+        assert_eq!(persistent_counter.get_and_increment(), 0);
+        persistent_counter.save().unwrap();
+        assert!(path.exists());
+        std::mem::forget(persistent_counter);
+        persistent_counter =
+            crate::seq_count::std_mod::SequenceCounterCcsdsOnFile::new_ccsds_counter(
+                tempdir.path().join("seq_count.txt"),
+            )
+            .unwrap();
+        assert_eq!(persistent_counter.get(), 1);
     }
 }
