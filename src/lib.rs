@@ -1008,9 +1008,21 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
         CcsdsPacketIdAndPsc::new_from_ccsds_packet(self)
     }
 
-    /// Mutable access to the packet data field.
-    #[inline]
+    /// Mutable access to the full packet data field.
     pub fn packet_data_mut(&mut self) -> &mut [u8] {
+        let len = self.packet_len();
+        &mut self.buf[CCSDS_HEADER_LEN..len]
+    }
+
+    /// Read-only access to the full packet data field.
+    pub fn packet_data(&mut self) -> &[u8] {
+        let len = self.packet_len();
+        &self.buf[CCSDS_HEADER_LEN..len]
+    }
+
+    /// Mutable access to the user data field which excludes the optional CRC16.
+    #[inline]
+    pub fn user_data_mut(&mut self) -> &mut [u8] {
         let len = self.packet_len();
         match self.checksum {
             Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16ButIgnored) => {
@@ -1020,9 +1032,9 @@ impl CcsdsPacketCreatorWithReservedData<'_> {
         }
     }
 
-    /// Read-only access to the packet data field.
+    /// Read-only access to the user data field which excludes the optional CRC16.
     #[inline]
-    pub fn packet_data(&mut self) -> &[u8] {
+    pub fn user_data(&mut self) -> &[u8] {
         let len = self.packet_len();
         match self.checksum {
             Some(ChecksumType::WithCrc16) | Some(ChecksumType::WithCrc16ButIgnored) => {
@@ -1387,7 +1399,7 @@ impl CcsdsPacket for CcsdsPacketCreator<'_> {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CcsdsPacketCreatorOwned {
     common: CcsdsPacketCreatorCommon,
-    packet_data: alloc::vec::Vec<u8>,
+    user_data: alloc::vec::Vec<u8>,
 }
 
 #[cfg(feature = "alloc")]
@@ -1406,14 +1418,14 @@ impl CcsdsPacketCreatorOwned {
     pub fn new(
         sp_header: SpHeader,
         packet_type: PacketType,
-        packet_data: &[u8],
+        user_data: &[u8],
         checksum: Option<ChecksumType>,
     ) -> Result<Self, CcsdsPacketCreationError> {
         let common =
-            CcsdsPacketCreatorCommon::new(sp_header, packet_type, packet_data.len(), checksum)?;
+            CcsdsPacketCreatorCommon::new(sp_header, packet_type, user_data.len(), checksum)?;
         Ok(Self {
             common,
-            packet_data: packet_data.to_vec(),
+            user_data: user_data.to_vec(),
         })
     }
 
@@ -1421,12 +1433,12 @@ impl CcsdsPacketCreatorOwned {
     pub fn new_with_checksum(
         sp_header: SpHeader,
         packet_type: PacketType,
-        packet_data: &[u8],
+        user_data: &[u8],
     ) -> Result<Self, CcsdsPacketCreationError> {
         Self::new(
             sp_header,
             packet_type,
-            packet_data,
+            user_data,
             Some(ChecksumType::WithCrc16),
         )
     }
@@ -1434,12 +1446,12 @@ impl CcsdsPacketCreatorOwned {
     /// Constructor for telemetry which always appends a CRC16 checksum at the packet end.
     pub fn new_tm_with_checksum(
         sp_header: SpHeader,
-        packet_data: &[u8],
+        user_data: &[u8],
     ) -> Result<Self, CcsdsPacketCreationError> {
         Self::new(
             sp_header,
             PacketType::Tm,
-            packet_data,
+            user_data,
             Some(ChecksumType::WithCrc16),
         )
     }
@@ -1447,25 +1459,25 @@ impl CcsdsPacketCreatorOwned {
     /// Constructor for telecommands which always appends a CRC16 checksum at the packet end.
     pub fn new_tc_with_checksum(
         sp_header: SpHeader,
-        packet_data: &[u8],
+        user_data: &[u8],
     ) -> Result<Self, CcsdsPacketCreationError> {
         Self::new(
             sp_header,
             PacketType::Tc,
-            packet_data,
+            user_data,
             Some(ChecksumType::WithCrc16),
         )
     }
 
     /// Full length when written to bytes.
     pub fn len_written(&self) -> usize {
-        self.common.len_written(self.packet_data.len())
+        self.common.len_written(self.user_data.len())
     }
 
     /// Write the CCSDS packet to the provided buffer.
     pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         self.common
-            .write_to_bytes(buf, self.len_written(), &self.packet_data)
+            .write_to_bytes(buf, self.len_written(), &self.user_data)
     }
 
     /// CCSDS space packet header.
@@ -1483,7 +1495,7 @@ impl CcsdsPacketCreatorOwned {
     /// Create a CCSDS packet as a vector.
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
-        self.common.to_vec(self.len_written(), &self.packet_data)
+        self.common.to_vec(self.len_written(), &self.user_data)
     }
 }
 
@@ -1528,12 +1540,19 @@ pub enum CcsdsPacketReadError {
 }
 
 /// CCSDS packet reader structure.
+///
+/// This implementation makes one assumption about the passed data: It allows verifying a
+/// CRC16-CCITT checksum at the last two bytes of the packet data field and excluding it from the
+/// [Self::packet_data] slice. For that purpose, it makes a distinction between the full
+/// [Self::packet_data] including the checksum, and [Self::user_data] which does not include
+/// the checksum.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CcsdsPacketReader<'buf> {
     sp_header: SpHeader,
     packet_data: &'buf [u8],
+    checksum: Option<u16>,
 }
 
 impl<'buf> CcsdsPacketReader<'buf> {
@@ -1550,7 +1569,7 @@ impl<'buf> CcsdsPacketReader<'buf> {
     /// Generic constructor.
     pub fn new(
         buf: &'buf [u8],
-        checksum: Option<ChecksumType>,
+        checksum_type: Option<ChecksumType>,
     ) -> Result<Self, CcsdsPacketReadError> {
         let sp_header = SpHeader::from_be_bytes(&buf[0..CCSDS_HEADER_LEN])?.0;
         if sp_header.packet_len() > buf.len() {
@@ -1560,21 +1579,26 @@ impl<'buf> CcsdsPacketReader<'buf> {
             }
             .into());
         }
-        let user_data = match checksum {
+        let checksum = match checksum_type {
             Some(ChecksumType::WithCrc16) => {
                 if CRC_CCITT_FALSE.checksum(&buf[0..sp_header.packet_len()]) != 0 {
                     return Err(CcsdsPacketReadError::CrcError);
                 }
-                &buf[CCSDS_HEADER_LEN..sp_header.packet_len() - 2]
+                Some(u16::from_be_bytes([
+                    buf[sp_header.packet_len() - 2],
+                    buf[sp_header.packet_len() - 1],
+                ]))
             }
-            Some(ChecksumType::WithCrc16ButIgnored) => {
-                &buf[CCSDS_HEADER_LEN..sp_header.packet_len() - 2]
-            }
-            None => &buf[CCSDS_HEADER_LEN..sp_header.packet_len()],
+            Some(ChecksumType::WithCrc16ButIgnored) => Some(u16::from_be_bytes([
+                buf[sp_header.packet_len() - 2],
+                buf[sp_header.packet_len() - 1],
+            ])),
+            None => None,
         };
         Ok(Self {
             sp_header,
-            packet_data: user_data,
+            packet_data: &buf[CCSDS_HEADER_LEN..sp_header.packet_len()],
+            checksum,
         })
     }
 }
@@ -1598,10 +1622,25 @@ impl CcsdsPacketReader<'_> {
         self.sp_header.packet_id.packet_type
     }
 
-    /// Read-only access to the packet data field.
+    /// Read-only access to the full packet data field.
+    ///
+    /// This might also include the checksum. [Self::user_data] can be used to only retrieve the
+    /// user data slice without the checksum part.
     #[inline]
     pub fn packet_data(&self) -> &[u8] {
         self.packet_data
+    }
+
+    /// Read-only access to the user data field.
+    ///
+    /// This is the data without the checksum, if the packet has one.
+    #[inline]
+    pub fn user_data(&self) -> &[u8] {
+        if self.checksum.is_some() {
+            self.packet_data()[0..self.packet_data().len() - 2].as_ref()
+        } else {
+            self.packet_data()
+        }
     }
 
     /// 11-bit Application Process ID field.
@@ -1632,6 +1671,12 @@ impl CcsdsPacketReader<'_> {
     #[inline]
     pub fn data_len(&self) -> u16 {
         self.sp_header.data_len()
+    }
+
+    /// Packet checksum if available.
+    #[inline]
+    pub fn checksum(&self) -> Option<u16> {
+        self.checksum
     }
 }
 
@@ -2075,8 +2120,12 @@ pub(crate) mod tests {
             packet_creator.psc(),
             PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0))
         );
-        assert_eq!(packet_creator.packet_data_mut(), &mut [0, 0, 0, 0]);
-        assert_eq!(packet_creator.packet_data(), &[0, 0, 0, 0]);
+        assert_eq!(packet_creator.user_data_mut(), &mut [0, 0, 0, 0]);
+        assert_eq!(packet_creator.user_data(), &[0, 0, 0, 0]);
+        // Includes the unwritten checksum bytes.
+        assert_eq!(packet_creator.packet_data_mut(), &mut [0, 0, 0, 0, 0, 0]);
+        assert_eq!(packet_creator.packet_data(), &[0, 0, 0, 0, 0, 0]);
+        assert_eq!(packet_creator.user_data(), &[0, 0, 0, 0]);
         assert_eq!(packet_creator.ccsds_version(), u3::new(0b000));
     }
 
@@ -2104,8 +2153,8 @@ pub(crate) mod tests {
             packet_creator.psc(),
             PacketSequenceControl::new(SequenceFlags::Unsegmented, u14::new(0))
         );
-        assert_eq!(packet_creator.packet_data_mut(), &mut [0, 0, 0, 0]);
-        assert_eq!(packet_creator.packet_data(), &[0, 0, 0, 0]);
+        assert_eq!(packet_creator.user_data_mut(), &mut [0, 0, 0, 0]);
+        assert_eq!(packet_creator.user_data(), &[0, 0, 0, 0]);
     }
 
     #[test]
@@ -2119,7 +2168,7 @@ pub(crate) mod tests {
             &mut buf,
         )
         .unwrap();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         let written_len = packet_creator.finish();
         assert_eq!(
             CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
@@ -2151,7 +2200,7 @@ pub(crate) mod tests {
             Some(ChecksumType::WithCrc16),
         )
         .unwrap();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         let written_len = packet_creator.finish();
         assert_eq!(
             CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
@@ -2190,6 +2239,7 @@ pub(crate) mod tests {
         // Enforced 1 byte packet length.
         assert_eq!(reader.packet_data(), &[0]);
         assert_eq!(reader.packet_len(), 7);
+        assert!(reader.checksum().is_none());
     }
 
     #[test]
@@ -2204,15 +2254,16 @@ pub(crate) mod tests {
             Some(ChecksumType::WithCrc16ButIgnored),
         )
         .unwrap();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         // Special case.
         assert_eq!(packet_creator.packet_len(), 13);
         packet_creator.finish();
         let reader =
             CcsdsPacketReader::new(&buf[0..13], Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
         // Enforced 1 byte packet length.
-        assert_eq!(reader.packet_data(), &data);
+        assert_eq!(reader.user_data(), &data);
         assert_eq!(reader.packet_len(), 13);
+        assert!(reader.checksum().is_some());
     }
 
     #[test]
@@ -2245,7 +2296,7 @@ pub(crate) mod tests {
             &mut buf,
         )
         .unwrap();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         let written_len = packet_creator.finish();
         assert_eq!(
             CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
@@ -2276,7 +2327,7 @@ pub(crate) mod tests {
             &mut buf,
         )
         .unwrap();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         let written_len = packet_creator.finish();
         assert_eq!(
             CcsdsPacketCreatorWithReservedData::packet_len_for_user_data_with_checksum(4).unwrap(),
@@ -2310,7 +2361,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         let sph = *packet_creator.sp_header();
-        packet_creator.packet_data_mut().copy_from_slice(&data);
+        packet_creator.user_data_mut().copy_from_slice(&data);
         assert_eq!(
             packet_creator.ccsds_packet_id_and_psc(),
             CcsdsPacketIdAndPsc::from(sph)
@@ -2415,7 +2466,7 @@ pub(crate) mod tests {
         .to_vec();
         let reader =
             CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
-        assert_eq!(reader.packet_data(), data);
+        assert_eq!(reader.user_data(), data);
     }
 
     fn generic_test_creator(packet_raw: &[u8], sp_header: &SpHeader, packet_type: PacketType) {
@@ -2482,7 +2533,7 @@ pub(crate) mod tests {
     }
 
     fn generic_ccsds_reader_test(
-        packet_data: &[u8],
+        user_data: &[u8],
         packet_raw: &[u8],
         packet_type: PacketType,
         sp_header: SpHeader,
@@ -2493,7 +2544,11 @@ pub(crate) mod tests {
         );
         let reader = CcsdsPacketReader::new_with_checksum(packet_raw).unwrap();
         assert_eq!(*reader.sp_header(), sp_header);
-        assert_eq!(reader.packet_data(), packet_data);
+        assert_eq!(
+            &reader.packet_data()[0..reader.packet_data().len() - 2],
+            user_data
+        );
+        assert_eq!(reader.user_data(), user_data);
         assert_eq!(reader.apid(), u11::new(0x1));
         assert_eq!(
             reader.packet_id(),
@@ -2506,6 +2561,7 @@ pub(crate) mod tests {
         assert_eq!(reader.packet_len(), packet_raw.len());
         assert_eq!(reader.packet_type(), packet_type);
         assert_eq!(reader.data_len() as usize, packet_raw.len() - 7);
+        assert!(reader.checksum().is_some());
     }
 
     #[test]
@@ -2704,7 +2760,7 @@ pub(crate) mod tests {
         *packet_raw.last_mut().unwrap() = 0;
         let reader =
             CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
-        assert_eq!(reader.packet_data(), data);
+        assert_eq!(reader.user_data(), data);
     }
 
     #[test]

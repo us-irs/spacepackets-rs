@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Changed
+
+- Added distinction between `CcsdsPacketReader::user_data` and `CcsdsPacketReader::packet_data`.
+- Added distinction between `CcsdsPacketCreatorWithReservedData::user_data` and
+  `CcsdsPacketCreatorWithReservedData::packet_data`, including mutable variants as well.
+
+## Added
+
+- `checksum` getter for `CcsdsPacketReader`.
+
 # [v0.17.0] 2025-11-06
 
 ## Changed
