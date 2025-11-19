@@ -1551,7 +1551,7 @@ pub enum CcsdsPacketReadError {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CcsdsPacketReader<'buf> {
     sp_header: SpHeader,
-    packet_data: &'buf [u8],
+    raw_data: &'buf [u8],
     checksum: Option<u16>,
 }
 
@@ -1597,7 +1597,7 @@ impl<'buf> CcsdsPacketReader<'buf> {
         };
         Ok(Self {
             sp_header,
-            packet_data: &buf[CCSDS_HEADER_LEN..sp_header.packet_len()],
+            raw_data: buf[0..sp_header.packet_len()].as_ref(),
             checksum,
         })
     }
@@ -1622,18 +1622,25 @@ impl CcsdsPacketReader<'_> {
         self.sp_header.packet_id.packet_type
     }
 
+    /// Full raw data.
+    #[inline]
+    pub fn raw_data(&self) -> &[u8] {
+        self.raw_data
+    }
+
     /// Read-only access to the full packet data field.
     ///
-    /// This might also include the checksum. [Self::user_data] can be used to only retrieve the
-    /// user data slice without the checksum part.
+    /// This might also include the checksum but does not include the raw [SpacePacketHeader].
+    /// [Self::user_data] can be used to only retrieve the user data slice without the checksum
+    /// part.
     #[inline]
     pub fn packet_data(&self) -> &[u8] {
-        self.packet_data
+        self.raw_data[CCSDS_HEADER_LEN..self.raw_data.len()].as_ref()
     }
 
     /// Read-only access to the user data field.
     ///
-    /// This is the data without the checksum, if the packet has one.
+    /// This is the [Self::packet_data] without the checksum, if the packet has one.
     #[inline]
     pub fn user_data(&self) -> &[u8] {
         if self.checksum.is_some() {
@@ -2238,6 +2245,7 @@ pub(crate) mod tests {
         let reader = CcsdsPacketReader::new(&buf[0..7], None).unwrap();
         // Enforced 1 byte packet length.
         assert_eq!(reader.packet_data(), &[0]);
+        assert_eq!(reader.raw_data(), &buf[0..7]);
         assert_eq!(reader.packet_len(), 7);
         assert!(reader.checksum().is_none());
     }
@@ -2262,6 +2270,7 @@ pub(crate) mod tests {
             CcsdsPacketReader::new(&buf[0..13], Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
         // Enforced 1 byte packet length.
         assert_eq!(reader.user_data(), &data);
+        assert_eq!(reader.raw_data(), &buf[0..13]);
         assert_eq!(reader.packet_len(), 13);
         assert!(reader.checksum().is_some());
     }
@@ -2760,6 +2769,7 @@ pub(crate) mod tests {
         *packet_raw.last_mut().unwrap() = 0;
         let reader =
             CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16ButIgnored)).unwrap();
+        assert_eq!(reader.raw_data(), &packet_raw);
         assert_eq!(reader.user_data(), data);
     }
 

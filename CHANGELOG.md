@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `checksum` getter for `CcsdsPacketReader`.
 - Added `SequenceCounterOnFile` which persists the sequence counter by writing it to a file.
 - Added `SequenceCounter::set` method which allows manually setting an initial value.
+- Added `CcsdsPacketReader::raw_data` full data getter.
 
 ## Removed
 
