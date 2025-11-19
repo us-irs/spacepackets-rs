@@ -8,15 +8,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+# [v0.18.0] ?
+
 ## Changed
 
 - Added distinction between `CcsdsPacketReader::user_data` and `CcsdsPacketReader::packet_data`.
 - Added distinction between `CcsdsPacketCreatorWithReservedData::user_data` and
   `CcsdsPacketCreatorWithReservedData::packet_data`, including mutable variants as well.
+- `SequenceCounter::MAX_BIT_WIDTH` is now a regular trait method `SequenceCounter::max_bit_width`
+  to allow dyn compatibility and easier usage in trait objects.
 
 ## Added
 
 - `checksum` getter for `CcsdsPacketReader`.
+- Added `SequenceCounterOnFile` which persists the sequence counter by writing it to a file.
+- Added `SequenceCounter::set` method which allows manually setting an initial value.
+
+## Removed
+
+- `SequenceCounter::increment_mut` and `SequenceCounter::get_and_increment_mut`
 
 # [v0.17.0] 2025-11-06
 

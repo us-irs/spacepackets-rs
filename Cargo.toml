@@ -41,6 +41,7 @@ timelib = ["dep:time"]
 [dev-dependencies]
 postcard = { version = "1", features = ["alloc"] }
 chrono = "0.4"
+tempfile = "3"
 
 [package.metadata.docs.rs]
 all-features = true
