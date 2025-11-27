@@ -24,7 +24,7 @@ build:
   cargo build --all-features
 
 docs:
-  RUSTDOCFLAGS="--cfg docsrs -Z unstable-options --generate-link-to-definition" cargo +nightly doc --all-features
+  RUSTDOCFLAGS="--cfg docsrs -Z unstable-options --generate-link-to-definition" cargo +nightly doc --all-features --no-deps
 
 docs-html:
   RUSTDOCFLAGS="--cfg docsrs -Z unstable-options --generate-link-to-definition" cargo +nightly doc --all-features --open
