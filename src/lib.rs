@@ -1284,7 +1284,7 @@ impl<'app_data> CcsdsPacketCreator<'app_data> {
         packet_type: PacketType,
         packet_data: &'app_data [u8],
         checksum: Option<ChecksumType>,
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         let common =
             CcsdsPacketCreatorCommon::new(sp_header, packet_type, packet_data.len(), checksum)?;
         Ok(Self {
@@ -1298,7 +1298,7 @@ impl<'app_data> CcsdsPacketCreator<'app_data> {
         sp_header: SpHeader,
         packet_type: PacketType,
         app_data: &'app_data [u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             packet_type,
@@ -1311,7 +1311,7 @@ impl<'app_data> CcsdsPacketCreator<'app_data> {
     pub fn new_tm_with_checksum(
         sp_header: SpHeader,
         app_data: &'app_data [u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             PacketType::Tm,
@@ -1324,7 +1324,7 @@ impl<'app_data> CcsdsPacketCreator<'app_data> {
     pub fn new_tc_with_checksum(
         sp_header: SpHeader,
         app_data: &'app_data [u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             PacketType::Tc,
@@ -1420,7 +1420,7 @@ impl CcsdsPacketCreatorOwned {
         packet_type: PacketType,
         user_data: &[u8],
         checksum: Option<ChecksumType>,
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         let common =
             CcsdsPacketCreatorCommon::new(sp_header, packet_type, user_data.len(), checksum)?;
         Ok(Self {
@@ -1434,7 +1434,7 @@ impl CcsdsPacketCreatorOwned {
         sp_header: SpHeader,
         packet_type: PacketType,
         user_data: &[u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             packet_type,
@@ -1447,7 +1447,7 @@ impl CcsdsPacketCreatorOwned {
     pub fn new_tm_with_checksum(
         sp_header: SpHeader,
         user_data: &[u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             PacketType::Tm,
@@ -1460,7 +1460,7 @@ impl CcsdsPacketCreatorOwned {
     pub fn new_tc_with_checksum(
         sp_header: SpHeader,
         user_data: &[u8],
-    ) -> Result<Self, CcsdsPacketCreationError> {
+    ) -> Result<Self, InvalidPayloadLengthError> {
         Self::new(
             sp_header,
             PacketType::Tc,
