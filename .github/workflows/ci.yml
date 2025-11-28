@@ -2,7 +2,7 @@ name: ci
 on: [push, pull_request]
 
 jobs:
-  check:
+  build:
     name: Check build
     strategy:
       matrix:
@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check --release
+      - run: cargo build
 
   test:
     name: Run Tests
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.83
-      - run: cargo check --release
+      - run: cargo check
 
   cross-check:
     name: Check Cross-Compilation
@@ -46,7 +46,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: "armv7-unknown-linux-gnueabihf, thumbv7em-none-eabihf, thumbv6m-none-eabi"
-      - run: cargo check --release --target=${{matrix.target}} --no-default-features
+      - run: cargo check --target=${{matrix.target}} --no-default-features
 
   fmt:
     name: Check formatting
