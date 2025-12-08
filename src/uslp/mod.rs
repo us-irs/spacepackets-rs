@@ -1,5 +1,7 @@
 //! # Support of the CCSDS Unified Space Data Link Protocol (USLP)
 #![warn(missing_docs)]
+use arbitrary_int::{prelude::*, u4, u6};
+
 use crate::{crc::CRC_CCITT_FALSE, ByteConversionError};
 
 /// Only this version is supported by the library
@@ -64,12 +66,6 @@ pub enum UslpError {
     /// Invalid version number.
     #[error("invalid version number: {0}")]
     InvalidVersionNumber(u8),
-    /// Invalid virtual channel ID.
-    #[error("invalid virtual channel ID: {0}")]
-    InvalidVcId(u8),
-    /// Invalid MAP ID.
-    #[error("invalid MAP ID: {0}")]
-    InvalidMapId(u8),
     /// Checksum failure.
     #[error("checksum failure")]
     ChecksumFailure(u16),
@@ -82,7 +78,7 @@ pub enum UslpError {
 #[error("invalid value for length of the field")]
 pub struct InvalidValueForLenError {
     value: u64,
-    len: u8,
+    len: u3,
 }
 
 /// Primary header of a USLP transfer frame.
@@ -95,9 +91,9 @@ pub struct PrimaryHeader {
     /// Source or destination identifier.
     pub source_or_dest_field: SourceOrDestField,
     /// Virtual channel ID.
-    pub vc_id: u8,
+    pub vc_id: u6,
     /// MAP ID.
-    pub map_id: u8,
+    pub map_id: u4,
     frame_len_field: u16,
     /// Bypass sequence control flag.
     pub sequence_control_flag: BypassSequenceControlFlag,
@@ -105,7 +101,7 @@ pub struct PrimaryHeader {
     pub protocol_control_command_flag: ProtocolControlCommandFlag,
     /// Operational control field flag.
     pub ocf_flag: bool,
-    vc_frame_count_len: u8,
+    vc_frame_count_len: u3,
     vc_frame_count: u64,
 }
 
@@ -114,16 +110,10 @@ impl PrimaryHeader {
     pub fn new(
         spacecraft_id: u16,
         source_or_dest_field: SourceOrDestField,
-        vc_id: u8,
-        map_id: u8,
+        vc_id: u6,
+        map_id: u4,
         frame_len: u16,
     ) -> Result<Self, UslpError> {
-        if vc_id > 0b111111 {
-            return Err(UslpError::InvalidVcId(vc_id));
-        }
-        if map_id > 0b1111 {
-            return Err(UslpError::InvalidMapId(map_id));
-        }
         Ok(Self {
             spacecraft_id,
             source_or_dest_field,
@@ -133,7 +123,7 @@ impl PrimaryHeader {
             sequence_control_flag: BypassSequenceControlFlag::SequenceControlledQoS,
             protocol_control_command_flag: ProtocolControlCommandFlag::TfdfContainsUserData,
             ocf_flag: false,
-            vc_frame_count_len: 0,
+            vc_frame_count_len: u3::ZERO,
             vc_frame_count: 0,
         })
     }
@@ -141,10 +131,10 @@ impl PrimaryHeader {
     /// Set the virtual channel frame count.
     pub fn set_vc_frame_count(
         &mut self,
-        count_len: u8,
+        count_len: u3,
         count: u64,
     ) -> Result<(), InvalidValueForLenError> {
-        if count > 2_u64.pow(count_len as u32 * 8) - 1 {
+        if count > 2_u64.pow(count_len.as_u32() * 8) - 1 {
             return Err(InvalidValueForLenError {
                 value: count,
                 len: count_len,
@@ -163,7 +153,7 @@ impl PrimaryHeader {
 
     /// Length of the virtual channel frame count field.
     #[inline]
-    pub fn vc_frame_count_len(&self) -> u8 {
+    pub fn vc_frame_count_len(&self) -> u3 {
         self.vc_frame_count_len
     }
 
@@ -198,15 +188,15 @@ impl PrimaryHeader {
             1 => SourceOrDestField::Dest,
             _ => unreachable!(),
         };
-        let vc_frame_count_len = buf[6] & 0b111;
-        if buf.len() < 7 + vc_frame_count_len as usize {
+        let vc_frame_count_len = u3::new(buf[6] & 0b111);
+        if buf.len() < 7 + vc_frame_count_len.as_usize() {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
-                expected: 7 + vc_frame_count_len as usize,
+                expected: 7 + vc_frame_count_len.as_usize(),
             }
             .into());
         }
-        let vc_frame_count = match vc_frame_count_len {
+        let vc_frame_count = match vc_frame_count_len.value() {
             1 => buf[7] as u64,
             2 => u16::from_be_bytes(buf[7..9].try_into().unwrap()) as u64,
             4 => u32::from_be_bytes(buf[7..11].try_into().unwrap()) as u64,
@@ -225,8 +215,8 @@ impl PrimaryHeader {
                 | ((buf[1] as u16) << 4)
                 | ((buf[2] as u16) >> 4) & 0b1111,
             source_or_dest_field,
-            vc_id: ((buf[2] & 0b111) << 3) | (buf[3] >> 5) & 0b111,
-            map_id: (buf[3] >> 1) & 0b1111,
+            vc_id: u6::new(((buf[2] & 0b111) << 3) | (buf[3] >> 5) & 0b111),
+            map_id: u4::new((buf[3] >> 1) & 0b1111),
             frame_len_field: ((buf[4] as u16) << 8) | buf[5] as u16,
             sequence_control_flag: ((buf[6] >> 7) & 0b1).try_into().unwrap(),
             protocol_control_command_flag: ((buf[6] >> 6) & 0b1).try_into().unwrap(),
@@ -248,15 +238,15 @@ impl PrimaryHeader {
         buf[1] = (self.spacecraft_id >> 4) as u8;
         buf[2] = (((self.spacecraft_id & 0b1111) as u8) << 4)
             | ((self.source_or_dest_field as u8) << 3)
-            | (self.vc_id >> 3) & 0b111;
-        buf[3] = ((self.vc_id & 0b111) << 5) | (self.map_id << 1);
+            | (self.vc_id.as_u8() >> 3) & 0b111;
+        buf[3] = ((self.vc_id.as_u8() & 0b111) << 5) | (self.map_id.as_u8() << 1);
         buf[4..6].copy_from_slice(&self.frame_len_field.to_be_bytes());
         buf[6] = ((self.sequence_control_flag as u8) << 7)
             | ((self.protocol_control_command_flag as u8) << 6)
             | ((self.ocf_flag as u8) << 3)
-            | self.vc_frame_count_len;
+            | self.vc_frame_count_len.as_u8();
         let mut packet_idx = 7;
-        for idx in (0..self.vc_frame_count_len).rev() {
+        for idx in (0..self.vc_frame_count_len.value()).rev() {
             buf[packet_idx] = ((self.vc_frame_count >> (idx * 8)) & 0xff) as u8;
             packet_idx += 1;
         }
@@ -275,7 +265,7 @@ impl PrimaryHeader {
     /// Length of primary header when written to bytes.
     #[inline(always)]
     pub fn len_header(&self) -> usize {
-        7 + self.vc_frame_count_len as usize
+        7 + self.vc_frame_count_len.as_usize()
     }
 
     /// Length of the entire frame.
@@ -566,15 +556,15 @@ mod tests {
         let primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
         // Virtual channel count 0.
         assert_eq!(primary_header.write_to_be_bytes(&mut buf).unwrap(), 7);
         common_basic_check(&buf);
-        assert_eq!(primary_header.vc_frame_count_len(), 0);
+        assert_eq!(primary_header.vc_frame_count_len().value(), 0);
         assert_eq!(primary_header.vc_frame_count(), 0);
         // Bypass / Sequence Control Flag.
         assert_eq!(
@@ -600,8 +590,8 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
@@ -609,10 +599,12 @@ mod tests {
         primary_header.protocol_control_command_flag =
             ProtocolControlCommandFlag::TfdfContainsProtocolInfo;
         primary_header.ocf_flag = true;
-        primary_header.set_vc_frame_count(4, 0x12345678).unwrap();
+        primary_header
+            .set_vc_frame_count(u3::new(4), 0x12345678)
+            .unwrap();
         // Virtual channel count 4.
         assert_eq!(primary_header.write_to_be_bytes(&mut buf).unwrap(), 11);
-        assert_eq!(primary_header.vc_frame_count_len(), 4);
+        assert_eq!(primary_header.vc_frame_count_len().value(), 4);
         assert_eq!(primary_header.vc_frame_count(), 0x12345678);
         common_basic_check(&buf);
         // Bypass / Sequence Control Flag.
@@ -643,20 +635,20 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
-        primary_header.set_vc_frame_count(2, 5).unwrap();
-        assert_eq!(primary_header.vc_frame_count_len(), 2);
+        primary_header.set_vc_frame_count(u3::new(2), 5).unwrap();
+        assert_eq!(primary_header.vc_frame_count_len().value(), 2);
         assert_eq!(primary_header.vc_frame_count(), 5);
         assert_eq!(primary_header.write_to_be_bytes(&mut buf).unwrap(), 9);
         assert_eq!(buf[6] & 0b111, 2);
         assert_eq!(u16::from_be_bytes(buf[7..9].try_into().unwrap()), 5);
 
         let primary_header = PrimaryHeader::from_bytes(&buf).unwrap();
-        assert_eq!(primary_header.vc_frame_count_len(), 2);
+        assert_eq!(primary_header.vc_frame_count_len().value(), 2);
         assert_eq!(primary_header.vc_frame_count(), 5);
     }
 
@@ -668,20 +660,20 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
-        primary_header.set_vc_frame_count(1, 255).unwrap();
-        assert_eq!(primary_header.vc_frame_count_len(), 1);
+        primary_header.set_vc_frame_count(u3::new(1), 255).unwrap();
+        assert_eq!(primary_header.vc_frame_count_len().value(), 1);
         assert_eq!(primary_header.vc_frame_count(), 255);
         assert_eq!(primary_header.write_to_be_bytes(&mut buf).unwrap(), 8);
         assert_eq!(buf[6] & 0b111, 1);
         assert_eq!(buf[7], 255);
 
         let primary_header = PrimaryHeader::from_bytes(&buf).unwrap();
-        assert_eq!(primary_header.vc_frame_count_len(), 1);
+        assert_eq!(primary_header.vc_frame_count_len().value(), 1);
         assert_eq!(primary_header.vc_frame_count(), 255);
     }
 
@@ -691,8 +683,8 @@ mod tests {
         let primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
@@ -707,8 +699,8 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
@@ -716,38 +708,12 @@ mod tests {
         primary_header.protocol_control_command_flag =
             ProtocolControlCommandFlag::TfdfContainsProtocolInfo;
         primary_header.ocf_flag = true;
-        primary_header.set_vc_frame_count(4, 0x12345678).unwrap();
+        primary_header
+            .set_vc_frame_count(u3::new(4), 0x12345678)
+            .unwrap();
         assert_eq!(primary_header.write_to_be_bytes(&mut buf).unwrap(), 11);
         let parsed_header = PrimaryHeader::from_bytes(&buf).unwrap();
         assert_eq!(parsed_header, primary_header);
-    }
-
-    #[test]
-    fn test_invalid_vcid() {
-        let error = PrimaryHeader::new(
-            0b10100101_11000011,
-            SourceOrDestField::Dest,
-            0b1101011,
-            0b1010,
-            0x2345,
-        );
-        assert!(error.is_err());
-        let error = error.unwrap_err();
-        matches!(error, UslpError::InvalidVcId(0b1101011));
-    }
-
-    #[test]
-    fn test_invalid_mapid() {
-        let error = PrimaryHeader::new(
-            0b10100101_11000011,
-            SourceOrDestField::Dest,
-            0b110101,
-            0b10101,
-            0x2345,
-        );
-        assert!(error.is_err());
-        let error = error.unwrap_err();
-        matches!(error, UslpError::InvalidMapId(0b10101));
     }
 
     #[test]
@@ -755,18 +721,24 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
         matches!(
-            primary_header.set_vc_frame_count(0, 1).unwrap_err(),
-            InvalidValueForLenError { value: 1, len: 0 }
+            primary_header.set_vc_frame_count(u3::ZERO, 1).unwrap_err(),
+            InvalidValueForLenError {
+                value: 1,
+                len: u3::ZERO
+            }
         );
-        matches!(
-            primary_header.set_vc_frame_count(1, 256).unwrap_err(),
-            InvalidValueForLenError { value: 256, len: 1 }
+        let len = u3::new(1);
+        assert_eq!(
+            primary_header
+                .set_vc_frame_count(u3::new(1), 256)
+                .unwrap_err(),
+            InvalidValueForLenError { value: 256, len }
         );
     }
 
@@ -774,8 +746,14 @@ mod tests {
     fn test_frame_parser() {
         let mut buf: [u8; 32] = [0; 32];
         // Build a variable frame manually.
-        let mut primary_header =
-            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let mut primary_header = PrimaryHeader::new(
+            0x01,
+            SourceOrDestField::Dest,
+            u6::new(0b110101),
+            u4::new(0b1010),
+            0,
+        )
+        .unwrap();
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -809,8 +787,14 @@ mod tests {
     fn test_frame_parser_invalid_checksum() {
         let mut buf: [u8; 32] = [0; 32];
         // Build a variable frame manually.
-        let mut primary_header =
-            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let mut primary_header = PrimaryHeader::new(
+            0x01,
+            SourceOrDestField::Dest,
+            u6::new(0b110101),
+            u4::new(0b1010),
+            0,
+        )
+        .unwrap();
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -831,8 +815,14 @@ mod tests {
     fn test_frame_parser_buf_too_small() {
         let mut buf: [u8; 32] = [0; 32];
         // Build a variable frame manually.
-        let mut primary_header =
-            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let mut primary_header = PrimaryHeader::new(
+            0x01,
+            SourceOrDestField::Dest,
+            u6::new(0b110101),
+            u4::new(0b1010),
+            0,
+        )
+        .unwrap();
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -881,8 +871,14 @@ mod tests {
     #[test]
     fn test_from_bytes_truncated_not_supported() {
         let mut buf: [u8; 7] = [0; 7];
-        let primary_header =
-            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let primary_header = PrimaryHeader::new(
+            0x01,
+            SourceOrDestField::Dest,
+            u6::new(0b110101),
+            u4::new(0b1010),
+            0,
+        )
+        .unwrap();
         primary_header.write_to_be_bytes(&mut buf).unwrap();
         // Set truncated header flag manually.
         buf[3] |= 0b1;
@@ -900,12 +896,14 @@ mod tests {
         let mut primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();
-        primary_header.set_vc_frame_count(4, 0x12345678).unwrap();
+        primary_header
+            .set_vc_frame_count(u3::new(4), 0x12345678)
+            .unwrap();
         primary_header.write_to_be_bytes(&mut buf).unwrap();
 
         assert_eq!(
@@ -920,8 +918,14 @@ mod tests {
     #[test]
     fn test_invalid_version_number() {
         let mut buf: [u8; 7] = [0; 7];
-        let primary_header =
-            PrimaryHeader::new(0x01, SourceOrDestField::Dest, 0b110101, 0b1010, 0).unwrap();
+        let primary_header = PrimaryHeader::new(
+            0x01,
+            SourceOrDestField::Dest,
+            u6::new(0b110101),
+            u4::new(0b1010),
+            0,
+        )
+        .unwrap();
         primary_header.write_to_be_bytes(&mut buf).unwrap();
         buf[0] &= 0b00001111;
         assert_eq!(
@@ -935,8 +939,8 @@ mod tests {
         let primary_header = PrimaryHeader::new(
             0b10100101_11000011,
             SourceOrDestField::Dest,
-            0b110101,
-            0b1010,
+            u6::new(0b110101),
+            u4::new(0b1010),
             0x2345,
         )
         .unwrap();

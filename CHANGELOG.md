@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
   `CcsdsPacketCreatorWithReservedData::packet_data`, including mutable variants as well.
 - `SequenceCounter::MAX_BIT_WIDTH` is now a regular trait method `SequenceCounter::max_bit_width`
   to allow dyn compatibility and easier usage in trait objects.
+- Improved type level support in USLP module by using VC ID type `u6` and MAP ID type `u4`.
 
 ## Added
 
