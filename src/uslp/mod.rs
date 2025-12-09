@@ -460,13 +460,20 @@ pub struct TransferFrameCreator<'data> {
 
 impl<'data> TransferFrameCreator<'data> {
     /// Constructor.
+    ///
+    /// If the operational control field is present, the OCF flag in the primary header will
+    /// be set accordingly. The frame length field of the [PrimaryHeader] is also updated according
+    /// to the provided arguments.
     pub fn new(
-        primary_header: PrimaryHeader,
+        mut primary_header: PrimaryHeader,
         data_field_header: TransferFrameDataFieldHeader,
         data: &'data [u8],
         op_control_field: Option<u32>,
         has_fecf: bool,
     ) -> Self {
+        if op_control_field.is_some() {
+            primary_header.ocf_flag = true;
+        }
         Self {
             primary_header,
             data_field_header,
@@ -565,7 +572,6 @@ impl<'buf> TransferFrameReader<'buf> {
                     .unwrap(),
             ));
         }
-        let data_end = data_idx + data_len;
         if has_fecf {
             let mut digest = CRC_CCITT_FALSE.digest();
             digest.update(&buf[0..frame_len]);
@@ -578,7 +584,7 @@ impl<'buf> TransferFrameReader<'buf> {
         Ok(Self {
             primary_header,
             data_field_header,
-            data: buf[data_idx..data_end].try_into().unwrap(),
+            data: buf[data_idx..data_idx + data_len].try_into().unwrap(),
             operational_control_field,
         })
     }
@@ -1106,27 +1112,61 @@ mod tests {
             u6::new(0b101010),
             u4::new(0b0101),
             0,
-        ).unwrap();
+        )
+        .unwrap();
         let data_field_header = TransferFrameDataFieldHeader {
             construction_rule: ConstructionRule::NoSegmentation,
             uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
             fhp_or_lvo: None,
         };
         let data = [1, 2, 3, 4];
-        let mut frame_creator = TransferFrameCreator::new(
-            primary_header,
-            data_field_header,
-            &data,
-            None,
-            true,
-        );
+        let mut frame_creator =
+            TransferFrameCreator::new(primary_header, data_field_header, &data, None, true);
         let mut buf: [u8; 64] = [0; 64];
+        assert_eq!(frame_creator.len_written(), 14);
         let written = frame_creator.write_to_bytes(&mut buf).unwrap();
         assert_eq!(written, 14);
         assert_eq!(written, frame_creator.len_written());
         let reader = TransferFrameReader::from_bytes(&buf, true).unwrap();
         primary_header.set_frame_len(written);
         assert_eq!(reader.primary_header(), &primary_header);
-        // TODO: More tests
+        assert_eq!(reader.data_field_header(), &data_field_header);
+        assert_eq!(reader.data(), &data);
+        assert!(reader.operational_control_field().is_none());
+        assert_eq!(reader.len_frame(), 14);
+    }
+
+    #[test]
+    fn test_frame_creator_with_op_ctrl() {
+        // Relying on the reader implementation for now.
+        let mut primary_header = PrimaryHeader::new(
+            0x1234,
+            SourceOrDestField::Source,
+            u6::new(0b101010),
+            u4::new(0b0101),
+            0,
+        )
+        .unwrap();
+        let data_field_header = TransferFrameDataFieldHeader {
+            construction_rule: ConstructionRule::NoSegmentation,
+            uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
+            fhp_or_lvo: None,
+        };
+        let data = [1, 2, 3, 4];
+        let mut frame_creator =
+            TransferFrameCreator::new(primary_header, data_field_header, &data, Some(4), true);
+        let mut buf: [u8; 64] = [0; 64];
+        assert_eq!(frame_creator.len_written(), 18);
+        let written = frame_creator.write_to_bytes(&mut buf).unwrap();
+        assert_eq!(written, 18);
+        assert_eq!(written, frame_creator.len_written());
+        let reader = TransferFrameReader::from_bytes(&buf, true).unwrap();
+        primary_header.set_frame_len(written);
+        primary_header.ocf_flag = true;
+        assert_eq!(reader.primary_header(), &primary_header);
+        assert_eq!(reader.data_field_header(), &data_field_header);
+        assert_eq!(reader.data(), &data);
+        assert_eq!(reader.operational_control_field().unwrap(), 4);
+        assert_eq!(reader.len_frame(), 18);
     }
 }
