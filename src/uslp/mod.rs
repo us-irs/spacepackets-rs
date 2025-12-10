@@ -260,6 +260,14 @@ impl PrimaryHeader {
         Ok(self.len_header())
     }
 
+    /// Write [self] to a newly allocated [alloc::vec::Vec] and return it.
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
+        let mut vec = alloc::vec![0; self.len_header()];
+        self.write_to_bytes(&mut vec).unwrap();
+        vec
+    }
+
     /// Set frame length field.
     #[inline(always)]
     pub fn set_frame_len(&mut self, frame_len: usize) {
@@ -555,6 +563,14 @@ impl<'data> TransferFrameCreator<'data> {
             current_index += 2;
         }
         Ok(current_index)
+    }
+
+    /// Write [self] to a newly allocated [alloc::vec::Vec] and return it.
+    #[cfg(feature = "alloc")]
+    pub fn to_vec(&mut self) -> alloc::vec::Vec<u8> {
+        let mut vec = alloc::vec![0; self.len_written()];
+        self.write_to_bytes(&mut vec).unwrap();
+        vec
     }
 }
 
@@ -1157,6 +1173,38 @@ mod tests {
         assert_eq!(written, frame_creator.len_written());
         let reader = TransferFrameReader::from_bytes(&buf, true).unwrap();
         primary_header.set_frame_len(written);
+        assert_eq!(reader.primary_header(), &primary_header);
+        assert_eq!(reader.data_field_header(), &data_field_header);
+        assert_eq!(reader.data(), &data);
+        assert!(reader.operational_control_field().is_none());
+        assert_eq!(reader.len_frame(), 14);
+    }
+
+    #[test]
+    fn test_frame_creator_using_vec() {
+        // Relying on the reader implementation for now.
+        let mut primary_header = PrimaryHeader::new(
+            0x1234,
+            SourceOrDestField::Source,
+            u6::new(0b101010),
+            u4::new(0b0101),
+            0,
+        )
+        .unwrap();
+        let data_field_header = TransferFrameDataFieldHeader {
+            construction_rule: ConstructionRule::NoSegmentation,
+            uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
+            fhp_or_lvo: None,
+        };
+        let data = [1, 2, 3, 4];
+        let mut frame_creator =
+            TransferFrameCreator::new(primary_header, data_field_header, &data, None, true);
+        assert_eq!(frame_creator.len_written(), 14);
+        let vec = frame_creator.to_vec();
+        assert_eq!(vec.len(), 14);
+        assert_eq!(vec.len(), frame_creator.len_written());
+        let reader = TransferFrameReader::from_bytes(&vec, true).unwrap();
+        primary_header.set_frame_len(vec.len());
         assert_eq!(reader.primary_header(), &primary_header);
         assert_eq!(reader.data_field_header(), &data_field_header);
         assert_eq!(reader.data(), &data);
