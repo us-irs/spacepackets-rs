@@ -580,6 +580,7 @@ impl<'data> TransferFrameCreator<'data> {
 /// Currently, only insert zone lengths of 0 are supported.
 #[derive(Debug)]
 pub struct TransferFrameReader<'buf> {
+    raw_buf: &'buf [u8],
     primary_header: PrimaryHeader,
     data_field_header: TransferFrameDataFieldHeader,
     data: &'buf [u8],
@@ -627,6 +628,7 @@ impl<'buf> TransferFrameReader<'buf> {
             }
         }
         Ok(Self {
+            raw_buf: buf,
             primary_header,
             data_field_header,
             data: buf[data_idx..data_idx + data_len].try_into().unwrap(),
@@ -650,6 +652,12 @@ impl<'buf> TransferFrameReader<'buf> {
     #[inline]
     pub fn data_field_header(&self) -> &TransferFrameDataFieldHeader {
         &self.data_field_header
+    }
+
+    /// Raw transfer frame data.
+    #[inline]
+    pub fn raw_frame(&self) -> &'buf [u8] {
+        self.raw_buf
     }
 
     /// Data contained in the transfer frame data field.
