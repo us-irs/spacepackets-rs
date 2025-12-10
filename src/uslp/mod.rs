@@ -510,13 +510,15 @@ impl<'data> TransferFrameCreator<'data> {
         if op_control_field.is_some() {
             primary_header.ocf_flag = true;
         }
-        Self {
+        let mut frame = Self {
             primary_header,
             data_field_header,
             data,
             operational_control_field: op_control_field,
             has_fecf,
-        }
+        };
+        frame.primary_header.set_frame_len(frame.len_written());
+        frame
     }
 
     /// Length of the frame when written to bytes.
@@ -533,7 +535,7 @@ impl<'data> TransferFrameCreator<'data> {
     }
 
     /// Write [self] to the provided byte buffer.
-    pub fn write_to_bytes(&mut self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
+    pub fn write_to_bytes(&self, buf: &mut [u8]) -> Result<usize, ByteConversionError> {
         let full_len = self.len_written();
         if full_len > buf.len() {
             return Err(ByteConversionError::ToSliceTooSmall {
@@ -542,7 +544,6 @@ impl<'data> TransferFrameCreator<'data> {
             });
         }
         let mut current_index = 0;
-        self.primary_header.set_frame_len(full_len);
         current_index += self.primary_header.write_to_bytes(buf)?;
 
         current_index += self
@@ -567,7 +568,7 @@ impl<'data> TransferFrameCreator<'data> {
 
     /// Write [self] to a newly allocated [alloc::vec::Vec] and return it.
     #[cfg(feature = "alloc")]
-    pub fn to_vec(&mut self) -> alloc::vec::Vec<u8> {
+    pub fn to_vec(&self) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0; self.len_written()];
         self.write_to_bytes(&mut vec).unwrap();
         vec
@@ -1164,7 +1165,7 @@ mod tests {
             fhp_or_lvo: None,
         };
         let data = [1, 2, 3, 4];
-        let mut frame_creator =
+        let frame_creator =
             TransferFrameCreator::new(primary_header, data_field_header, &data, None, true);
         let mut buf: [u8; 64] = [0; 64];
         assert_eq!(frame_creator.len_written(), 14);
@@ -1197,7 +1198,7 @@ mod tests {
             fhp_or_lvo: None,
         };
         let data = [1, 2, 3, 4];
-        let mut frame_creator =
+        let frame_creator =
             TransferFrameCreator::new(primary_header, data_field_header, &data, None, true);
         assert_eq!(frame_creator.len_written(), 14);
         let vec = frame_creator.to_vec();
@@ -1230,7 +1231,7 @@ mod tests {
         )
         .unwrap();
         let data = [1, 2, 3, 4];
-        let mut frame_creator =
+        let frame_creator =
             TransferFrameCreator::new(primary_header, data_field_header, &data, Some(4), true);
         let mut buf: [u8; 64] = [0; 64];
         assert_eq!(frame_creator.len_written(), 18);
