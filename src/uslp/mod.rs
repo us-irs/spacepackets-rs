@@ -99,7 +99,7 @@ pub struct PrimaryHeader {
     pub source_or_dest_field: SourceOrDestField,
     /// Virtual channel ID.
     pub vc_id: u6,
-    /// MAP ID.
+    /// Multiplexer Access Point (MAP) ID.
     pub map_id: u4,
     frame_len_field: u16,
     /// Bypass sequence control flag.
@@ -640,6 +640,29 @@ impl<'buf> TransferFrameReader<'buf> {
     #[inline]
     pub fn len_frame(&self) -> usize {
         self.primary_header.len_frame()
+    }
+
+    /// Virtual channel ID.
+    #[inline]
+    pub fn vc_id(&self) -> u6 {
+        self.primary_header.vc_id
+    }
+    /// Multiplexer Access Point (MAP) ID.
+    #[inline]
+    pub fn map_id(&self) -> u4 {
+        self.primary_header.map_id
+    }
+
+    /// Spacecraft ID.
+    #[inline]
+    pub fn spacecraft_id(&self) -> u16 {
+        self.primary_header.spacecraft_id
+    }
+
+    /// Source or destination field.
+    #[inline]
+    pub fn source_or_dest_field(&self) -> SourceOrDestField {
+        self.primary_header.source_or_dest_field
     }
 
     /// Primary header.
