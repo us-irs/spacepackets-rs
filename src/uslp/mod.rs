@@ -14,9 +14,11 @@ pub const USLP_VERSION_NUMBER: u8 = 0b1100;
 #[bitbybit::bitenum(u1, exhaustive = true)]
 #[repr(u8)]
 pub enum SourceOrDestField {
-    /// SCID refers to the source of the transfer frame.
+    /// SCID refers to the source of the transfer frame. This can be used for something like
+    /// broadcast frame, where the broadcaster identifies itself.
     Source = 0,
-    /// SCID refers to the destination of the transfer frame.
+    /// SCID refers to the destination of the transfer frame. Used if a frame has an exclusive
+    /// target.
     Dest = 1,
 }
 
@@ -120,8 +122,8 @@ impl PrimaryHeader {
         vc_id: u6,
         map_id: u4,
         frame_len: u16,
-    ) -> Result<Self, UslpError> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             spacecraft_id,
             source_or_dest_field,
             vc_id,
@@ -132,7 +134,7 @@ impl PrimaryHeader {
             ocf_flag: false,
             vc_frame_count_len: u3::ZERO,
             vc_frame_count: 0,
-        })
+        }
     }
 
     /// Set the virtual channel frame count.
@@ -731,8 +733,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         // Virtual channel count 0.
         assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 7);
         common_basic_check(&buf);
@@ -765,8 +766,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         primary_header.sequence_control_flag = BypassSequenceControlFlag::ExpeditedQoS;
         primary_header.protocol_control_command_flag =
             ProtocolControlCommandFlag::TfdfContainsProtocolInfo;
@@ -810,8 +810,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         primary_header.set_vc_frame_count(u3::new(2), 5).unwrap();
         assert_eq!(primary_header.vc_frame_count_len().value(), 2);
         assert_eq!(primary_header.vc_frame_count(), 5);
@@ -835,8 +834,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         primary_header.set_vc_frame_count(u3::new(1), 255).unwrap();
         assert_eq!(primary_header.vc_frame_count_len().value(), 1);
         assert_eq!(primary_header.vc_frame_count(), 255);
@@ -858,8 +856,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         assert_eq!(primary_header.write_to_bytes(&mut buf).unwrap(), 7);
         let parsed_header = PrimaryHeader::from_bytes(&buf).unwrap();
         assert_eq!(parsed_header, primary_header);
@@ -874,8 +871,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         primary_header.sequence_control_flag = BypassSequenceControlFlag::ExpeditedQoS;
         primary_header.protocol_control_command_flag =
             ProtocolControlCommandFlag::TfdfContainsProtocolInfo;
@@ -896,8 +892,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         matches!(
             primary_header.set_vc_frame_count(u3::ZERO, 1).unwrap_err(),
             InvalidValueForLenError {
@@ -924,8 +919,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0,
-        )
-        .unwrap();
+        );
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -965,8 +959,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0,
-        )
-        .unwrap();
+        );
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -993,8 +986,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0,
-        )
-        .unwrap();
+        );
         let header_len = primary_header.len_header();
         buf[header_len] = ((ConstructionRule::NoSegmentation as u8) << 5)
             | (UslpProtocolId::UserDefinedOctetStream as u8) & 0b11111;
@@ -1049,8 +1041,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0,
-        )
-        .unwrap();
+        );
         primary_header.write_to_bytes(&mut buf).unwrap();
         // Set truncated header flag manually.
         buf[3] |= 0b1;
@@ -1071,8 +1062,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         primary_header
             .set_vc_frame_count(u3::new(4), 0x12345678)
             .unwrap();
@@ -1096,8 +1086,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0,
-        )
-        .unwrap();
+        );
         primary_header.write_to_bytes(&mut buf).unwrap();
         buf[0] &= 0b00001111;
         assert_eq!(
@@ -1114,8 +1103,7 @@ mod tests {
             u6::new(0b110101),
             u4::new(0b1010),
             0x2345,
-        )
-        .unwrap();
+        );
         if let Err(ByteConversionError::ToSliceTooSmall { found, expected }) =
             primary_header.write_to_bytes(&mut [0; 4])
         {
@@ -1188,8 +1176,7 @@ mod tests {
             u6::new(0b101010),
             u4::new(0b0101),
             0,
-        )
-        .unwrap();
+        );
         let data_field_header = TransferFrameDataFieldHeader {
             construction_rule: ConstructionRule::NoSegmentation,
             uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
@@ -1221,8 +1208,7 @@ mod tests {
             u6::new(0b101010),
             u4::new(0b0101),
             0,
-        )
-        .unwrap();
+        );
         let data_field_header = TransferFrameDataFieldHeader {
             construction_rule: ConstructionRule::NoSegmentation,
             uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
@@ -1253,8 +1239,7 @@ mod tests {
             u6::new(0b101010),
             u4::new(0b0101),
             0,
-        )
-        .unwrap();
+        );
         let data_field_header = TransferFrameDataFieldHeader::new(
             ConstructionRule::NoSegmentation,
             UslpProtocolId::UserDefinedOctetStream,
