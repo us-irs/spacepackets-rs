@@ -71,6 +71,12 @@ pub enum UslpError {
     ChecksumFailure(u16),
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[error("FHP or LVO field invalid for given construction rule")]
+pub struct FhpLvoError(pub ConstructionRule);
+
 /// Invalid value for length.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -374,6 +380,27 @@ pub struct TransferFrameDataFieldHeader {
 }
 
 impl TransferFrameDataFieldHeader {
+    /// Constructor for the transfer frame data field header.
+    ///
+    /// This constructor also checks whether the passed first header pointer or last valid octet
+    /// field is compatible to the construction rule.
+    pub const fn new(
+        construction_rule: ConstructionRule,
+        uslp_protocol_id: UslpProtocolId,
+        fhp_or_lvo: Option<u16>,
+    ) -> Result<Self, FhpLvoError> {
+        if (construction_rule.applicable_to_fixed_len_tfdz() && fhp_or_lvo.is_none())
+            || (!construction_rule.applicable_to_fixed_len_tfdz() && fhp_or_lvo.is_some())
+        {
+            return Err(FhpLvoError(construction_rule));
+        }
+        Ok(Self {
+            construction_rule,
+            uslp_protocol_id,
+            fhp_or_lvo,
+        })
+    }
+
     /// Length of the header when written to bytes.
     #[inline]
     pub const fn len_header(&self) -> usize {
@@ -1147,11 +1174,11 @@ mod tests {
             0,
         )
         .unwrap();
-        let data_field_header = TransferFrameDataFieldHeader {
-            construction_rule: ConstructionRule::NoSegmentation,
-            uslp_protocol_id: UslpProtocolId::UserDefinedOctetStream,
-            fhp_or_lvo: None,
-        };
+        let data_field_header = TransferFrameDataFieldHeader::new(
+            ConstructionRule::NoSegmentation,
+            UslpProtocolId::UserDefinedOctetStream,
+            None,
+        ).unwrap();
         let data = [1, 2, 3, 4];
         let mut frame_creator =
             TransferFrameCreator::new(primary_header, data_field_header, &data, Some(4), true);
