@@ -1,5 +1,5 @@
 //! # Support of the CCSDS Unified Space Data Link Protocol (USLP)
-#![warn(missing_docs)]
+#![deny(missing_docs)]
 use arbitrary_int::{prelude::*, u4, u6};
 
 use crate::{crc::CRC_CCITT_FALSE, ByteConversionError};
@@ -71,6 +71,7 @@ pub enum UslpError {
     ChecksumFailure(u16),
 }
 
+/// FHP or LVO field is not valid for the given construction rule.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -1178,7 +1179,8 @@ mod tests {
             ConstructionRule::NoSegmentation,
             UslpProtocolId::UserDefinedOctetStream,
             None,
-        ).unwrap();
+        )
+        .unwrap();
         let data = [1, 2, 3, 4];
         let mut frame_creator =
             TransferFrameCreator::new(primary_header, data_field_header, &data, Some(4), true);
