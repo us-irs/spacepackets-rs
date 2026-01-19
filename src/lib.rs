@@ -1713,6 +1713,132 @@ impl CcsdsPacket for CcsdsPacketReader<'_> {
     }
 }
 
+/// This is a helper structure to update certain fields in a raw CCSDS packet directly in place.
+/// This can be more efficient than creating a full [CcsdsPacketReader], modifying the fields and
+/// then writing it back to another buffer using a [CcsdsPacketCreator].
+///
+/// Please note that the [Self::finish] method has to be called for the CRC16 to be valid
+/// after changing fields of the packet if the CCSDS packet has a checksum. Furthermore, the
+/// constructor of this class will not do any checks except basic length checks to ensure that all
+/// relevant fields can be updated and all methods can be called without a panic. If a full
+/// validity check of the PUS TM packet is required, it is recommended to construct a full
+/// [CcsdsPacketReader] object from the raw bytestream first.
+pub struct CcsdsZeroCopyWriter<'buf> {
+    buf: &'buf mut [u8],
+    packet_len: usize,
+    checksum: Option<ChecksumType>,
+}
+
+impl<'buf> CcsdsZeroCopyWriter<'buf> {
+    /// Constructor which expects the raw buffer containing the CCSDS packet and a checksum.
+    pub fn new(
+        buf: &'buf mut [u8],
+        checksum: Option<ChecksumType>,
+    ) -> Result<CcsdsZeroCopyWriter<'buf>, ByteConversionError> {
+        let raw_len = buf.len();
+        if raw_len < CCSDS_HEADER_LEN {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: raw_len,
+                expected: CCSDS_HEADER_LEN,
+            });
+        }
+        let sp_header = crate::zc::SpHeader::read_from_bytes(&buf[0..CCSDS_HEADER_LEN]).unwrap();
+        if raw_len < sp_header.packet_len() {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: raw_len,
+                expected: sp_header.packet_len(),
+            });
+        }
+        Ok(Self {
+            buf,
+            packet_len: sp_header.packet_len(),
+            checksum,
+        })
+    }
+}
+
+impl CcsdsZeroCopyWriter<'_> {
+    /// Read-only access to the raw buffer.
+    pub fn raw_buffer(&self) -> &[u8] {
+        &self.buf[0..self.packet_len]
+    }
+
+    /// Mutable access to the raw buffer.
+    pub fn raw_buffer_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[0..self.packet_len]
+    }
+
+    /// Read-only access to the full packet data field.
+    ///
+    /// This might also include the checksum but does not include the raw [SpacePacketHeader].
+    /// [Self::user_data] can be used to only retrieve the user data slice without the checksum
+    /// part.
+    pub fn packet_data(&self) -> &[u8] {
+        &self.buf[CCSDS_HEADER_LEN..self.packet_len]
+    }
+
+    /// Mutable access to the full packet data field.
+    ///
+    /// This might also include the checksum but does not include the raw [SpacePacketHeader].
+    /// [Self::user_data_mut] can be used to only retrieve the user data slice without the checksum
+    /// part.
+    pub fn packet_data_mut(&mut self) -> &mut [u8] {
+        &mut self.buf[CCSDS_HEADER_LEN..self.packet_len]
+    }
+
+    /// Read-only access to the user data field which excludes the optional CRC16.
+    pub fn user_data(&self) -> &[u8] {
+        match self.checksum {
+            Some(_checksum) => &self.buf[CCSDS_HEADER_LEN..self.packet_len - 2],
+            None => &self.buf[CCSDS_HEADER_LEN..],
+        }
+    }
+
+    /// Mutable access to the user data field which excludes the optional CRC16.
+    pub fn user_data_mut(&mut self) -> &mut [u8] {
+        match self.checksum {
+            Some(_checksum) => &mut self.buf[CCSDS_HEADER_LEN..self.packet_len - 2],
+            None => &mut self.buf[CCSDS_HEADER_LEN..],
+        }
+    }
+
+    /// Set the application process identifier (APID).
+    #[inline]
+    pub fn set_apid(&mut self, apid: u11) {
+        // Clear APID part of the raw packet ID
+        let updated_apid = ((((self.buf[0] as u16) << 8) | self.buf[1] as u16)
+            & !MAX_APID.as_u16())
+            | apid.as_u16();
+        self.buf[0..2].copy_from_slice(&updated_apid.to_be_bytes());
+    }
+
+    /// Current application process identifier (APID).
+    pub fn apid(&self) -> u11 {
+        u11::new((((self.buf[0] as u16) << 8) | self.buf[1] as u16) & MAX_APID.as_u16())
+    }
+
+    /// Set the sequence count in the CCSDS packet header.
+    #[inline]
+    pub fn set_seq_count(&mut self, seq_count: u14) {
+        let new_psc =
+            (u16::from_be_bytes(self.buf[2..4].try_into().unwrap()) & 0xC000) | seq_count.as_u16();
+        self.buf[2..4].copy_from_slice(&new_psc.to_be_bytes());
+    }
+
+    /// This method has to be called after modifying fields to ensure the CRC16 of the
+    /// packet remains valid.
+    pub fn finish(&mut self) {
+        match self.checksum {
+            Some(ChecksumType::WithCrc16) => {
+                let crc16 = CRC_CCITT_FALSE.checksum(&self.buf[0..self.packet_len - 2]);
+                self.buf[self.packet_len - 2..self.packet_len]
+                    .copy_from_slice(&crc16.to_be_bytes());
+            }
+            None | Some(ChecksumType::WithCrc16ButIgnored) => (),
+        };
+    }
+}
+
 #[cfg(all(test, feature = "std"))]
 pub(crate) mod tests {
     use std::collections::HashSet;
@@ -2831,5 +2957,39 @@ pub(crate) mod tests {
         use std::collections::hash_map::DefaultHasher;
         let mut hasher = DefaultHasher::new();
         id.hash(&mut hasher);
+    }
+
+    #[test]
+    fn test_ccsds_zero_copy_writer() {
+        let data = [1, 2, 3, 4];
+        let packet_creator = CcsdsPacketCreatorOwned::new_tm_with_checksum(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            &data,
+        )
+        .unwrap();
+        let mut packet_raw = packet_creator.to_vec();
+        let packet_copy = packet_raw.clone();
+
+        let mut ccsds_zero_copy_writer =
+            CcsdsZeroCopyWriter::new(&mut packet_raw, Some(ChecksumType::WithCrc16)).unwrap();
+        assert_eq!(ccsds_zero_copy_writer.user_data(), &[1, 2, 3, 4]);
+        assert_eq!(ccsds_zero_copy_writer.user_data_mut(), &mut [1, 2, 3, 4]);
+        assert_eq!(&ccsds_zero_copy_writer.packet_data()[0..4], &[1, 2, 3, 4]);
+        assert_eq!(
+            &mut ccsds_zero_copy_writer.packet_data_mut()[0..4],
+            &mut [1, 2, 3, 4]
+        );
+        assert_eq!(ccsds_zero_copy_writer.buf, &packet_copy);
+        assert_eq!(ccsds_zero_copy_writer.raw_buffer(), &packet_copy);
+        assert_eq!(ccsds_zero_copy_writer.raw_buffer_mut(), &packet_copy);
+        assert_eq!(ccsds_zero_copy_writer.apid(), packet_creator.apid());
+        ccsds_zero_copy_writer.set_apid(MAX_APID);
+        assert_eq!(ccsds_zero_copy_writer.apid(), MAX_APID);
+        ccsds_zero_copy_writer.set_seq_count(u14::new(0x42));
+        ccsds_zero_copy_writer.finish();
+
+        let reader = CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16)).unwrap();
+        assert_eq!(reader.apid(), MAX_APID);
+        assert_eq!(reader.seq_count(), u14::new(0x42));
     }
 }
