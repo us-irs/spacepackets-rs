@@ -312,7 +312,9 @@ impl PartialEq for PrimaryHeader {
     }
 }
 
-/// USLP protocol ID enumeration.
+/// USLP protocol ID (UPID) enumeration.
+///
+/// See https://sanaregistry.org/r/uslp_protocol_id/ for the source of this information.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -328,12 +330,18 @@ pub enum UslpProtocolId {
     CopPControlCommands = 0b00010,
     /// SDLS control commands within the TFDZ.
     Sdls = 0b00011,
+    /// Mission-specific Information-1 as a MAPA_SDU or VCA_SDU is contained within the TFDZ.
+    MissionSpecificInfo1MapaSduOrVcaSdu = 0b00101,
     /// User defined octet stream.
     UserDefinedOctetStream = 0b00100,
     /// Proximity-1 Supervisory Protocol Data Units (SPDUs) within the TFDZ.
     Spdu = 0b00111,
     /// Entire fixed-length TFDZ contains idle data.
     Idle = 0b11111,
+    /// Proximity-1 Pseudo Packet Identifier 2 for Segmentation
+    Proximity1PseudoPacketIdentifier2 = 0b01000,
+    /// Proximity-1 Pseudo Packet Identifier 1 for Segmentation
+    Proximity1PseudoPacketIdentifier1 = 0b00110,
 }
 
 /// USLP construction rule enumeration.
