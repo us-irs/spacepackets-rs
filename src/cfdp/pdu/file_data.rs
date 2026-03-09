@@ -135,8 +135,8 @@ impl FdPduBase<'_> {
         if self.pdu_header.pdu_conf.file_flag == LargeFileFlag::Large {
             len += 4;
         }
-        if self.segment_metadata.is_some() {
-            len += self.segment_metadata.as_ref().unwrap().len_written()
+        if let Some(segment_metadata) = self.segment_metadata {
+            len += segment_metadata.len_written()
         }
         len += file_data_len as usize;
         if self.crc_flag() == CrcFlag::WithCrc {
@@ -147,12 +147,8 @@ impl FdPduBase<'_> {
 
     fn write_common_fields_to_bytes(&self, buf: &mut [u8]) -> Result<usize, PduError> {
         let mut current_idx = self.pdu_header.write_to_bytes(buf)?;
-        if self.segment_metadata.is_some() {
-            current_idx += self
-                .segment_metadata
-                .as_ref()
-                .unwrap()
-                .write_to_bytes(&mut buf[current_idx..])?;
+        if let Some(segment_metadata) = self.segment_metadata {
+            current_idx += segment_metadata.write_to_bytes(&mut buf[current_idx..])?;
         }
         current_idx += write_fss_field(
             self.pdu_header.common_pdu_conf().file_flag,
