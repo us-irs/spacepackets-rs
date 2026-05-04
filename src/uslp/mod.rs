@@ -255,10 +255,8 @@ impl PrimaryHeader {
             | ((self.protocol_control_command_flag as u8) << 6)
             | ((self.ocf_flag as u8) << 3)
             | self.vc_frame_count_len.as_u8();
-        let mut packet_idx = 7;
-        for idx in (0..self.vc_frame_count_len.value()).rev() {
+        for (packet_idx, idx) in (7..).zip((0..self.vc_frame_count_len.value()).rev()) {
             buf[packet_idx] = ((self.vc_frame_count >> (idx * 8)) & 0xff) as u8;
-            packet_idx += 1;
         }
         Ok(self.len_header())
     }
