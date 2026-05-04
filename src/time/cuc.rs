@@ -452,7 +452,7 @@ impl CucTime {
             .ok_or(CucError::LeapSecondCorrectionError)?;
         let fractions =
             fractional_part_from_subsec_ns(res, unix_time.subsec_millis() as u64 * 10_u64.pow(6));
-        Self::new_generic(WidthCounterPair(4, counter as u32), fractions)
+        Self::new_generic(WidthCounterPair(4, counter), fractions)
     }
 
     /// Most generic constructor which allows full configurability for the counter and for the
