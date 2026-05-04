@@ -1108,7 +1108,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
         }
         Ok(Self {
             sp_header,
-            sec_header: PusTmSecondaryHeader::try_from(zc_sec_header_wrapper).unwrap(),
+            sec_header: PusTmSecondaryHeader::try_from(zc_sec_header_wrapper)?,
             raw_data,
             source_data: user_data_from_raw(
                 current_idx,
