@@ -192,11 +192,9 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             .into());
         }
         let pus_version = PusVersion::try_from(u4::new((buf[0] >> 4) & 0x0F));
-        if let Err(version_raw) = pus_version {
-            return Err(PusError::VersionNotSupported(version_raw));
-        }
-        let pus_version = pus_version.unwrap();
-        if pus_version != PusVersion::PusA {
+        let pus_version =
+            pus_version.map_err(PusError::VersionNotSupported)?;
+        if !matches!(pus_version, PusVersion::PusA) {
             return Err(PusError::VersionNotSupported(pus_version.raw_value()));
         }
         let mut msg_counter = None;
@@ -466,9 +464,9 @@ impl<'time, 'src_data> PusTmCreator<'time, 'src_data> {
         if let Some(dest_id) = self.sec_header.dest_id {
             let mut dest_id_buf: [u8; core::mem::size_of::<u64>()] =
                 [0; core::mem::size_of::<u64>()];
-            // Unwrap okay, this can never fail because we created a buffer with the largest
-            // possible size.
-            let len = dest_id.write_to_be_bytes(&mut dest_id_buf).unwrap();
+            let len = dest_id
+                .write_to_be_bytes(&mut dest_id_buf)
+                .expect("buffer is maximum possible size; this operation cannot fail");
             digest.update(&dest_id_buf[0..len]);
         }
         digest.update(self.sec_header.timestamp);
