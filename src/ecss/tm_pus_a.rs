@@ -192,8 +192,7 @@ impl<'stamp> PusTmSecondaryHeader<'stamp> {
             .into());
         }
         let pus_version = PusVersion::try_from(u4::new((buf[0] >> 4) & 0x0F));
-        let pus_version =
-            pus_version.map_err(PusError::VersionNotSupported)?;
+        let pus_version = pus_version.map_err(PusError::VersionNotSupported)?;
         if !matches!(pus_version, PusVersion::PusA) {
             return Err(PusError::VersionNotSupported(pus_version.raw_value()));
         }
