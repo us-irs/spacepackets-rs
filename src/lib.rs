@@ -1250,9 +1250,8 @@ impl CcsdsPacketCreatorCommon {
     #[cfg(feature = "alloc")]
     pub fn to_vec(&self, len_written: usize, packet_data: &[u8]) -> alloc::vec::Vec<u8> {
         let mut vec = alloc::vec![0u8; len_written];
-        // Can not fail, unless we messed up the len_written method..
         self.write_to_bytes(&mut vec, len_written, packet_data)
-            .unwrap();
+            .expect("buffer size shall match the len_written");
         vec
     }
 }
