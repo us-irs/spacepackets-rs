@@ -152,7 +152,7 @@ pub mod zc {
     impl TryFrom<crate::ecss::tc::PusTcSecondaryHeader> for PusTcSecondaryHeader {
         type Error = PusError;
         fn try_from(value: crate::ecss::tc::PusTcSecondaryHeader) -> Result<Self, Self::Error> {
-            if value.version != PusVersion::PusC {
+            if !matches!(value.version, PusVersion::PusC) {
                 return Err(PusError::VersionNotSupported(value.version.raw_value()));
             }
             Ok(PusTcSecondaryHeader {
@@ -422,7 +422,8 @@ impl<'app_data> PusTcCreator<'app_data> {
         let mut digest = CRC_CCITT_FALSE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         digest.update(sph_zc.as_bytes());
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
+        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header)
+            .expect("the PUS version is hardcoded to PUS C");
         digest.update(pus_tc_header.as_bytes());
         digest.update(self.app_data);
         digest.finalize()
@@ -433,7 +434,8 @@ impl<'app_data> PusTcCreator<'app_data> {
         let mut digest = CRC_CCITT_FALSE_NO_TABLE.digest();
         let sph_zc = crate::zc::SpHeader::from(self.sp_header);
         digest.update(sph_zc.as_bytes());
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
+        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header)
+            .expect("the PUS version is hardcoded to PUS C");
         digest.update(pus_tc_header.as_bytes());
         digest.update(self.app_data);
         digest.finalize()
@@ -454,7 +456,8 @@ impl<'app_data> PusTcCreator<'app_data> {
         let start_idx = vec.len();
         vec.extend_from_slice(sph_zc.as_bytes());
         // The PUS version is hardcoded to PUS C
-        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header).unwrap();
+        let pus_tc_header = zc::PusTcSecondaryHeader::try_from(self.sec_header)
+            .expect("the PUS version is hardcoded to PUS C");
         vec.extend_from_slice(pus_tc_header.as_bytes());
         vec.extend_from_slice(self.app_data);
         if self.has_checksum() {
@@ -668,11 +671,11 @@ impl<'buf> PusTcCreatorWithReservedAppData<'buf> {
         sp_header.write_to_be_bytes(&mut buf[0..CCSDS_HEADER_LEN])?;
         curr_idx += CCSDS_HEADER_LEN;
         let sec_header_len = size_of::<zc::PusTcSecondaryHeader>();
-        let sec_header_zc = zc::PusTcSecondaryHeader::try_from(sec_header).unwrap();
-        // Unwrap okay, this can not fail.
+        let sec_header_zc = zc::PusTcSecondaryHeader::try_from(sec_header)
+            .expect("the PUS version is hardcoded to PUS C");
         sec_header_zc
             .write_to(&mut buf[curr_idx..curr_idx + sec_header_len])
-            .unwrap();
+            .expect("buffer is large enough for secondary header");
         curr_idx += sec_header_len;
         let app_data_offset = curr_idx;
         curr_idx += app_data_len;
@@ -920,8 +923,10 @@ impl<'raw_data> PusTcReader<'raw_data> {
     /// a CRC-16-CCITT checksum which is also verified.
     pub fn new(slice: &'raw_data [u8]) -> Result<Self, PusError> {
         let pus_tc = Self::new_no_checksum_verification(slice, true)?;
-        // Unwrap for CRC16 okay, should always have some value.
-        verify_crc16_ccitt_false_from_raw_to_pus_error(pus_tc.raw_data(), pus_tc.crc16().unwrap())?;
+        verify_crc16_ccitt_false_from_raw_to_pus_error(
+            pus_tc.raw_data(),
+            pus_tc.crc16().expect("crc16 checksum shall not be `None`"),
+        )?;
         Ok(pus_tc)
     }
 
@@ -929,10 +934,9 @@ impl<'raw_data> PusTcReader<'raw_data> {
     /// binary size and memory usage.
     pub fn new_checksum_no_table(slice: &'raw_data [u8]) -> Result<Self, PusError> {
         let pus_tc = Self::new_no_checksum_verification(slice, true)?;
-        // Unwrap for CRC16 okay, should always have some value.
         verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
             pus_tc.raw_data(),
-            pus_tc.crc16().unwrap(),
+            pus_tc.crc16().expect("crc16 checksum shall not be `None`"),
         )?;
         Ok(pus_tc)
     }
