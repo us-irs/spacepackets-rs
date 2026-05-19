@@ -690,8 +690,8 @@ impl SpacePacketHeader {
                 expected: CCSDS_HEADER_LEN,
             });
         }
-        // Unwrap okay, this can not fail.
-        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..Self::LENGTH]).unwrap();
+        let zc_header = zc::SpHeader::read_from_bytes(&buf[0..Self::LENGTH])
+            .expect("zerocopy read failed unexpectedly");
         Ok((Self::from(zc_header), &buf[Self::LENGTH..]))
     }
 
@@ -1571,7 +1571,16 @@ impl<'buf> CcsdsPacketReader<'buf> {
         buf: &'buf [u8],
         checksum_type: Option<ChecksumType>,
     ) -> Result<Self, CcsdsPacketReadError> {
-        let sp_header = SpHeader::from_be_bytes(&buf[0..CCSDS_HEADER_LEN])?.0;
+        if buf.len() < CCSDS_HEADER_LEN {
+            return Err(ByteConversionError::FromSliceTooSmall {
+                found: buf.len(),
+                expected: CCSDS_HEADER_LEN,
+            }
+            .into());
+        }
+        let sp_header = SpHeader::from_be_bytes(&buf[0..CCSDS_HEADER_LEN])
+            .expect("SP header creation failed unexpectedly")
+            .0;
         if sp_header.packet_len() > buf.len() {
             return Err(ByteConversionError::FromSliceTooSmall {
                 found: buf.len(),
@@ -2352,6 +2361,15 @@ pub(crate) mod tests {
         assert_eq!(buf[8], 3);
         assert_eq!(buf[9], 4);
         assert_eq!(buf[12], 0);
+    }
+
+    #[test]
+    fn test_ccsds_reader_fails_on_small_buf() {
+        let buf: [u8; 5] = [0; 5];
+        for size in 0..5 {
+            let reader = CcsdsPacketReader::new(&buf[0..size], None);
+            assert!(reader.is_err());
+        }
     }
 
     #[test]
