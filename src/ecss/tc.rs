@@ -57,10 +57,6 @@ use delegate::delegate;
 use serde::{Deserialize, Serialize};
 use zerocopy::{FromBytes, IntoBytes};
 
-// Is necessary for some reason, possibly bug.
-#[cfg(feature = "defmt")]
-use arbitrary_int::traits::Integer;
-
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 

@@ -312,7 +312,7 @@ impl PartialEq for PrimaryHeader {
 
 /// USLP protocol ID (UPID) enumeration.
 ///
-/// See https://sanaregistry.org/r/uslp_protocol_id/ for the source of this information.
+/// See <https://sanaregistry.org/r/uslp_protocol_id/> for the source of this information.
 #[derive(Debug, PartialEq, Eq, num_enum::TryFromPrimitive, num_enum::IntoPrimitive)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
