@@ -921,7 +921,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
         let pus_tc = Self::new_no_checksum_verification(slice, true)?;
         verify_crc16_ccitt_false_from_raw_to_pus_error(
             pus_tc.raw_data(),
-            pus_tc.crc16().expect("crc16 checksum shall not be `None`"),
+            pus_tc.crc16().ok_or(PusError::CrcCalculationMissing)?,
         )?;
         Ok(pus_tc)
     }
@@ -932,7 +932,7 @@ impl<'raw_data> PusTcReader<'raw_data> {
         let pus_tc = Self::new_no_checksum_verification(slice, true)?;
         verify_crc16_ccitt_false_from_raw_to_pus_error_no_table(
             pus_tc.raw_data(),
-            pus_tc.crc16().expect("crc16 checksum shall not be `None`"),
+            pus_tc.crc16().ok_or(PusError::CrcCalculationMissing)?,
         )?;
         Ok(pus_tc)
     }
@@ -980,10 +980,10 @@ impl<'raw_data> PusTcReader<'raw_data> {
         .unwrap();
         current_idx += PUC_TC_SECONDARY_HEADER_LEN;
         let raw_data = &slice[0..total_len];
-        let mut crc16 = None;
-        if has_checksum {
-            crc16 = Some(crc_from_raw_data(&slice[total_len - 2..total_len])?);
-        }
+        let crc16 = match has_checksum {
+            true => Some(crc_from_raw_data(&slice[total_len - 2..total_len])?),
+            false => None,
+        };
         Ok(Self {
             sp_header,
             sec_header: PusTcSecondaryHeader::try_from(sec_header).unwrap(),

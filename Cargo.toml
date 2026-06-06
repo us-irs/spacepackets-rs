@@ -46,6 +46,3 @@ tempfile = "3"
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--generate-link-to-definition"]
-
-[lints.clippy]
-unwrap_used = "warn"
