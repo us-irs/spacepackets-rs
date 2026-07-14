@@ -63,14 +63,13 @@ impl AckPdu {
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
     ) -> Self {
-        // Unwrap okay here, [new] can only fail on invalid directive codes.
         Self::new(
             pdu_header,
             FileDirectiveType::Eof,
             condition_code,
             transaction_status,
         )
-        .unwrap()
+        .expect("only fails when directive codes are invalid")
     }
 
     /// Constructor for an ACK PDU acknowledging a Finished PDU.
@@ -81,14 +80,13 @@ impl AckPdu {
         condition_code: ConditionCode,
         transaction_status: TransactionStatus,
     ) -> Self {
-        // Unwrap okay here, [new] can only fail on invalid directive codes.
         Self::new(
             pdu_header,
             FileDirectiveType::Finished,
             condition_code,
             transaction_status,
         )
-        .unwrap()
+        .expect("only fails when directive codes are invalid")
     }
 
     /// PDU header.

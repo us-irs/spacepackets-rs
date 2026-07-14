@@ -296,11 +296,6 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     /// Please note that a precision value of 0 will be converted to [None] (no precision).
     pub fn set_submillis(&mut self, prec: SubmillisPrecision, value: u32) -> bool {
         self.pfield &= !(0b11);
-        if let SubmillisPrecision::Absent = prec {
-            // self.submillis_precision = prec;
-            self.submillis = 0;
-            return true;
-        }
         // self.submillis_precision = prec;
         match prec {
             SubmillisPrecision::Microseconds => {
@@ -314,7 +309,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
                 self.pfield |= SubmillisPrecision::Picoseconds as u8;
                 self.submillis = value;
             }
-            _ => (),
+            SubmillisPrecision::Absent => {
+                self.submillis = 0;
+            }
+            SubmillisPrecision::Reserved => (),
         }
         true
     }
@@ -353,23 +351,18 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
             ));
         }
         let pfield = buf[0];
-        match CcsdsTimeCode::try_from((pfield >> 4) & 0b111) {
-            Ok(cds_type) => match cds_type {
-                CcsdsTimeCode::Cds => (),
-                _ => {
-                    return Err(TimestampError::InvalidTimeCode {
-                        expected: CcsdsTimeCode::Cds,
-                        found: cds_type as u8,
-                    })
-                }
-            },
-            _ => {
-                return Err(TimestampError::InvalidTimeCode {
-                    expected: CcsdsTimeCode::Cds,
-                    found: (pfield >> 4) & 0b111,
-                });
+        let cds_type = CcsdsTimeCode::try_from((pfield >> 4) & 0b111).map_err(|_| {
+            TimestampError::InvalidTimeCode {
+                expected: CcsdsTimeCode::Cds,
+                found: (pfield >> 4) & 0b111,
             }
-        };
+        })?;
+        if !matches!(cds_type, CcsdsTimeCode::Cds) {
+            return Err(TimestampError::InvalidTimeCode {
+                expected: CcsdsTimeCode::Cds,
+                found: cds_type as u8,
+            });
+        }
         if ((pfield >> 3) & 0b1) == 1 {
             return Err(TimestampError::CustomEpochNotSupported);
         }
@@ -394,14 +387,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         if length_of_day_segment_from_pfield(pfield) == LengthOfDaySegment::Long24Bits {
             init_len += 1
         }
-        match pfield & 0b11 {
-            0b01 => {
-                init_len += 2;
-            }
-            0b10 => {
-                init_len += 4;
-            }
-            _ => (),
+        match precision_from_pfield(pfield) {
+            SubmillisPrecision::Microseconds => init_len += 2,
+            SubmillisPrecision::Picoseconds => init_len += 4,
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => (),
         }
         init_len
     }
@@ -534,17 +523,19 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         Ok(match self.submillis_precision() {
             SubmillisPrecision::Microseconds => ConversionFromNow::new_with_submillis_us_prec()?,
             SubmillisPrecision::Picoseconds => ConversionFromNow::new_with_submillis_ps_prec()?,
-            _ => ConversionFromNow::new()?,
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => ConversionFromNow::new()?,
         })
     }
 
     fn generate_p_field(day_seg_len: LengthOfDaySegment, submillis_prec: SubmillisPrecision) -> u8 {
         let mut pfield = P_FIELD_BASE | ((day_seg_len as u8) << 2);
-        match submillis_prec {
-            SubmillisPrecision::Microseconds => pfield |= SubmillisPrecision::Microseconds as u8,
-            SubmillisPrecision::Picoseconds => pfield |= SubmillisPrecision::Picoseconds as u8,
-            SubmillisPrecision::Reserved => pfield |= SubmillisPrecision::Reserved as u8,
-            _ => (),
+        if matches!(
+            submillis_prec,
+            SubmillisPrecision::Microseconds
+                | SubmillisPrecision::Picoseconds
+                | SubmillisPrecision::Reserved
+        ) {
+            pfield |= submillis_prec as u8
         }
         pfield
     }
@@ -652,17 +643,17 @@ impl CdsTime<DaysLen24Bits> {
         match submillis_precision {
             SubmillisPrecision::Microseconds => {
                 provider.set_submillis(
-                    SubmillisPrecision::Microseconds,
+                    submillis_precision,
                     u16::from_be_bytes(buf[8..10].try_into().unwrap()) as u32,
                 );
             }
             SubmillisPrecision::Picoseconds => {
                 provider.set_submillis(
-                    SubmillisPrecision::Picoseconds,
+                    submillis_precision,
                     u32::from_be_bytes(buf[8..12].try_into().unwrap()),
                 );
             }
-            _ => (),
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => (),
         }
         Ok(provider)
     }
@@ -763,17 +754,17 @@ impl CdsTime<DaysLen16Bits> {
         match submillis_precision {
             SubmillisPrecision::Microseconds => {
                 provider.set_submillis(
-                    SubmillisPrecision::Microseconds,
+                    submillis_precision,
                     u16::from_be_bytes(buf[7..9].try_into().unwrap()) as u32,
                 );
             }
             SubmillisPrecision::Picoseconds => {
                 provider.set_submillis(
-                    SubmillisPrecision::Picoseconds,
+                    submillis_precision,
                     u32::from_be_bytes(buf[7..11].try_into().unwrap()),
                 );
             }
-            _ => (),
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => (),
         }
         Ok(provider)
     }
@@ -937,7 +928,7 @@ impl CdsTime<DaysLen24Bits> {
             SubmillisPrecision::Picoseconds => {
                 buf[8..12].copy_from_slice(self.submillis().to_be_bytes().as_slice());
             }
-            _ => (),
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => (),
         }
         Ok(self.len_as_bytes())
     }
@@ -970,24 +961,20 @@ impl<DaysLenProvider: ProvidesDaysLength> PartialOrd for CdsTime<DaysLenProvider
         if self == other {
             return Some(Ordering::Equal);
         }
-        match self.ccsds_days_as_u32().cmp(&other.ccsds_days_as_u32()) {
-            Ordering::Less => return Some(Ordering::Less),
-            Ordering::Greater => return Some(Ordering::Greater),
-            _ => (),
+        let ordering = self.ccsds_days_as_u32().cmp(&other.ccsds_days_as_u32());
+        if ordering != Ordering::Equal {
+            return Some(ordering);
         }
-        match self.ms_of_day().cmp(&other.ms_of_day()) {
-            Ordering::Less => return Some(Ordering::Less),
-            Ordering::Greater => return Some(Ordering::Greater),
-            _ => (),
+        let ordering = self.ms_of_day().cmp(&other.ms_of_day());
+        if ordering != Ordering::Equal {
+            return Some(ordering);
         }
-        match self
+        let ordering = self
             .precision_as_ns()
             .unwrap_or(0)
-            .cmp(&other.precision_as_ns().unwrap_or(0))
-        {
-            Ordering::Less => return Some(Ordering::Less),
-            Ordering::Greater => return Some(Ordering::Greater),
-            _ => (),
+            .cmp(&other.precision_as_ns().unwrap_or(0));
+        if ordering != Ordering::Equal {
+            return Some(ordering);
         }
         Some(Ordering::Equal)
     }
@@ -1051,7 +1038,7 @@ impl ConversionFromUnix {
         let submillis = match precision {
             SubmillisPrecision::Microseconds => (subsec_nanos / 1_000) % 1000,
             SubmillisPrecision::Picoseconds => (subsec_nanos % 10_u32.pow(6)) * 1000,
-            _ => 0,
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => 0,
         };
         Ok(Self {
             ccsds_days: unix_to_ccsds_days(unix_days) as u32,
@@ -1161,16 +1148,12 @@ impl ConversionFromChronoDatetime {
         // The contained values in the conversion should be all positive now
         let unix_conversion =
             ConversionFromUnix::new(dt.timestamp(), dt.timestamp_subsec_nanos(), prec)?;
-        let mut submillis = 0;
-        match prec {
-            SubmillisPrecision::Microseconds => {
-                submillis = dt.timestamp_subsec_micros() % 1000;
-            }
-            SubmillisPrecision::Picoseconds => {
-                submillis = (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000;
-            }
-            _ => (),
-        }
+
+        let submillis = match prec {
+            SubmillisPrecision::Microseconds => dt.timestamp_subsec_micros() % 1000,
+            SubmillisPrecision::Picoseconds => (dt.timestamp_subsec_nanos() % 10_u32.pow(6)) * 1000,
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => 0,
+        };
         Ok(Self {
             unix_conversion,
             submillis_prec: prec,
@@ -1207,17 +1190,12 @@ impl ConversionFromNow {
         // so it is okay to unwrap
         let unix_conversion =
             ConversionFromUnix::new(epoch as i64, now.subsec_nanos(), prec).unwrap();
-        let mut submillis = 0;
 
-        match prec {
-            SubmillisPrecision::Microseconds => {
-                submillis = now.subsec_micros() % 1000;
-            }
-            SubmillisPrecision::Picoseconds => {
-                submillis = (now.subsec_nanos() % 10_u32.pow(6)) * 1000;
-            }
-            _ => (),
-        }
+        let submillis = match prec {
+            SubmillisPrecision::Microseconds => now.subsec_micros() % 1000,
+            SubmillisPrecision::Picoseconds => (now.subsec_nanos() % 10_u32.pow(6)) * 1000,
+            SubmillisPrecision::Absent | SubmillisPrecision::Reserved => 0,
+        };
         Ok(Self {
             unix_conversion,
             submillis_prec: prec,

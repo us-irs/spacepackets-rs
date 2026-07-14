@@ -197,8 +197,9 @@ pub enum PusError {
     #[error("checksum verification for crc16 {0:#06x} failed")]
     ChecksumFailure(u16),
     /// CRC16 needs to be calculated first
-    //#[error("crc16 was not calculated")]
-    //CrcCalculationMissing,
+    #[error("crc16 was not calculated")]
+    CrcCalculationMissing,
+    /// Raised when converting to and from raw byte slices
     #[error("pus error: {0}")]
     ByteConversion(#[from] ByteConversionError),
 }

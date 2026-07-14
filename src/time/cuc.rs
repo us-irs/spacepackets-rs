@@ -866,8 +866,8 @@ impl Add<Duration> for CucTime {
     fn add(self, duration: Duration) -> Self::Output {
         let (new_counter, new_fractional_part) =
             get_time_values_after_duration_addition(&self, duration);
-        // The generated fractional part should always be valid, so its okay to unwrap here.
-        Self::new_with_fractions(new_counter, new_fractional_part).unwrap()
+        Self::new_with_fractions(new_counter, new_fractional_part)
+            .expect("The generated fractional part should always be valid")
     }
 }
 
@@ -877,8 +877,8 @@ impl Add<Duration> for &CucTime {
     fn add(self, duration: Duration) -> Self::Output {
         let (new_counter, new_fractional_part) =
             get_time_values_after_duration_addition(self, duration);
-        // The generated fractional part should always be valid, so its okay to unwrap here.
-        Self::Output::new_with_fractions(new_counter, new_fractional_part).unwrap()
+        Self::Output::new_with_fractions(new_counter, new_fractional_part)
+            .expect("The generated fractional part should always be valid")
     }
 }
 
