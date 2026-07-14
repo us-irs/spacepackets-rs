@@ -4,8 +4,8 @@
 //! The core data structure to do this is the [CdsTime] struct and the
 //! [get_dyn_time_provider_from_bytes] function to retrieve correct instances of the
 //! struct from a bytestream.
-use crate::private::Sealed;
 use crate::ByteConversionError;
+use crate::private::Sealed;
 use core::cmp::Ordering;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign};
@@ -30,9 +30,8 @@ use core::any::Any;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    ccsds_to_unix_days, unix_to_ccsds_days, CcsdsTimeCode, CcsdsTimeProvider,
-    DateBeforeCcsdsEpochError, TimeReader, TimeWriter, TimestampError, UnixTime, MS_PER_DAY,
-    SECONDS_PER_DAY,
+    CcsdsTimeCode, CcsdsTimeProvider, DateBeforeCcsdsEpochError, MS_PER_DAY, SECONDS_PER_DAY,
+    TimeReader, TimeWriter, TimestampError, UnixTime, ccsds_to_unix_days, unix_to_ccsds_days,
 };
 
 /// Base value for the preamble field for a time field parser to determine the time field type.
@@ -1314,9 +1313,9 @@ impl CdsTimestamp for CdsTime<DaysLen24Bits> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
-    use crate::time::{UnixTime, DAYS_CCSDS_TO_UNIX, MS_PER_DAY};
     use crate::ByteConversionError::FromSliceTooSmall;
+    use crate::time::TimestampError::{ByteConversion, InvalidTimeCode};
+    use crate::time::{DAYS_CCSDS_TO_UNIX, MS_PER_DAY, UnixTime};
     use alloc::string::ToString;
     use chrono::{Datelike, NaiveDate, Timelike};
     #[cfg(feature = "serde")]

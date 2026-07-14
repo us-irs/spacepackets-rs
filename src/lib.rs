@@ -784,7 +784,7 @@ pub mod zc {
     use arbitrary_int::traits::Integer;
     use arbitrary_int::u3;
     use zerocopy::byteorder::NetworkEndian;
-    use zerocopy::{FromBytes, Immutable, IntoBytes, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, U16, Unaligned};
 
     /// [zerocopy] space packet header.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned, Debug)]
@@ -1852,11 +1852,11 @@ pub(crate) mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::crc::CRC_CCITT_FALSE;
     #[allow(unused_imports)]
     use crate::ByteConversionError;
     #[cfg(feature = "serde")]
     use crate::CcsdsPrimaryHeader;
+    use crate::crc::CRC_CCITT_FALSE;
     use crate::{SequenceFlags, SpHeader};
     use alloc::vec;
     use arbitrary_int::{u11, u14};
@@ -1865,7 +1865,7 @@ pub(crate) mod tests {
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
     #[cfg(feature = "serde")]
-    use serde::{de::DeserializeOwned, Serialize};
+    use serde::{Serialize, de::DeserializeOwned};
     use zerocopy::FromBytes;
 
     const CONST_SP: SpHeader = SpHeader::new(
@@ -2223,17 +2223,18 @@ pub(crate) mod tests {
     #[test]
     fn test_ccsds_size_function_invalid_size_with_checksum() {
         // 2 less bytes available because of the checksum.
-        assert!(ccsds_packet_len_for_user_data_len(
-            u16::MAX as usize - 1,
-            Some(ChecksumType::WithCrc16)
-        )
-        .is_some());
+        assert!(
+            ccsds_packet_len_for_user_data_len(
+                u16::MAX as usize - 1,
+                Some(ChecksumType::WithCrc16)
+            )
+            .is_some()
+        );
         // This is too much.
-        assert!(ccsds_packet_len_for_user_data_len(
-            u16::MAX as usize,
-            Some(ChecksumType::WithCrc16)
-        )
-        .is_none());
+        assert!(
+            ccsds_packet_len_for_user_data_len(u16::MAX as usize, Some(ChecksumType::WithCrc16))
+                .is_none()
+        );
     }
 
     #[test]

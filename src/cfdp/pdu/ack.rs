@@ -1,12 +1,12 @@
 //! # Acknowledgement (ACK) PDU packet implementation.
 use crate::{
-    cfdp::{ConditionCode, CrcFlag, Direction, TransactionStatus},
     ByteConversionError,
+    cfdp::{ConditionCode, CrcFlag, Direction, TransactionStatus},
 };
 
 use super::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, CfdpPdu, FileDirectiveType, PduError,
-    PduHeader, WritablePduPacket,
+    CfdpPdu, FileDirectiveType, PduError, PduHeader, WritablePduPacket, add_pdu_crc,
+    generic_length_checks_pdu_deserialization,
 };
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -228,8 +228,8 @@ impl WritablePduPacket for AckPdu {
 #[cfg(test)]
 mod tests {
     use crate::cfdp::{
-        pdu::tests::{common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
         LargeFileFlag, PduType, TransmissionMode,
+        pdu::tests::{TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header},
     };
 
     use super::*;

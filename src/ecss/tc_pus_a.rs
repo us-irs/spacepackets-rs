@@ -33,17 +33,16 @@
 //! assert_eq!(pus_tc.message_subtype_id(), 1);
 //! assert_eq!(pus_tc.apid().value(), 0x02);
 //! ```
+use crate::SpHeader;
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
-use crate::ecss::tc::{AckFlags, ACK_ALL};
+use crate::ecss::tc::{ACK_ALL, AckFlags};
 use crate::ecss::{
-    crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, MessageTypeId, PusError, PusPacket, PusVersion,
-    WritablePusPacket,
+    MessageTypeId, PusError, PusPacket, PusVersion, WritablePusPacket, crc_from_raw_data,
+    sp_header_impls, user_data_from_raw, verify_crc16_ccitt_false_from_raw_to_pus_error,
 };
 use crate::util::{UnsignedByteField, UnsignedEnum};
-use crate::SpHeader;
-use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
-use arbitrary_int::{u11, u14, u3, u4};
+use crate::{ByteConversionError, CCSDS_HEADER_LEN, CcsdsPacket, PacketType, SequenceFlags};
+use arbitrary_int::{u3, u4, u11, u14};
 use core::mem::size_of;
 use delegate::delegate;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -922,7 +921,7 @@ mod tests {
 
     use super::*;
     use crate::ecss::{PusError, PusPacket, WritablePusPacket};
-    use crate::util::{UnsignedByteFieldU16, UnsignedByteFieldU8};
+    use crate::util::{UnsignedByteFieldU8, UnsignedByteFieldU16};
     use crate::{ByteConversionError, SpHeader};
     use crate::{CcsdsPacket, SequenceFlags};
     use alloc::string::ToString;

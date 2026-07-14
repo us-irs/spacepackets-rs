@@ -384,11 +384,11 @@ impl TryFrom<UnsignedByteField> for UnsignedByteFieldU64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::util::{
-        UnsignedByteField, UnsignedByteFieldError, UnsignedByteFieldU16, UnsignedByteFieldU32,
-        UnsignedByteFieldU64, UnsignedByteFieldU8, UnsignedEnum,
-    };
     use crate::ByteConversionError;
+    use crate::util::{
+        UnsignedByteField, UnsignedByteFieldError, UnsignedByteFieldU8, UnsignedByteFieldU16,
+        UnsignedByteFieldU32, UnsignedByteFieldU64, UnsignedEnum,
+    };
     use std::format;
 
     #[test]

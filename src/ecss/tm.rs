@@ -51,18 +51,17 @@
 //! assert_eq!(pus_tm_by_builder, ping_tm);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
-use crate::ecss::{
-    calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
-    WritablePusPacket,
-};
 pub use crate::ecss::{CreatorConfig, MessageTypeId};
+use crate::ecss::{
+    PusError, PusPacket, PusVersion, WritablePusPacket, calc_pus_crc16, crc_from_raw_data,
+    sp_header_impls, user_data_from_raw, verify_crc16_ccitt_false_from_raw_to_pus_error,
+};
 use crate::{
-    ByteConversionError, CcsdsPacket, PacketId, PacketSequenceControl, PacketType, SequenceFlags,
-    SpHeader, CCSDS_HEADER_LEN, MAX_APID,
+    ByteConversionError, CCSDS_HEADER_LEN, CcsdsPacket, MAX_APID, PacketId, PacketSequenceControl,
+    PacketType, SequenceFlags, SpHeader,
 };
 use arbitrary_int::traits::Integer;
-use arbitrary_int::{u11, u14, u3, u4};
+use arbitrary_int::{u3, u4, u11, u14};
 use core::mem::size_of;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -118,7 +117,7 @@ pub mod zc {
     use super::GenericPusTmSecondaryHeader;
     use crate::ecss::{MessageTypeId, PusError, PusVersion};
     use arbitrary_int::{traits::Integer as _, u4};
-    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, U16, Unaligned};
 
     /// PUS TM secondary header without a timestamp.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]
@@ -1490,11 +1489,11 @@ impl GenericPusTmSecondaryHeader for PusTmZeroCopyWriter<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::cds::CdsTime;
+    use crate::SpHeader;
     #[cfg(feature = "serde")]
     use crate::time::CcsdsTimeProvider;
-    use crate::SpHeader;
-    use crate::{ecss::PusVersion::PusC, MAX_SEQ_COUNT};
+    use crate::time::cds::CdsTime;
+    use crate::{MAX_SEQ_COUNT, ecss::PusVersion::PusC};
     use alloc::string::ToString;
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};

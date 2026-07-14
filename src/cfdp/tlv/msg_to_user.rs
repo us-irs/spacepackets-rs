@@ -3,8 +3,8 @@
 use super::TlvOwned;
 use super::{GenericTlv, ReadableTlv, Tlv, TlvLvError, TlvType, TlvTypeField, WritableTlv};
 use crate::{
-    cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError},
     ByteConversionError,
+    cfdp::{InvalidTlvTypeFieldError, TlvLvDataTooLargeError},
 };
 use delegate::delegate;
 

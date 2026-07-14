@@ -1,14 +1,14 @@
 //! # Metadata PDU packet implementation.
 #[cfg(feature = "alloc")]
 use super::tlv::TlvOwned;
+use crate::ByteConversionError;
 use crate::cfdp::lv::Lv;
 use crate::cfdp::pdu::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
-    FileDirectiveType, PduError, PduHeader,
+    FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
+    read_fss_field, write_fss_field,
 };
 use crate::cfdp::tlv::{Tlv, WritableTlv};
 use crate::cfdp::{ChecksumType, CrcFlag, Direction, LargeFileFlag, PduType};
-use crate::ByteConversionError;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 #[cfg(feature = "serde")]
@@ -418,11 +418,11 @@ mod tests {
 
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::metadata::{
-        build_metadata_opts_from_slice, build_metadata_opts_from_vec, MetadataGenericParams,
-        MetadataPduCreator, MetadataPduReader,
+        MetadataGenericParams, MetadataPduCreator, MetadataPduReader,
+        build_metadata_opts_from_slice, build_metadata_opts_from_vec,
     };
     use crate::cfdp::pdu::tests::{
-        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+        TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header,
     };
     use crate::cfdp::pdu::{CfdpPdu, PduError, WritablePduPacket};
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};

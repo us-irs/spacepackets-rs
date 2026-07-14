@@ -4,8 +4,8 @@
 //! You can find the PUS telecommand types in the [tc] module and the the PUS telemetry
 //! types inside the [tm] module.
 use crate::{
-    crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE},
     ByteConversionError, CcsdsPacket,
+    crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE},
 };
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -529,8 +529,8 @@ impl Default for CreatorConfig {
 mod tests {
     use alloc::string::ToString;
 
-    use crate::ecss::{EcssEnumU16, EcssEnumU32, EcssEnumU8, UnsignedEnum};
     use crate::ByteConversionError;
+    use crate::ecss::{EcssEnumU8, EcssEnumU16, EcssEnumU32, UnsignedEnum};
 
     use super::*;
     #[cfg(feature = "serde")]

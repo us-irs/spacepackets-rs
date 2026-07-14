@@ -15,9 +15,9 @@ use crate::ByteConversionError;
 #[cfg(feature = "std")]
 use super::StdTimestampError;
 use super::{
-    ccsds_epoch_to_unix_epoch, ccsds_time_code_from_p_field, unix_epoch_to_ccsds_epoch,
     CcsdsTimeCode, CcsdsTimeProvider, DateBeforeCcsdsEpochError, TimeReader, TimeWriter,
-    TimestampError, UnixTime,
+    TimestampError, UnixTime, ccsds_epoch_to_unix_epoch, ccsds_time_code_from_p_field,
+    unix_epoch_to_ccsds_epoch,
 };
 #[cfg(feature = "std")]
 use std::time::SystemTime;
@@ -884,7 +884,7 @@ impl Add<Duration> for &CucTime {
 
 #[cfg(test)]
 mod tests {
-    use crate::time::{UnixTime, DAYS_CCSDS_TO_UNIX, SECONDS_PER_DAY};
+    use crate::time::{DAYS_CCSDS_TO_UNIX, SECONDS_PER_DAY, UnixTime};
 
     use super::*;
     use alloc::string::ToString;

@@ -431,14 +431,14 @@ impl Ord for UnixTime {
                     Ordering::Greater
                 } else {
                     Ordering::Less
-                }
+                };
             }
             Ordering::Greater => {
                 return if self.secs < 0 {
                     Ordering::Less
                 } else {
                     Ordering::Greater
-                }
+                };
             }
             Ordering::Equal => (),
         }
