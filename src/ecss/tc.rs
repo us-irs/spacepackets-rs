@@ -42,15 +42,14 @@
 //! assert_eq!(pus_tc_by_builder, pus_tc);
 //! ```
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
-use crate::ecss::{
-    crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, PusError, PusPacket, PusVersion,
-    WritablePusPacket,
-};
 pub use crate::ecss::{CreatorConfig, MessageTypeId};
-use crate::{ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, CCSDS_HEADER_LEN};
+use crate::ecss::{
+    PusError, PusPacket, PusVersion, WritablePusPacket, crc_from_raw_data, sp_header_impls,
+    user_data_from_raw, verify_crc16_ccitt_false_from_raw_to_pus_error,
+};
+use crate::{ByteConversionError, CCSDS_HEADER_LEN, CcsdsPacket, PacketType, SequenceFlags};
 use crate::{PacketId, PacketSequenceControl, SpHeader};
-use arbitrary_int::{u11, u14, u3, u4};
+use arbitrary_int::{u3, u4, u11, u14};
 use core::mem::size_of;
 use delegate::delegate;
 #[cfg(feature = "serde")]
@@ -133,7 +132,7 @@ pub mod zc {
     use crate::ecss::{MessageTypeId, PusError, PusVersion};
     use arbitrary_int::traits::Integer;
     use arbitrary_int::u4;
-    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, Unaligned, U16};
+    use zerocopy::{FromBytes, Immutable, IntoBytes, NetworkEndian, U16, Unaligned};
 
     /// PUS TC secondary header.
     #[derive(FromBytes, IntoBytes, Immutable, Unaligned)]

@@ -1,12 +1,12 @@
 //! # NAK PDU packet implementation.
 use crate::{
-    cfdp::{CrcFlag, Direction, LargeFileFlag},
     ByteConversionError,
+    cfdp::{CrcFlag, Direction, LargeFileFlag},
 };
 
 use super::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, CfdpPdu, FileDirectiveType, PduError,
-    PduHeader, WritablePduPacket,
+    CfdpPdu, FileDirectiveType, PduError, PduHeader, WritablePduPacket, add_pdu_crc,
+    generic_length_checks_pdu_deserialization,
 };
 
 /// Invalid start or end of scope value.
@@ -761,8 +761,8 @@ mod tests {
     use alloc::string::ToString;
 
     use crate::cfdp::{
-        pdu::tests::{common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID},
         PduType, TransmissionMode,
+        pdu::tests::{TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header},
     };
 
     use super::*;

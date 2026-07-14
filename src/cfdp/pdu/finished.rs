@@ -1,12 +1,12 @@
 //! # Finished PDU packet implementation.
+use crate::ByteConversionError;
 use crate::cfdp::pdu::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, FileDirectiveType, PduError, PduHeader,
+    FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
 };
 use crate::cfdp::tlv::{
     EntityIdTlv, FilestoreResponseTlv, GenericTlv, Tlv, TlvType, TlvTypeField, WritableTlv,
 };
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, PduType};
-use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -453,7 +453,7 @@ mod tests {
     use super::*;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::pdu::tests::{
-        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+        TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header,
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::tlv::FilestoreResponseTlv;

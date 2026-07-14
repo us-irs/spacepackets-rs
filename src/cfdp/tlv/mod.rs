@@ -1,10 +1,10 @@
 //! Generic CFDP type-length-value (TLV) abstraction as specified in CFDP 5.1.9.
-use crate::cfdp::lv::{
-    generic_len_check_data_serialization, generic_len_check_deserialization, Lv, MIN_LV_LEN,
-};
-use crate::cfdp::TlvLvError;
-use crate::util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum};
 use crate::ByteConversionError;
+use crate::cfdp::TlvLvError;
+use crate::cfdp::lv::{
+    Lv, MIN_LV_LEN, generic_len_check_data_serialization, generic_len_check_deserialization,
+};
+use crate::util::{UnsignedByteField, UnsignedByteFieldError, UnsignedEnum};
 #[cfg(feature = "alloc")]
 use alloc::vec;
 #[cfg(feature = "alloc")]
@@ -1015,10 +1015,10 @@ pub(crate) fn verify_tlv_type(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cfdp::TlvLvError;
     use crate::cfdp::lv::Lv;
     use crate::cfdp::tlv::{FilestoreActionCode, FilestoreRequestTlv, Tlv, TlvType, TlvTypeField};
-    use crate::cfdp::TlvLvError;
-    use crate::util::{UbfU16, UbfU8, UnsignedEnum};
+    use crate::util::{UbfU8, UbfU16, UnsignedEnum};
     use alloc::string::ToString;
 
     const TLV_TEST_STR_0: &str = "hello.txt";

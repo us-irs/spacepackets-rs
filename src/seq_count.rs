@@ -492,17 +492,17 @@ pub mod std_mod {
     }
 
     impl<
-            Inner: SequenceCounter<Raw = RawTy>,
-            RawTy: core::fmt::Debug
-                + Copy
-                + Clone
-                + Into<u64>
-                + TryFrom<u64>
-                + FromStr
-                + Default
-                + PartialEq
-                + Eq,
-        > SequenceCounterOnFile<Inner, RawTy>
+        Inner: SequenceCounter<Raw = RawTy>,
+        RawTy: core::fmt::Debug
+            + Copy
+            + Clone
+            + Into<u64>
+            + TryFrom<u64>
+            + FromStr
+            + Default
+            + PartialEq
+            + Eq,
+    > SequenceCounterOnFile<Inner, RawTy>
     {
         /// Initialize a new persistent sequence counter using a file at the given path and
         /// any non persistent inner [SequenceCounter] implementation.
@@ -549,17 +549,17 @@ pub mod std_mod {
     }
 
     impl<
-            Inner: SequenceCounter<Raw = RawTy>,
-            RawTy: core::fmt::Debug
-                + Copy
-                + Clone
-                + Into<u64>
-                + TryFrom<u64, Error: core::fmt::Debug>
-                + FromStr
-                + Default
-                + PartialEq
-                + Eq,
-        > SequenceCounter for SequenceCounterOnFile<Inner, RawTy>
+        Inner: SequenceCounter<Raw = RawTy>,
+        RawTy: core::fmt::Debug
+            + Copy
+            + Clone
+            + Into<u64>
+            + TryFrom<u64, Error: core::fmt::Debug>
+            + FromStr
+            + Default
+            + PartialEq
+            + Eq,
+    > SequenceCounter for SequenceCounterOnFile<Inner, RawTy>
     {
         type Raw = RawTy;
 
@@ -590,17 +590,17 @@ pub mod std_mod {
     }
 
     impl<
-            Inner: SequenceCounter<Raw = RawTy>,
-            RawTy: core::fmt::Debug
-                + Copy
-                + Clone
-                + Into<u64>
-                + TryFrom<u64>
-                + FromStr
-                + Default
-                + PartialEq
-                + Eq,
-        > Drop for SequenceCounterOnFile<Inner, RawTy>
+        Inner: SequenceCounter<Raw = RawTy>,
+        RawTy: core::fmt::Debug
+            + Copy
+            + Clone
+            + Into<u64>
+            + TryFrom<u64>
+            + FromStr
+            + Default
+            + PartialEq
+            + Eq,
+    > Drop for SequenceCounterOnFile<Inner, RawTy>
     {
         fn drop(&mut self) {
             if self.save_on_drop {
@@ -632,14 +632,14 @@ pub mod std_mod {
 
 #[cfg(test)]
 mod tests {
-    use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+    use core::sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicU64};
     use std::boxed::Box;
 
+    use crate::MAX_SEQ_COUNT;
     use crate::seq_count::{
         SequenceCounter, SequenceCounterCcsdsSimple, SequenceCounterSimple,
         SequenceCounterSyncCustomWrapU8,
     };
-    use crate::MAX_SEQ_COUNT;
 
     #[test]
     fn test_u8_counter() {

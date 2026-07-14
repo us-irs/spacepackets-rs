@@ -50,17 +50,17 @@
 use crate::crc::{CRC_CCITT_FALSE, CRC_CCITT_FALSE_NO_TABLE};
 use crate::ecss::tm::IsPusTelemetry;
 use crate::ecss::{
-    calc_pus_crc16, crc_from_raw_data, sp_header_impls, user_data_from_raw,
-    verify_crc16_ccitt_false_from_raw_to_pus_error, CrcType, MessageTypeId, PusError, PusPacket,
-    PusVersion, WritablePusPacket,
+    CrcType, MessageTypeId, PusError, PusPacket, PusVersion, WritablePusPacket, calc_pus_crc16,
+    crc_from_raw_data, sp_header_impls, user_data_from_raw,
+    verify_crc16_ccitt_false_from_raw_to_pus_error,
 };
 use crate::util::{UnsignedByteField, UnsignedEnum};
 use crate::{
-    ByteConversionError, CcsdsPacket, PacketType, SequenceFlags, SpHeader, CCSDS_HEADER_LEN,
-    MAX_APID,
+    ByteConversionError, CCSDS_HEADER_LEN, CcsdsPacket, MAX_APID, PacketType, SequenceFlags,
+    SpHeader,
 };
 use arbitrary_int::traits::Integer;
-use arbitrary_int::{u11, u14, u3, u4};
+use arbitrary_int::{u3, u4, u11, u14};
 use core::mem::size_of;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -1232,8 +1232,8 @@ mod tests {
 
     use super::*;
     use crate::time::cds::CdsTime;
+    use crate::{MAX_SEQ_COUNT, SpHeader};
     use crate::{ecss::PusVersion::PusA, util::UnsignedByteFieldU16};
-    use crate::{SpHeader, MAX_SEQ_COUNT};
     #[cfg(feature = "serde")]
     use postcard::{from_bytes, to_allocvec};
 

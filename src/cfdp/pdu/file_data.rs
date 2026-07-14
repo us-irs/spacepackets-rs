@@ -1,10 +1,10 @@
 //! # File Data PDU packet implementation
+use crate::ByteConversionError;
 use crate::cfdp::pdu::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
-    PduError, PduHeader,
+    PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field,
+    write_fss_field,
 };
 use crate::cfdp::{CrcFlag, LargeFileFlag, PduType, SegmentMetadataFlag};
-use crate::ByteConversionError;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

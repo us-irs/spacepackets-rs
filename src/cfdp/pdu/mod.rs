@@ -1,10 +1,10 @@
 //! CFDP Packet Data Unit (PDU) support.
+use crate::ByteConversionError;
 use crate::cfdp::pdu::ack::InvalidAckedDirectiveCodeError;
 use crate::cfdp::pdu::nak::InvalidStartOrEndOfScopeError;
 use crate::cfdp::*;
 use crate::crc::CRC_CCITT_FALSE;
 use crate::util::{UnsignedByteField, UnsignedByteFieldU8, UnsignedEnum};
-use crate::ByteConversionError;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
@@ -725,15 +725,15 @@ pub(crate) fn add_pdu_crc(buf: &mut [u8], mut current_idx: usize) -> usize {
 mod tests {
     use alloc::string::ToString;
 
-    use crate::cfdp::pdu::{CommonPduConfig, PduError, PduHeader, FIXED_HEADER_LEN};
+    use crate::ByteConversionError;
+    use crate::cfdp::pdu::{CommonPduConfig, FIXED_HEADER_LEN, PduError, PduHeader};
     use crate::cfdp::{
-        CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag, SegmentationControl,
-        TransmissionMode, CFDP_VERSION_2,
+        CFDP_VERSION_2, CrcFlag, Direction, LargeFileFlag, PduType, SegmentMetadataFlag,
+        SegmentationControl, TransmissionMode,
     };
     use crate::util::{
-        UbfU16, UbfU8, UnsignedByteField, UnsignedByteFieldU16, UnsignedByteFieldU8, UnsignedEnum,
+        UbfU8, UbfU16, UnsignedByteField, UnsignedByteFieldU8, UnsignedByteFieldU16, UnsignedEnum,
     };
-    use crate::ByteConversionError;
     use std::format;
 
     pub(crate) const TEST_SRC_ID: UbfU8 = UbfU8::new(5);

@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [v0.18.0] 2026-07-14
 
+- Bumped Rust version to 2024
+- Bumped MSRV to 1.85
+
 ## Changed
 
 - Added distinction between `CcsdsPacketReader::user_data` and `CcsdsPacketReader::packet_data`.

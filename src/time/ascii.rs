@@ -36,8 +36,8 @@ pub const FMT_STR_CODE_B_TERMINATED_WITH_SIZE: (&str, usize) = ("%Y-%jT%T%.3fZ",
 pub mod alloc_mod_chrono {
     use super::*;
     use chrono::{
-        format::{DelayedFormat, StrftimeItems},
         DateTime, Utc,
+        format::{DelayedFormat, StrftimeItems},
     };
 
     /// Generates a time code formatter using the [FMT_STR_CODE_A_WITH_SIZE] format.

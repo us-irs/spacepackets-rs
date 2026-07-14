@@ -1,11 +1,11 @@
 //! # End-of-File (EOF) PDU packet implementation.
+use crate::ByteConversionError;
 use crate::cfdp::pdu::{
-    add_pdu_crc, generic_length_checks_pdu_deserialization, read_fss_field, write_fss_field,
-    FileDirectiveType, PduError, PduHeader,
+    FileDirectiveType, PduError, PduHeader, add_pdu_crc, generic_length_checks_pdu_deserialization,
+    read_fss_field, write_fss_field,
 };
 use crate::cfdp::tlv::{EntityIdTlv, WritableTlv};
 use crate::cfdp::{ConditionCode, CrcFlag, Direction, LargeFileFlag};
-use crate::ByteConversionError;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -205,7 +205,7 @@ impl WritablePduPacket for EofPdu {
 mod tests {
     use super::*;
     use crate::cfdp::pdu::tests::{
-        common_pdu_conf, verify_raw_header, TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID,
+        TEST_DEST_ID, TEST_SEQ_NUM, TEST_SRC_ID, common_pdu_conf, verify_raw_header,
     };
     use crate::cfdp::pdu::{FileDirectiveType, PduHeader};
     use crate::cfdp::{ConditionCode, CrcFlag, LargeFileFlag, PduType, TransmissionMode};
