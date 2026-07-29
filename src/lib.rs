@@ -60,6 +60,7 @@
 //! println!("{:x?}", &ccsds_buf[0..6]);
 //! ```
 #![no_std]
+#![forbid(unsafe_code)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 #[cfg(feature = "alloc")]
