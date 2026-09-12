@@ -822,10 +822,10 @@ fn get_time_values_after_duration_addition(
             new_counter = sum as u32;
         };
         match time.counter.0 {
-            1 => counter_inc_handler(u8::MAX as u64),
-            2 => counter_inc_handler(u16::MAX as u64),
-            3 => counter_inc_handler((2_u32.pow(24) - 1) as u64),
-            4 => counter_inc_handler(u32::MAX as u64),
+            1 => counter_inc_handler(1_u64 << 8),
+            2 => counter_inc_handler(1_u64 << 16),
+            3 => counter_inc_handler(1_u64 << 24),
+            4 => counter_inc_handler(1_u64 << 32),
             _ => {
                 // Should never happen
                 panic!("invalid counter width")
@@ -1392,7 +1392,27 @@ mod tests {
             CucTime::new_generic(WidthCounterPair(1, 255), FractionalPart::new_empty()).unwrap();
         let duration = Duration::from_secs(10);
         cuc_stamp += duration;
-        assert_eq!(cuc_stamp.counter.1, 10);
+        assert_eq!(cuc_stamp.counter.1, 9);
+    }
+
+    #[test]
+    fn add_duration_reaches_max_counter_value() {
+        let mut cuc_stamp =
+            CucTime::new_generic(WidthCounterPair(1, 254), FractionalPart::new_empty()).unwrap();
+
+        cuc_stamp += Duration::from_secs(1);
+
+        assert_eq!(cuc_stamp.counter(), 255);
+    }
+
+    #[test]
+    fn add_duration_wraps_after_max_counter_value() {
+        let mut cuc_stamp =
+            CucTime::new_generic(WidthCounterPair(1, 255), FractionalPart::new_empty()).unwrap();
+
+        cuc_stamp += Duration::from_secs(1);
+
+        assert_eq!(cuc_stamp.counter(), 0);
     }
 
     #[test]
