@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 # [unreleased]
 
+## Fixed
+
+- Fixed an off-by-one error in the CUC counter rollover modulus which caused the counter to skip
+  0 when wrapping around.
+
 # [v0.18.0] 2026-07-14
 
 - Bumped Rust version to 2024
