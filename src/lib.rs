@@ -1631,34 +1631,6 @@ impl CcsdsPacketReader<'_> {
         self.sp_header.packet_id.packet_type
     }
 
-    /// Full raw data.
-    #[inline]
-    pub fn raw_data(&self) -> &[u8] {
-        self.raw_data
-    }
-
-    /// Read-only access to the full packet data field.
-    ///
-    /// This might also include the checksum but does not include the raw [SpacePacketHeader].
-    /// [Self::user_data] can be used to only retrieve the user data slice without the checksum
-    /// part.
-    #[inline]
-    pub fn packet_data(&self) -> &[u8] {
-        self.raw_data[CCSDS_HEADER_LEN..self.raw_data.len()].as_ref()
-    }
-
-    /// Read-only access to the user data field.
-    ///
-    /// This is the [Self::packet_data] without the checksum, if the packet has one.
-    #[inline]
-    pub fn user_data(&self) -> &[u8] {
-        if self.checksum.is_some() {
-            self.packet_data()[0..self.packet_data().len() - 2].as_ref()
-        } else {
-            self.packet_data()
-        }
-    }
-
     /// 11-bit Application Process ID field.
     #[inline]
     pub fn apid(&self) -> u11 {
@@ -1693,6 +1665,36 @@ impl CcsdsPacketReader<'_> {
     #[inline]
     pub fn checksum(&self) -> Option<u16> {
         self.checksum
+    }
+}
+
+impl<'buf> CcsdsPacketReader<'buf> {
+    /// Full raw data.
+    #[inline]
+    pub fn raw_data(&self) -> &'buf [u8] {
+        self.raw_data
+    }
+
+    /// Read-only access to the full packet data field.
+    ///
+    /// This might also include the checksum but does not include the raw [SpacePacketHeader].
+    /// [Self::user_data] can be used to only retrieve the user data slice without the checksum
+    /// part.
+    #[inline]
+    pub fn packet_data(&self) -> &'buf [u8] {
+        self.raw_data[CCSDS_HEADER_LEN..self.raw_data.len()].as_ref()
+    }
+
+    /// Read-only access to the user data field.
+    ///
+    /// This is the [Self::packet_data] without the checksum, if the packet has one.
+    #[inline]
+    pub fn user_data(&self) -> &'buf [u8] {
+        if self.checksum.is_some() {
+            self.packet_data()[0..self.packet_data().len() - 2].as_ref()
+        } else {
+            self.packet_data()
+        }
     }
 }
 
@@ -3010,5 +3012,32 @@ pub(crate) mod tests {
         let reader = CcsdsPacketReader::new(&packet_raw, Some(ChecksumType::WithCrc16)).unwrap();
         assert_eq!(reader.apid(), MAX_APID);
         assert_eq!(reader.seq_count(), u14::new(0x42));
+    }
+
+    #[test]
+    fn test_reader_data_outlives_reader() {
+        fn slices_from_local_reader(buf: &[u8]) -> (&[u8], &[u8], &[u8]) {
+            let reader = CcsdsPacketReader::new(buf, Some(ChecksumType::WithCrc16)).unwrap();
+            (reader.raw_data(), reader.packet_data(), reader.user_data())
+        }
+
+        let mut buf: [u8; 32] = [0; 32];
+        let data = [1, 2, 3, 4, 5];
+        let mut packet_creator = CcsdsPacketCreatorWithReservedData::new(
+            SpacePacketHeader::new_from_apid(u11::new(0x1)),
+            PacketType::Tc,
+            data.len(),
+            &mut buf,
+            Some(ChecksumType::WithCrc16),
+        )
+        .unwrap();
+        packet_creator.user_data_mut().copy_from_slice(&data);
+        let packet_len = packet_creator.packet_len();
+        packet_creator.finish();
+
+        let (raw_data, packet_data, user_data) = slices_from_local_reader(&buf[0..packet_len]);
+        assert_eq!(raw_data, &buf[0..packet_len]);
+        assert_eq!(packet_data.len(), data.len() + 2);
+        assert_eq!(user_data, &data);
     }
 }
