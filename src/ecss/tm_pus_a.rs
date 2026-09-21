@@ -871,13 +871,13 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
     /// Raw source data slice.
     #[inline]
-    pub fn source_data(&self) -> &[u8] {
-        self.user_data()
+    pub fn source_data(&self) -> &'raw_data [u8] {
+        self.source_data
     }
 
     /// Raw timestamp slice.
     #[inline]
-    pub fn timestamp(&self) -> &[u8] {
+    pub fn timestamp(&self) -> &'raw_data [u8] {
         self.sec_header.timestamp
     }
 
@@ -889,7 +889,7 @@ impl<'raw_data> PusTmReader<'raw_data> {
 
     /// This function will return the slice [Self] was constructed from.
     #[inline]
-    pub fn raw_data(&self) -> &[u8] {
+    pub fn raw_data(&self) -> &'raw_data [u8] {
         self.raw_data
     }
 }

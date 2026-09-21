@@ -994,13 +994,13 @@ impl<'raw_data> PusTcReader<'raw_data> {
 
     /// Application data slice.
     #[inline]
-    pub fn app_data(&self) -> &[u8] {
-        self.user_data()
+    pub fn app_data(&self) -> &'raw_data [u8] {
+        self.app_data
     }
 
     /// Full raw data slice.
     #[inline]
-    pub fn raw_data(&self) -> &[u8] {
+    pub fn raw_data(&self) -> &'raw_data [u8] {
         self.raw_data
     }
 
