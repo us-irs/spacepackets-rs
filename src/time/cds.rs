@@ -293,7 +293,7 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsBase for CdsTime<ProvidesDaysLen> {
 
 impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
     /// Please note that a precision value of 0 will be converted to [None] (no precision).
-    pub fn set_submillis(&mut self, prec: SubmillisPrecision, value: u32) -> bool {
+    pub const fn set_submillis(&mut self, prec: SubmillisPrecision, value: u32) -> bool {
         self.pfield &= !(0b11);
         // self.submillis_precision = prec;
         match prec {
@@ -425,21 +425,17 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         Ok(())
     }
 
-    fn generic_new(
+    const fn generic_new(
         days_len: LengthOfDaySegment,
         ccsds_days: ProvidesDaysLen::FieldType,
         ms_of_day: u32,
-    ) -> Result<Self, CdsError>
-    where
-        i64: From<ProvidesDaysLen::FieldType>,
-    {
-        let provider = Self {
+    ) -> Self {
+        Self {
             pfield: Self::generate_p_field(days_len, SubmillisPrecision::Absent),
             ccsds_days,
             ms_of_day,
             submillis: 0,
-        };
-        Ok(provider)
+        }
     }
 
     #[cfg(feature = "chrono")]
@@ -526,7 +522,10 @@ impl<ProvidesDaysLen: ProvidesDaysLength> CdsTime<ProvidesDaysLen> {
         })
     }
 
-    fn generate_p_field(day_seg_len: LengthOfDaySegment, submillis_prec: SubmillisPrecision) -> u8 {
+    const fn generate_p_field(
+        day_seg_len: LengthOfDaySegment,
+        submillis_prec: SubmillisPrecision,
+    ) -> u8 {
         let mut pfield = P_FIELD_BASE | ((day_seg_len as u8) << 2);
         if matches!(
             submillis_prec,
@@ -567,7 +566,11 @@ impl CdsTime<DaysLen24Bits> {
         if ccsds_days > MAX_DAYS_24_BITS {
             return Err(CdsError::InvalidCcsdsDays(ccsds_days.into()));
         }
-        Self::generic_new(LengthOfDaySegment::Long24Bits, ccsds_days, ms_of_day)
+        Ok(Self::generic_new(
+            LengthOfDaySegment::Long24Bits,
+            ccsds_days,
+            ms_of_day,
+        ))
     }
 
     /// Generate a time stamp from the current time using the system clock.
@@ -660,9 +663,8 @@ impl CdsTime<DaysLen24Bits> {
 
 impl CdsTime<DaysLen16Bits> {
     /// Generate a new timestamp provider with the days field width set to 16 bits
-    pub fn new_with_u16_days(ccsds_days: u16, ms_of_day: u32) -> Self {
-        // This should never fail, type system ensures CCSDS can not be negative or too large
-        Self::generic_new(LengthOfDaySegment::Short16Bits, ccsds_days, ms_of_day).unwrap()
+    pub const fn new_with_u16_days(ccsds_days: u16, ms_of_day: u32) -> Self {
+        Self::generic_new(LengthOfDaySegment::Short16Bits, ccsds_days, ms_of_day)
     }
 
     /// Create a provider from a [`chrono::DateTime<Utc>`] struct.
