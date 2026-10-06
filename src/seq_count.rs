@@ -424,6 +424,8 @@ macro_rules! sync_clonable_seq_counter_impl {
                     self.get_and_increment();
                 }
 
+                // TODO: Switch to try_update once the MSRV is at least 1.95.
+                #[allow(deprecated)]
                 fn get_and_increment(&self) -> $ty {
                     self.seq_count.fetch_update(
                         core::sync::atomic::Ordering::Relaxed,
