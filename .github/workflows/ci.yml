@@ -11,6 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --release
 
   test:
@@ -19,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Install nextest
         uses: taiki-e/install-action@nextest
       - run: cargo nextest run --all-features
@@ -30,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
       - run: cargo check --release
 
   cross-check:
@@ -46,6 +49,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: "armv7-unknown-linux-gnueabihf, thumbv7em-none-eabihf, thumbv6m-none-eabi"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - run: cargo check --release --target=${{matrix.target}} --no-default-features
 
   fmt:
@@ -64,6 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
       - run: RUSTDOCFLAGS="--cfg docsrs --generate-link-to-definition -Z unstable-options" cargo +nightly doc --all-features --no-deps
 
   clippy:
@@ -74,4 +81,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: Swatinem/rust-cache@v2
       - run: cargo clippy -- -D warnings
